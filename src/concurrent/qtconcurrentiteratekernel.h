@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCONCURRENT_ITERATEKERNEL_H
 #define QTCONCURRENT_ITERATEKERNEL_H
@@ -85,7 +86,7 @@ public:
         return vector.data();
     }
 
-    int currentResultCount;
+    int currentResultCount = 0;
     ThreadEngine<T> *threadEngine;
     QList<T> vector;
 

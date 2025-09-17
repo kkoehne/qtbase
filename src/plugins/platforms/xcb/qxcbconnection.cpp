@@ -44,7 +44,6 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 Q_LOGGING_CATEGORY(lcQpaXInput, "qt.qpa.input")
-Q_LOGGING_CATEGORY(lcQpaXInputDevices, "qt.qpa.input.devices")
 Q_LOGGING_CATEGORY(lcQpaXInputEvents, "qt.qpa.input.events")
 Q_LOGGING_CATEGORY(lcQpaScreen, "qt.qpa.screen")
 Q_LOGGING_CATEGORY(lcQpaEvents, "qt.qpa.events")
@@ -94,7 +93,7 @@ QXcbConnection::QXcbConnection(QXcbNativeInterface *nativeInterface, bool canGra
     m_focusInTimer.setInterval(focusInDelay);
     m_focusInTimer.callOnTimeout(this, []() {
         // No FocusIn events for us, proceed with FocusOut normally.
-        QWindowSystemInterface::handleWindowActivated(nullptr, Qt::ActiveWindowFocusReason);
+        QWindowSystemInterface::handleFocusWindowChanged(nullptr, Qt::ActiveWindowFocusReason);
     });
 
     sync();
@@ -1068,7 +1067,8 @@ void QXcbConnection::processXcbEvents(QEventLoop::ProcessEventsFlags flags)
     int connection_error = xcb_connection_has_error(xcb_connection());
     if (connection_error) {
         qWarning("The X11 connection broke (error %d). Did the X11 server die?", connection_error);
-        exit(1);
+        qGuiApp->exit(connection_error);
+        return;
     }
 
     m_eventQueue->flushBufferedEvents();
@@ -1139,13 +1139,6 @@ Qt::MouseButtons QXcbConnection::queryMouseButtons() const
     int stateMask = 0;
     QXcbCursor::queryPointer(connection(), nullptr, nullptr, &stateMask);
     return translateMouseButtons(stateMask);
-}
-
-Qt::KeyboardModifiers QXcbConnection::queryKeyboardModifiers() const
-{
-    int stateMask = 0;
-    QXcbCursor::queryPointer(connection(), nullptr, nullptr, &stateMask);
-    return keyboard()->translateModifiers(stateMask);
 }
 
 QXcbGlIntegration *QXcbConnection::glIntegration() const

@@ -17,6 +17,12 @@
 
 QT_BEGIN_NAMESPACE
 
+struct PeHeaderInfoStruct {
+    unsigned wordSize = 0;
+    bool isDebug = false;
+    unsigned short machineArch = 0;
+};
+
 enum PlatformFlag {
     // OS
     WindowsBased = 0x00001,
@@ -29,7 +35,9 @@ enum PlatformFlag {
     ClangMsvc    = 0x00400,
     ClangMinGW   = 0x00800,
     // Platforms
-    WindowsDesktopMsvc = WindowsBased + IntelBased + Msvc,
+    WindowsDesktopMsvc = WindowsBased + Msvc,
+    WindowsDesktopMsvcIntel = WindowsDesktopMsvc + IntelBased,
+    WindowsDesktopMsvcArm = WindowsDesktopMsvc + ArmBased,
     WindowsDesktopMinGW = WindowsBased + IntelBased + MinGW,
     WindowsDesktopClangMsvc = WindowsBased + IntelBased + ClangMsvc,
     WindowsDesktopClangMinGW = WindowsBased + IntelBased + ClangMinGW,
@@ -66,7 +74,7 @@ inline std::wostream &operator<<(std::wostream &str, const QString &s)
 // Container class for JSON output
 class JsonOutput
 {
-    using SourceTargetMapping = QPair<QString, QString>;
+    using SourceTargetMapping = std::pair<QString, QString>;
     using SourceTargetMappings = QList<SourceTargetMapping>;
 
 public:
@@ -162,11 +170,13 @@ bool updateFile(const QString &sourceFileName, const QStringList &nameFilters,
 bool runProcess(const QString &binary, const QStringList &args,
                 const QString &workingDirectory = QString(),
                 unsigned long *exitCode = 0, QByteArray *stdOut = 0, QByteArray *stdErr = 0,
-                QString *errorMessage = 0);
+                QString *errorMessage = 0, int timeout = 30000);
 
-bool readPeExecutable(const QString &peExecutableFileName, QString *errorMessage,
-                      QStringList *dependentLibraries = 0, unsigned *wordSize = 0,
-                      bool *isDebug = 0, bool isMinGW = false, unsigned short *machineArch = nullptr);
+bool readPeExecutableInfo(const QString &peExecutableFileName, QString *errorMessage,
+                          PeHeaderInfoStruct *headerInfo);
+
+bool readPeExecutableDependencies(const QString &peExecutableFileName, QString *errorMessage,
+                      QStringList *dependentLibraries = 0);
 
 #ifdef Q_OS_WIN
 #  if !defined(IMAGE_FILE_MACHINE_ARM64)
@@ -180,7 +190,7 @@ QString getArchString (unsigned short machineArch);
 inline QStringList findDependentLibraries(const QString &executableFileName, QString *errorMessage)
 {
     QStringList result;
-    readPeExecutable(executableFileName, errorMessage, &result);
+    readPeExecutableDependencies(executableFileName, errorMessage, &result);
     return result;
 }
 

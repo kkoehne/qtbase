@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTHREAD_H
 #define QTHREAD_H
@@ -30,6 +31,7 @@ class Q_CORE_EXPORT QThread : public QObject
 public:
     static Qt::HANDLE currentThreadId() noexcept Q_DECL_PURE_FUNCTION;
     static QThread *currentThread();
+    static bool isMainThread() noexcept;
     static int idealThreadCount() noexcept;
     static void yieldCurrentThread();
 
@@ -50,6 +52,13 @@ public:
         InheritPriority
     };
 
+    enum class QualityOfService {
+        Auto,
+        High,
+        Eco,
+    };
+    Q_ENUM(QualityOfService)
+
     void setPriority(Priority priority);
     Priority priority() const;
 
@@ -67,6 +76,11 @@ public:
 
     bool event(QEvent *event) override;
     int loopLevel() const;
+
+    bool isCurrentThread() const noexcept;
+
+    void setServiceLevel(QualityOfService serviceLevel);
+    QualityOfService serviceLevel() const;
 
     template <typename Function, typename... Args>
     [[nodiscard]] static QThread *create(Function &&f, Args &&... args);
@@ -151,13 +165,13 @@ inline Qt::HANDLE QThread::currentThreadId() noexcept
     static_assert(sizeof(tid) == sizeof(void*));
     // See https://akkadia.org/drepper/tls.pdf for x86 ABI
 #if defined(Q_PROCESSOR_X86_32) && ((defined(Q_OS_LINUX) && defined(__GLIBC__)) || defined(Q_OS_FREEBSD)) // x86 32-bit always uses GS
-    __asm__("movl %%gs:%c1, %0" : "=r" (tid) : "i" (2 * sizeof(void*)) : );
+    __asm__("mov %%gs:%c1, %0" : "=r" (tid) : "i" (2 * sizeof(void*)) : );
 #elif defined(Q_PROCESSOR_X86_64) && defined(Q_OS_DARWIN)
     // 64bit macOS uses GS, see https://github.com/apple/darwin-xnu/blob/master/libsyscall/os/tsd.h
-    __asm__("movq %%gs:0, %0" : "=r" (tid) : : );
+    __asm__("mov %%gs:0, %0" : "=r" (tid) : : );
 #elif defined(Q_PROCESSOR_X86_64) && ((defined(Q_OS_LINUX) && defined(__GLIBC__)) || defined(Q_OS_FREEBSD))
     // x86_64 Linux, BSD uses FS
-    __asm__("movq %%fs:%c1, %0" : "=r" (tid) : "i" (2 * sizeof(void*)) : );
+    __asm__("mov %%fs:%c1, %0" : "=r" (tid) : "i" (2 * sizeof(void*)) : );
 #elif defined(Q_PROCESSOR_X86_64) && defined(Q_OS_WIN)
     // See https://en.wikipedia.org/wiki/Win32_Thread_Information_Block
     // First get the pointer to the TIB

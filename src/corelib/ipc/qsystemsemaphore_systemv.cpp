@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsystemsemaphore.h"
 #include "qsystemsemaphore_p.h"
@@ -174,7 +175,7 @@ bool QSystemSemaphoreSystemV::modifySemaphore(QSystemSemaphorePrivate *self, int
     operation.sem_flg = SEM_UNDO;
 
     int res;
-    EINTR_LOOP(res, semop(semaphore, &operation, 1));
+    QT_EINTR_LOOP(res, semop(semaphore, &operation, 1));
     if (-1 == res) {
         // If the semaphore was removed be nice and create it and then modifySemaphore again
         if (errno == EINVAL || errno == EIDRM) {

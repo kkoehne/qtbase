@@ -4,7 +4,10 @@
 #include "mainwindow.h"
 #include "treemodel.h"
 
+#include <QDebug>
 #include <QFile>
+
+using namespace Qt::StringLiterals;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -13,14 +16,18 @@ MainWindow::MainWindow(QWidget *parent)
 
     const QStringList headers({tr("Title"), tr("Description")});
 
-    QFile file(":/default.txt");
-    file.open(QIODevice::ReadOnly);
-    TreeModel *model = new TreeModel(headers, file.readAll(), this);
+    QFile file(":/default.txt"_L1);
+    const bool res = file.open(QIODevice::ReadOnly | QIODevice::Text);
+    Q_ASSERT_X(res, Q_FUNC_INFO, "Failed to open ':/default.txt'");
+    if (!res)
+        return;
+    auto *model = new TreeModel(headers, QString::fromUtf8(file.readAll()), this);
     file.close();
 
     view->setModel(model);
     for (int column = 0; column < model->columnCount(); ++column)
         view->resizeColumnToContents(column);
+    view->expandAll();
 
     connect(exitAction, &QAction::triggered, qApp, &QCoreApplication::quit);
 

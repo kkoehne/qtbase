@@ -15,6 +15,7 @@
  * pre-defined list of header files.
  */
 
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -43,9 +44,10 @@ enum HeaderChecks {
     PrivateHeaderChecks = 2, /* Checks if the public header includes a private header */
     IncludeChecks = 4, /* Checks if the real header file but not an alias is included */
     WeMeantItChecks = 8, /* Checks if private header files contains 'We meant it' disclaimer */
-    CriticalChecks = PrivateHeaderChecks, /* Checks that lead to the fatal error of the sync
-                                             process */
-    AllChecks = NamespaceChecks | PrivateHeaderChecks | IncludeChecks | WeMeantItChecks,
+    PragmaOnceChecks = 16,
+    /* Checks that lead to the fatal error of the sync process: */
+    CriticalChecks = PrivateHeaderChecks | PragmaOnceChecks,
+    AllChecks = NamespaceChecks | CriticalChecks | IncludeChecks | WeMeantItChecks,
 };
 
 constexpr int LinkerScriptCommentAlignment = 55;
@@ -135,15 +137,21 @@ void printInternalError()
               << std::endl;
 }
 
-std::filesystem::path normilizedPath(const std::string &path)
-{
-    return std::filesystem::path(std::filesystem::weakly_canonical(path).generic_string());
-}
-
 void printFilesystemError(const std::filesystem::filesystem_error &fserr, std::string_view errorMsg)
 {
     std::cerr << errorMsg << ": " << fserr.path1() << ".\n"
               << fserr.what() << "(" << fserr.code().value() << ")" << std::endl;
+}
+
+std::filesystem::path normilizedPath(const std::string &path)
+{
+    try {
+        auto result = std::filesystem::path(std::filesystem::weakly_canonical(path).generic_string());
+        return result;
+    } catch (const std::filesystem::filesystem_error &fserr) {
+        printFilesystemError(fserr, "Unable to normalize path");
+        throw;
+    }
 }
 
 bool createDirectories(const std::string &path, std::string_view errorMsg, bool *exists = nullptr)
@@ -197,6 +205,8 @@ public:
     const std::string &binaryDir() const { return m_binaryDir; }
 
     const std::string &includeDir() const { return m_includeDir; }
+
+    const std::string &installIncludeDir() const { return m_installIncludeDir; }
 
     const std::string &privateIncludeDir() const { return m_privateIncludeDir; }
 
@@ -328,10 +338,11 @@ private:
         std::string ssgHeadersFilter;
         std::string privateHeadersFilter;
         std::string publicNamespaceFilter;
-        static std::unordered_map<std::string, CommandLineOption<std::string>> stringArgumentMap = {
+        const std::unordered_map<std::string, CommandLineOption<std::string>> stringArgumentMap = {
             { "-module", { &m_moduleName } },
             { "-sourceDir", { &m_sourceDir } },
             { "-binaryDir", { &m_binaryDir } },
+            { "-installIncludeDir", { &m_installIncludeDir, true } },
             { "-privateHeadersFilter", { &privateHeadersFilter, true } },
             { "-qpaHeadersFilter", { &qpaHeadersFilter, true } },
             { "-rhiHeadersFilter", { &rhiHeadersFilter, true } },
@@ -346,14 +357,14 @@ private:
             { "-publicNamespaceFilter", { &publicNamespaceFilter, true } },
         };
 
-        static const std::unordered_map<std::string, CommandLineOption<std::set<std::string>>>
+        const std::unordered_map<std::string, CommandLineOption<std::set<std::string>>>
                 listArgumentMap = {
                     { "-headers", { &m_headers, true } },
                     { "-generatedHeaders", { &m_generatedHeaders, true } },
                     { "-knownModules", { &m_knownModules, true } },
                 };
 
-        static const std::unordered_map<std::string, CommandLineOption<bool>> boolArgumentMap = {
+        const std::unordered_map<std::string, CommandLineOption<bool>> boolArgumentMap = {
             { "-nonQt", { &m_isNonQtModule, true } }, { "-debug", { &m_debug, true } },
             { "-help", { &m_printHelpOnly, true } },
             { "-internal", { &m_isInternal, true } }, { "-all", { &m_scanAllMode, true } },
@@ -365,7 +376,7 @@ private:
         std::string *currentValue = nullptr;
         std::set<std::string> *currentListValue = nullptr;
 
-        auto parseArgument = [&currentValue, &currentListValue](const std::string &arg) -> bool {
+        auto parseArgument = [&](const std::string &arg) -> bool {
             if (arg[0] == '-') {
                 currentValue = nullptr;
                 currentListValue = nullptr;
@@ -492,10 +503,10 @@ private:
     // Convert all paths from command line to a generic one.
     void normilizePaths()
     {
-        static std::array<std::string *, 8> paths = {
-            &m_sourceDir,     &m_binaryDir,  &m_includeDir,        &m_privateIncludeDir,
-            &m_qpaIncludeDir, &m_rhiIncludeDir, &m_stagingDir,
-            &m_versionScriptFile,
+        const std::array paths = {
+            &m_sourceDir,         &m_binaryDir,         &m_includeDir,
+            &m_installIncludeDir, &m_privateIncludeDir, &m_qpaIncludeDir,
+            &m_rhiIncludeDir,     &m_stagingDir,        &m_versionScriptFile,
         };
         for (auto path : paths) {
             if (!path->empty())
@@ -507,6 +518,7 @@ private:
     std::string m_sourceDir;
     std::string m_binaryDir;
     std::string m_includeDir;
+    std::string m_installIncludeDir;
     std::string m_privateIncludeDir;
     std::string m_qpaIncludeDir;
     std::string m_rhiIncludeDir;
@@ -889,12 +901,7 @@ public:
 
         bool headerFileExists = std::filesystem::exists(headerFile);
 
-        std::filesystem::path headerFileRootName =
-                std::filesystem::weakly_canonical(headerFile, ec).root_name();
-        std::string aliasedFilepath = !ec && headerFileRootName == m_outputRootName
-                ? std::filesystem::relative(headerFile, outputDir).generic_string()
-                : headerFile.generic_string();
-        ec.clear();
+        std::string aliasedFilepath = headerFile.generic_string();
 
         std::string aliasPath = outputDir + '/' + m_currentFilename;
 
@@ -1089,6 +1096,9 @@ public:
         static const std::regex MacroRegex("^\\s*#.*");
 
         // The regex's bellow check line for known pragmas:
+        //
+        //    - 'once' is not allowed in installed headers, so error out.
+        //
         //    - 'qt_sync_skip_header_check' avoid any header checks.
         //
         //    - 'qt_sync_stop_processing' stops the header proccesing from a moment when pragma is
@@ -1116,6 +1126,7 @@ public:
         //
         //    - 'qt_no_master_include' indicates that syncqt should avoid including this header
         //      files into the module master header file.
+        static const std::regex OnceRegex(R"(^#\s*pragma\s+once$)");
         static const std::regex SkipHeaderCheckRegex("^#\\s*pragma qt_sync_skip_header_check$");
         static const std::regex StopProcessingRegex("^#\\s*pragma qt_sync_stop_processing$");
         static const std::regex SuspendProcessingRegex("^#\\s*pragma qt_sync_suspend_processing$");
@@ -1181,6 +1192,11 @@ public:
         std::string tmpLine;
         std::size_t linesProcessed = 0;
         int faults = NoChecks;
+
+        const auto error = [&] () -> decltype(auto) {
+            return std::cerr << ErrorMessagePreamble << m_currentFileString
+                             << ":" << m_currentFileLineNumber << " ";
+        };
 
         // Read file line by line
         while (std::getline(input, tmpLine)) {
@@ -1298,6 +1314,13 @@ public:
                 } else if (std::regex_match(buffer, match, DeprecatesPragmaRegex)) {
                     m_deprecatedHeaders[match[1].str()] =
                             m_commandLineArgs->moduleName() + '/' + m_currentFilename;
+                } else if (std::regex_match(buffer, OnceRegex)) {
+                    if (!(skipChecks & PragmaOnceChecks)) {
+                        faults |= PragmaOnceChecks;
+                        error() << "\"#pragma once\" is not allowed in installed header files: "
+                                   "https://lists.qt-project.org/pipermail/development/2022-October/043121.html"
+                                << std::endl;
+                    }
                 } else if (std::regex_match(buffer, match, IncludeRegex) && !isSuspended) {
                     if (!(skipChecks & IncludeChecks)) {
                         std::string includedHeader = match[1].str();
@@ -1306,14 +1329,15 @@ public:
                                                        .filename()
                                                        .generic_string())) {
                             faults |= PrivateHeaderChecks;
-                            std::cerr << ErrorMessagePreamble << m_currentFileString
-                                      << ":" << m_currentFileLineNumber
-                                      << " includes private header " << includedHeader << std::endl;
+                            error() << "includes private header " << includedHeader << std::endl;
                         }
                         for (const auto &module : m_commandLineArgs->knownModules()) {
                             std::string suggestedHeader = "Qt" + module + '/' + includedHeader;
-                            if (std::filesystem::exists(m_commandLineArgs->includeDir() + "/../"
-                                                        + suggestedHeader)) {
+                            const std::string suggestedHeaderReversePath = "/../" + suggestedHeader;
+                            if (std::filesystem::exists(m_commandLineArgs->includeDir()
+                                                        + suggestedHeaderReversePath)
+                                || std::filesystem::exists(m_commandLineArgs->installIncludeDir()
+                                                           + '/' + suggestedHeader)) {
                                 faults |= IncludeChecks;
                                 std::cerr << m_warningMessagePreamble << m_currentFileString
                                           << ":" << m_currentFileLineNumber
@@ -1412,13 +1436,12 @@ public:
         //     - <class|stuct> StructName
         //     - template <> class ClassName
         //     - class ClassName : [public|protected|private] BaseClassName
-        //     - class ClassName [final|Q_DECL_FINAL|sealed]
+        //     - class ClassName [QT_TEXT_STREAM_FINAL|Q_DECL_FINAL|final|sealed]
         // And possible combinations of the above variants.
         static const std::regex ClassRegex(
-                "^ *(template *<.*> *)?(class|struct) +([^ <>]* "
-                "+)?((?!Q_DECL_FINAL|final|sealed)[^<\\s\\:]+) ?(<[^>\\:]*> "
-                "?)?\\s*(?:Q_DECL_FINAL|final|sealed)?\\s*((,|:)\\s*(public|protected|private)? "
-                "*.*)? *$");
+                "^ *(template *<.*> *)?(class|struct +)([^<>:]*\\s+)?"       // Preceding part
+                "((?!Q[A-Z_0-9]*_FINAL|final|sealed)Q[a-zA-Z0-9_]+)"         // Actual symbol
+                "(\\s+Q[A-Z_0-9]*_FINAL|\\s+final|\\s+sealed)?\\s*(:|$).*"); // Trailing part
 
         // This regex checks if line contains function pointer typedef declaration like:
         //     - typedef void (* QFunctionPointerType)(int, char);
@@ -1429,10 +1452,6 @@ public:
         //     - typedef AnySymbol<char> QAnySymbolType;
         static const std::regex TypedefRegex("^ *typedef\\s+(.*)\\s+(Q\\w+); *$");
 
-        // This regex checks if symbols is the Qt public symbol. Assume that Qt public symbols start
-        // with the capital 'Q'.
-        static const std::regex QtClassRegex("^Q\\w+$");
-
         std::smatch match;
         if (std::regex_match(line, match, FunctionPointerRegex)) {
             symbol = match[1].str();
@@ -1440,8 +1459,6 @@ public:
             symbol = match[2].str();
         } else if (std::regex_match(line, match, ClassRegex)) {
             symbol = match[4].str();
-            if (!std::regex_match(symbol, QtClassRegex))
-                symbol.clear();
         } else {
             return false;
         }
@@ -1549,7 +1566,7 @@ public:
     [[nodiscard]] bool generateDeprecatedHeaders()
     {
         static std::regex cIdentifierSymbolsRegex("[^a-zA-Z0-9_]");
-        static std::string guard_base = "DEPRECATED_HEADER_" + m_commandLineArgs->moduleName();
+        const std::string guard_base = "DEPRECATED_HEADER_" + m_commandLineArgs->moduleName();
         bool result = true;
         for (auto it = m_deprecatedHeaders.begin(); it != m_deprecatedHeaders.end(); ++it) {
             const std::string &descriptor = it->first;
@@ -1716,7 +1733,7 @@ bool SyncScanner::generateQtCamelCaseFileIfContentChanged(const std::string &out
 
     std::string buffer = "#include \"";
     buffer += aliasedFilePath;
-    buffer += "\"\n";
+    buffer += "\" // IWYU pragma: export\n";
 
     return writeIfDifferent(outputFilePath, buffer);
 }
@@ -1743,7 +1760,7 @@ bool SyncScanner::generateAliasedHeaderFileIfTimestampChanged(const std::string 
         std::cerr << "Unable to write header file alias: " << outputFilePath << std::endl;
         return false;
     }
-    ofs << "#include \"" << aliasedFilePath << "\"\n";
+    ofs << "#include \"" << aliasedFilePath << "\" // IWYU pragma: export\n";
     ofs.close();
     return true;
 }

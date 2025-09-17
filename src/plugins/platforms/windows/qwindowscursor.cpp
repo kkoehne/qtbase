@@ -30,6 +30,8 @@ static bool initResources()
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 /*!
     \class QWindowsCursorCacheKey
     \brief Cache key for storing values in a QHash with a QCursor as key.
@@ -37,8 +39,8 @@ QT_BEGIN_NAMESPACE
     \internal
 */
 
-QWindowsPixmapCursorCacheKey::QWindowsPixmapCursorCacheKey(const QCursor &c)
-    : bitmapCacheKey(c.pixmap().cacheKey()), maskCacheKey(0)
+QWindowsPixmapCursorCacheKey::QWindowsPixmapCursorCacheKey(const QCursor &c, qreal scaleFactor)
+    : bitmapCacheKey(c.pixmap().cacheKey()), maskCacheKey(0), scaleFactor(scaleFactor)
 {
     if (!bitmapCacheKey) {
         Q_ASSERT(!c.bitmap().isNull());
@@ -46,6 +48,8 @@ QWindowsPixmapCursorCacheKey::QWindowsPixmapCursorCacheKey(const QCursor &c)
         bitmapCacheKey = c.bitmap().cacheKey();
         maskCacheKey = c.mask().cacheKey();
     }
+    hotspotCacheKey.x = c.hotSpot().x();
+    hotspotCacheKey.y = c.hotSpot().y();
 }
 
 /*!
@@ -103,14 +107,16 @@ static HCURSOR createBitmapCursor(const QImage &bbits, const QImage &mbits,
         hotSpot.setX(width / 2);
     if (hotSpot.y() < 0)
         hotSpot.setY(height / 2);
-    const int n = qMax(1, width / 8);
-    QScopedArrayPointer<uchar> xBits(new uchar[height * n]);
-    QScopedArrayPointer<uchar> xMask(new uchar[height * n]);
+    // a ddb is word aligned, QImage depends on bow it was created
+    const auto bplDdb = qMax(1, ((width + 15) >> 4) << 1);
+    const auto bplImg = int(bbits.bytesPerLine());
+    QScopedArrayPointer<uchar> xBits(new uchar[height * bplDdb]);
+    QScopedArrayPointer<uchar> xMask(new uchar[height * bplDdb]);
     int x = 0;
     for (int i = 0; i < height; ++i) {
         const uchar *bits = bbits.constScanLine(i);
         const uchar *mask = mbits.constScanLine(i);
-        for (int j = 0; j < n; ++j) {
+        for (int j = 0; j < bplImg && j < bplDdb; ++j) {
             uchar b = bits[j];
             uchar m = mask[j];
             if (invb)
@@ -119,6 +125,11 @@ static HCURSOR createBitmapCursor(const QImage &bbits, const QImage &mbits,
                 m ^= 0xff;
             xBits[x] = ~m;
             xMask[x] = b ^ m;
+            ++x;
+        }
+        for (int i = bplImg; i < bplDdb; ++i) {
+            xBits[x] = 0;
+            xMask[x] = 0;
             ++x;
         }
     }
@@ -436,8 +447,8 @@ QWindowsCursor::PixmapCursor QWindowsCursor::customCursor(Qt::CursorShape cursor
     if (!bestFit)
         return PixmapCursor();
 
-    const QPixmap rawImage(QStringLiteral(":/qt-project.org/windows/cursors/images/") +
-                           QString::fromLatin1(bestFit->fileName));
+    const QPixmap rawImage(":/qt-project.org/windows/cursors/images/"_L1 +
+                           QLatin1StringView(bestFit->fileName));
     return PixmapCursor(rawImage, QPoint(bestFit->hotSpotX, bestFit->hotSpotY));
 }
 #endif // !QT_NO_IMAGEFORMAT_PNG
@@ -514,6 +525,7 @@ CursorHandlePtr QWindowsCursor::standardWindowCursor(Qt::CursorShape shape)
 
 HCURSOR QWindowsCursor::m_overriddenCursor = nullptr;
 HCURSOR QWindowsCursor::m_overrideCursor = nullptr;
+POINT QWindowsCursor::m_cursorPositionCache = {0,0};
 
 /*!
     \brief Return cached pixmap cursor or create new one.
@@ -521,7 +533,8 @@ HCURSOR QWindowsCursor::m_overrideCursor = nullptr;
 
 CursorHandlePtr QWindowsCursor::pixmapWindowCursor(const QCursor &c)
 {
-    const QWindowsPixmapCursorCacheKey cacheKey(c);
+    const qreal scaleFactor = QHighDpiScaling::factor(m_screen);
+    const QWindowsPixmapCursorCacheKey cacheKey(c, scaleFactor);
     PixmapCursorCache::iterator it = m_pixmapCursorCache.find(cacheKey);
     if (it == m_pixmapCursorCache.end()) {
         if (m_pixmapCursorCache.size() > 50) {
@@ -536,7 +549,6 @@ CursorHandlePtr QWindowsCursor::pixmapWindowCursor(const QCursor &c)
                     ++it;
             }
         }
-        const qreal scaleFactor = QHighDpiScaling::factor(m_screen);
         const QPixmap pixmap = c.pixmap();
         const HCURSOR hc = pixmap.isNull()
             ? createBitmapCursor(c, scaleFactor)
@@ -624,8 +636,9 @@ void QWindowsCursor::clearOverrideCursor()
 QPoint QWindowsCursor::mousePosition()
 {
     POINT p;
-    GetCursorPos(&p);
-    return QPoint(p.x, p.y);
+    if (GetCursorPos(&p))
+        m_cursorPositionCache = p;
+    return QPoint(m_cursorPositionCache.x, m_cursorPositionCache.y);
 }
 
 QWindowsCursor::State QWindowsCursor::cursorState()
@@ -649,6 +662,7 @@ QPoint QWindowsCursor::pos() const
 
 void QWindowsCursor::setPos(const QPoint &pos)
 {
+    m_cursorPositionCache = {pos.x(), pos.y()};
     SetCursorPos(pos.x() , pos.y());
 }
 
@@ -659,16 +673,16 @@ void QWindowsCursor::setPos(const QPoint &pos)
 */
 QSize QWindowsCursor::size() const
 {
-    const QPair<DWORD,bool> cursorSizeSetting =
+    const auto cursorSizeSetting =
         QWinRegistryKey(HKEY_CURRENT_USER, LR"(Control Panel\Cursors)")
-                       .dwordValue(L"CursorBaseSize");
+                       .value<DWORD>(L"CursorBaseSize");
     const int baseSize = screenCursorSize(m_screen).width() / 2;
-    if (!cursorSizeSetting.second)
+    if (!cursorSizeSetting)
         return QSize(baseSize / 2, baseSize / 2);
 
     // The registry values are dpi-independent, so we need to scale the result.
-    int cursorSizeValue = cursorSizeSetting.first * m_screen->logicalDpi().first
-                                                  / m_screen->logicalBaseDpi().first;
+    int cursorSizeValue = *cursorSizeSetting * m_screen->logicalDpi().first
+                                             / m_screen->logicalBaseDpi().first;
 
     // map from registry value 32-256 to 0-14, and from there to pixels
     cursorSizeValue = (cursorSizeValue - 2 * baseSize) / baseSize;
@@ -696,6 +710,7 @@ QPixmap QWindowsCursor::dragDefaultCursor(Qt::DropAction action) const
         break;
     }
 
+#if QT_CONFIG(imageformat_xpm)
     static const char * const ignoreDragCursorXpmC[] = {
     "24 30 3 1",
     ".        c None",
@@ -731,6 +746,7 @@ QPixmap QWindowsCursor::dragDefaultCursor(Qt::DropAction action) const
     "............XaaaaaaaaX..",
     ".............XXaaaaXX...",
     "...............XXXX....."};
+#endif
 
     if (m_ignoreDragCursor.isNull()) {
         HCURSOR cursor = LoadCursor(nullptr, IDC_NO);
@@ -749,8 +765,10 @@ QPixmap QWindowsCursor::dragDefaultCursor(Qt::DropAction action) const
 
             m_ignoreDragCursor = QPixmap::fromImage(colorImage);
             delete [] colorBits;
+#if QT_CONFIG(imageformat_xpm)
         } else {
             m_ignoreDragCursor = QPixmap(ignoreDragCursorXpmC);
+#endif
         }
 
         DeleteObject(iconInfo.hbmMask);
@@ -764,7 +782,8 @@ HCURSOR QWindowsCursor::hCursor(const QCursor &c) const
 {
     const Qt::CursorShape shape = c.shape();
     if (shape == Qt::BitmapCursor) {
-        const auto pit = m_pixmapCursorCache.constFind(QWindowsPixmapCursorCacheKey(c));
+        const qreal scaleFactor = QHighDpiScaling::factor(m_screen);
+        const auto pit = m_pixmapCursorCache.constFind(QWindowsPixmapCursorCacheKey(c, scaleFactor));
         if (pit != m_pixmapCursorCache.constEnd())
             return pit.value()->handle();
     } else {

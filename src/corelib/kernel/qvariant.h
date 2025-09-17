@@ -5,6 +5,7 @@
 #define QVARIANT_H
 
 #include <QtCore/qatomic.h>
+#include <QtCore/qcompare.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qmetatype.h>
 #ifndef QT_NO_DEBUG_STREAM
@@ -123,9 +124,8 @@ public:
         const void *storage() const
         { return is_shared ? data.shared->data() : &data.data; }
 
-        // determine internal storage at compile time
         template<typename T> const T &get() const
-        { return *static_cast<const T *>(CanUseInternalSpace<T> ? &data.data : data.shared->data()); }
+        { return *static_cast<const T *>(storage()); }
 
         inline const QtPrivate::QMetaTypeInterface *typeInterface() const
         {
@@ -282,7 +282,6 @@ public:
     QVariant(const QJsonValue &jsonValue) noexcept(Private::FitsInInternalSize<sizeof(CborValueStandIn)>);
     QVariant(const QModelIndex &modelIndex) noexcept(Private::FitsInInternalSize<8 + 2 * sizeof(quintptr)>);
     QVariant(QUuid uuid) noexcept(Private::FitsInInternalSize<16>);
-#ifndef QT_NO_GEOM_VARIANT
     QVariant(QSize size) noexcept;
     QVariant(QSizeF size) noexcept(Private::FitsInInternalSize<sizeof(qreal) * 2>);
     QVariant(QPoint pt) noexcept;
@@ -291,7 +290,6 @@ public:
     QVariant(QLineF line) noexcept(Private::FitsInInternalSize<sizeof(qreal) * 4>);
     QVariant(QRect rect) noexcept(Private::FitsInInternalSize<sizeof(int) * 4>);
     QVariant(QRectF rect) noexcept(Private::FitsInInternalSize<sizeof(qreal) * 4>);
-#endif
 
     // not noexcept
     QVariant(const QEasingCurve &easing) noexcept(false);
@@ -334,9 +332,20 @@ public:
     inline void swap(QVariant &other) noexcept { std::swap(d, other.d); }
 
     int userType() const { return typeId(); }
-    int typeId() const { return metaType().id(); }
+    int typeId() const
+    {
+        // QVariant types are always registered (see fromMetaType())
+        const QtPrivate::QMetaTypeInterface *mt = metaType().iface();
+        if (!mt)
+            return 0;
+        int id = mt->typeId.loadRelaxed();
+        // Q_ASSUME(id > 0);
+        return id;
+    }
 
+    QT_CORE_INLINE_SINCE(6, 10)
     const char *typeName() const;
+    QT_CORE_INLINE_SINCE(6, 10)
     QMetaType metaType() const;
 
     bool canConvert(QMetaType targetType) const
@@ -383,7 +392,6 @@ public:
     QMap<QString, QVariant> toMap() const;
     QHash<QString, QVariant> toHash() const;
 
-#ifndef QT_NO_GEOM_VARIANT
     QPoint toPoint() const;
     QPointF toPointF() const;
     QRect toRect() const;
@@ -392,7 +400,6 @@ public:
     QLine toLine() const;
     QLineF toLineF() const;
     QRectF toRectF() const;
-#endif
     QLocale toLocale() const;
 #if QT_CONFIG(regularexpression)
     QRegularExpression toRegularExpression() const;
@@ -401,13 +408,11 @@ public:
     QEasingCurve toEasingCurve() const;
 #endif
     QUuid toUuid() const;
-#ifndef QT_BOOTSTRAPPED
     QUrl toUrl() const;
     QJsonValue toJsonValue() const;
     QJsonObject toJsonObject() const;
     QJsonArray toJsonArray() const;
     QJsonDocument toJsonDocument() const;
-#endif // QT_BOOTSTRAPPED
 #if QT_CONFIG(itemmodel)
     QModelIndex toModelIndex() const;
     QPersistentModelIndex toPersistentModelIndex() const;
@@ -492,6 +497,7 @@ public:
         // If possible we reuse the current QVariant private.
         if (isDetached() && d.type() == metaType) {
             *reinterpret_cast<VT *>(const_cast<void *>(constData())) = std::forward<T>(avalue);
+            d.is_null = false;
         } else {
             *this = QVariant::fromValue<VT>(std::forward<T>(avalue));
         }
@@ -546,9 +552,8 @@ public:
             return QVariant();
         QMetaType mt = QMetaType::fromType<Type>();
         mt.registerType(); // we want the type stored in QVariant to always be registered
-        // T is a forwarding reference, so if T satifies the enable-ifery,
-        // we get this overload even if T is an lvalue reference and thus must check here
-        // Moreover, we only try to move if the type is actually moveable and not if T is const
+
+        // We only try to move if the type is actually moveable and not if T is const
         // as in const int i; QVariant::fromValue(std::move(i));
         if constexpr (std::conjunction_v<std::is_move_constructible<Type>, std::negation<std::is_const<T>>>)
             return moveConstruct(QMetaType::fromType<Type>(), std::addressof(value));
@@ -610,10 +615,10 @@ private:
         return std::visit(visitor, std::forward<StdVariant>(v));
     }
 
-    friend inline bool operator==(const QVariant &a, const QVariant &b)
+    friend bool comparesEqual(const QVariant &a, const QVariant &b)
     { return a.equals(b); }
-    friend inline bool operator!=(const QVariant &a, const QVariant &b)
-    { return !a.equals(b); }
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QVariant)
+
 #ifndef QT_NO_DEBUG_STREAM
     template <typename T>
     friend auto operator<<(const QDebug &debug, const T &variant) -> std::enable_if_t<std::is_same_v<T, QVariant>, QDebug> {
@@ -708,7 +713,7 @@ public:
 
 inline bool QVariant::isValid() const
 {
-    return d.type().isValid();
+    return d.type().isValid(QT6_CALL_NEW_OVERLOAD);
 }
 
 #ifndef QT_NO_DATASTREAM
@@ -737,6 +742,18 @@ QT_WARNING_POP
 
 #endif
 
+#if QT_CORE_INLINE_IMPL_SINCE(6, 10)
+QMetaType QVariant::metaType() const
+{
+    return d.type();
+}
+
+const char *QVariant::typeName() const
+{
+    return d.type().name();
+}
+#endif
+
 inline bool QVariant::isDetached() const
 { return !d.is_shared || d.data.shared->ref.loadRelaxed() == 1; }
 
@@ -744,6 +761,15 @@ inline void swap(QVariant &value1, QVariant &value2) noexcept
 { value1.swap(value2); }
 
 #ifndef QT_MOC
+
+namespace QtPrivate {
+template<typename T> inline T qvariant_cast_qmetatype_converted(const QVariant &v, QMetaType targetType)
+{
+    T t{};
+    QMetaType::convert(v.metaType(), v.constData(), targetType, &t);
+    return t;
+}
+} // namespace QtPrivate
 
 template<typename T> inline T qvariant_cast(const QVariant &v)
 {
@@ -757,23 +783,26 @@ template<typename T> inline T qvariant_cast(const QVariant &v)
             return v.d.get<nonConstT>();
     }
 
-    T t{};
-    QMetaType::convert(v.metaType(), v.constData(), targetType, &t);
-    return t;
+    return QtPrivate::qvariant_cast_qmetatype_converted<T>(v, targetType);
 }
 
 template<typename T> inline T qvariant_cast(QVariant &&v)
 {
     QMetaType targetType = QMetaType::fromType<T>();
     if (v.d.type() == targetType) {
-        if constexpr (QVariant::Private::CanUseInternalSpace<T>) {
-            return std::move(*reinterpret_cast<T *>(v.d.data.data));
-        } else {
-            if (v.d.data.shared->ref.loadRelaxed() == 1)
-                return std::move(*reinterpret_cast<T *>(v.d.data.shared->data()));
-            else
-                return v.d.get<T>();
+        if constexpr (QVariant::Private::FitsInInternalSize<sizeof(T)>) {
+            // If T in principle fits into the internal space, it may be using
+            // it (depending on e.g. QTypeInfo, which, generally, can change
+            // from version to version, so we need to check is_shared:
+            if (!v.d.is_shared)
+                return std::move(*reinterpret_cast<T *>(v.d.data.data));
         }
+        // Otherwise, it cannot possibly be using internal space:
+        Q_ASSERT(v.d.is_shared);
+        if (v.d.data.shared->ref.loadRelaxed() == 1)
+            return std::move(*reinterpret_cast<T *>(v.d.data.shared->data()));
+        else
+            return v.d.get<T>();
     }
     if constexpr (std::is_same_v<T, QVariant>) {
         // if the metatype doesn't match, but we want a QVariant, just return the current variant
@@ -786,19 +815,19 @@ template<typename T> inline T qvariant_cast(QVariant &&v)
             return v.d.get<nonConstT>();
     }
 
-    T t{};
-    QMetaType::convert(v.metaType(), v.constData(), targetType, &t);
-    return t;
+    return QtPrivate::qvariant_cast_qmetatype_converted<T>(v, targetType);
 }
 
+#  ifndef QT_NO_VARIANT
 template<> inline QVariant qvariant_cast<QVariant>(const QVariant &v)
 {
     if (v.metaType().id() == QMetaType::QVariant)
         return *reinterpret_cast<const QVariant *>(v.constData());
     return v;
 }
+#  endif
 
-#endif
+#endif // QT_MOC
 
 #ifndef QT_NO_DEBUG_STREAM
 #if QT_DEPRECATED_SINCE(6, 0)

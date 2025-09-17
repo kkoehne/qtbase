@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qhstspolicy.h"
 
@@ -21,8 +22,8 @@ QT_BEGIN_NAMESPACE
     RFC6797.
 
     You can set expiry time and host name for this policy, and control whether it
-    applies to subdomains, either in the constructor or by calling setExpiry(),
-    setHost() and setIncludesSubdomains().
+    applies to subdomains, either in the constructor or by calling \l setExpiry(),
+    \l setHost() and \l setIncludesSubDomains().
 
     \sa QNetworkAccessManager::setStrictTransportSecurityEnabled()
 */
@@ -198,8 +199,7 @@ bool QHstsPolicy::isExpired() const
 
 /*!
   \fn void QHstsPolicy::swap(QHstsPolicy &other)
-
-  Swaps this policy with the \a other policy.
+    \memberswap{policy}
 */
 
 QT_END_NAMESPACE

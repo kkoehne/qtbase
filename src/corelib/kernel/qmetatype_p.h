@@ -22,6 +22,8 @@ QT_BEGIN_NAMESPACE
 
 #define QMETATYPE_CONVERTER(To, From, assign_and_return) \
     case makePair(QMetaType::To, QMetaType::From): \
+        if constexpr (QMetaType::To == QMetaType::From) \
+            Q_UNREACHABLE();  /* can never get here */ \
         if (onlyCheck) \
             return true; \
         { \
@@ -38,24 +40,29 @@ QT_BEGIN_NAMESPACE
             assign_and_return \
         }
 
-class QMetaTypeModuleHelper
+struct QMetaTypeModuleHelper
 {
-    Q_DISABLE_COPY_MOVE(QMetaTypeModuleHelper)
-protected:
-    QMetaTypeModuleHelper() = default;
-    ~QMetaTypeModuleHelper() = default;
-public:
     static constexpr auto makePair(int from, int to) -> quint64
     {
         return (quint64(from) << 32) + quint64(to);
     }
 
-    virtual const QtPrivate::QMetaTypeInterface *interfaceForType(int) const = 0;
-    virtual bool convert(const void *, int, void *, int) const { return false; }
+    static const QtPrivate::QMetaTypeInterface *interfaceForType_dummy(int)
+    {
+        return nullptr;
+    }
+
+    static bool convert_dummy(const void *, int, void *, int)
+    {
+        return false;
+    }
+
+    decltype(&interfaceForType_dummy) interfaceForType = &interfaceForType_dummy;
+    decltype(&convert_dummy) convert = &convert_dummy;
 };
 
-extern Q_CORE_EXPORT const QMetaTypeModuleHelper *qMetaTypeGuiHelper;
-extern Q_CORE_EXPORT const QMetaTypeModuleHelper *qMetaTypeWidgetsHelper;
+extern Q_CORE_EXPORT QMetaTypeModuleHelper qMetaTypeGuiHelper;
+extern Q_CORE_EXPORT QMetaTypeModuleHelper qMetaTypeWidgetsHelper;
 
 namespace QtMetaTypePrivate {
 template<typename T>
@@ -66,7 +73,9 @@ struct TypeDefinition
 
 // Ignore these types, as incomplete
 #ifdef QT_BOOTSTRAPPED
+template<> struct TypeDefinition<qfloat16> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QBitArray> { static const bool IsAvailable = false; };
+template<> struct TypeDefinition<QByteArrayList> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QCborArray> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QCborMap> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QCborSimpleType> { static const bool IsAvailable = false; };
@@ -79,9 +88,7 @@ template<> struct TypeDefinition<QJsonDocument> { static const bool IsAvailable 
 template<> struct TypeDefinition<QJsonObject> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QJsonValue> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QUrl> { static const bool IsAvailable = false; };
-template<> struct TypeDefinition<QByteArrayList> { static const bool IsAvailable = false; };
-#endif
-#ifdef QT_NO_GEOM_VARIANT
+template<> struct TypeDefinition<QUuid> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QRect> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QRectF> { static const bool IsAvailable = false; };
 template<> struct TypeDefinition<QSize> { static const bool IsAvailable = false; };

@@ -1,13 +1,14 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qpainter.h>
 #include <qrasterwindow.h>
 #include <qscreen.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <QProcess>
+#include <QSignalSpy>
 
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 class tst_QScreen_Xrandr: public QObject
 {

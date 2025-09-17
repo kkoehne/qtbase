@@ -1,6 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -19,12 +20,12 @@
 #include "qcocoaapplicationdelegate.h"
 
 #include <QtCore/private/qcore_mac_p.h>
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
 QCocoaMenu::QCocoaMenu() :
     m_attachedItem(nil),
-    m_updateTimer(0),
     m_enabled(true),
     m_parentEnabled(true),
     m_visible(true),
@@ -44,6 +45,16 @@ QCocoaMenu::~QCocoaMenu()
 
     if (isOpen())
         dismiss();
+
+    if (NSMenu *superMenu = m_nativeMenu.supermenu) {
+        for (NSMenuItem *item in superMenu.itemArray) {
+            if (item.submenu == m_nativeMenu) {
+                [superMenu removeItem:item];
+                break;
+            }
+        }
+    }
+
     [m_nativeMenu release];
 }
 
@@ -200,15 +211,16 @@ QCocoaMenuItem *QCocoaMenu::itemOrNull(int index) const
 
 void QCocoaMenu::scheduleUpdate()
 {
-    if (!m_updateTimer)
-        m_updateTimer = startTimer(0);
+    using namespace std::chrono_literals;
+
+    if (!m_updateTimer.isActive())
+        m_updateTimer.start(0ms, this);
 }
 
 void QCocoaMenu::timerEvent(QTimerEvent *e)
 {
-    if (e->timerId() == m_updateTimer) {
-        killTimer(m_updateTimer);
-        m_updateTimer = 0;
+    if (e->id() == m_updateTimer.id()) {
+        m_updateTimer.stop();
         [m_nativeMenu update];
     }
 }
@@ -325,7 +337,9 @@ void QCocoaMenu::showPopup(const QWindow *parentWindow, const QRect &targetRect,
     QPointer<QCocoaMenu> guard = this;
 
     QPoint pos =  QPoint(targetRect.left(), targetRect.top() + targetRect.height());
-    QCocoaWindow *cocoaWindow = parentWindow ? static_cast<QCocoaWindow *>(parentWindow->handle()) : nullptr;
+    // If the app quits while the menu is open (e.g. through a timer that starts before the menu was opened),
+    // then the window will have been destroyed before this function finishes executing. Account for that with QPointer.
+    QPointer<QCocoaWindow> cocoaWindow = parentWindow ? static_cast<QCocoaWindow *>(parentWindow->handle()) : nullptr;
     NSView *view = cocoaWindow ? cocoaWindow->view() : nil;
     NSMenuItem *nsItem = item ? ((QCocoaMenuItem *)item)->nsItem() : nil;
 

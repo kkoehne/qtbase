@@ -42,11 +42,13 @@ public:
     QFontEngine *fontEngine(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference) override;
     QStringList addApplicationFont(const QByteArray &fontData, const QString &fileName, QFontDatabasePrivate::ApplicationFont *applicationFont = nullptr) override;
     void releaseHandle(void *handle) override;
+    bool supportsVariableApplicationFonts() const override;
+    bool supportsColrv0Fonts() const override;
 
     static void addNamedInstancesForFace(void *face, int faceIndex,
                                          const QString &family, const QString &styleName,
                                          QFont::Weight weight, QFont::Stretch stretch,
-                                         QFont::Style style, bool fixedPitch,
+                                         QFont::Style style, bool fixedPitch, bool isColor,
                                          const QSupportedWritingSystems &writingSystems,
                                          const QByteArray &fileName, const QByteArray &fontData);
 

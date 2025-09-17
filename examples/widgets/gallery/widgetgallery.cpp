@@ -26,6 +26,7 @@
 #include <QSpinBox>
 #include <QStandardItemModel>
 #include <QStyle>
+#include <QStyleHints>
 #include <QStyleFactory>
 #include <QTextBrowser>
 #include <QTreeView>
@@ -135,7 +136,22 @@ WidgetGallery::WidgetGallery(QWidget *parent)
     auto styleLabel = createWidget1<QLabel>(tr("&Style:"), "styleLabel");
     styleLabel->setBuddy(styleComboBox);
 
-    auto helpLabel = createWidget1<QLabel>(tr("Press F1 over a widget to see Documentation"), "helpLabel");
+    auto colorSchemeComboBox = createWidget<QComboBox>("colorSchemeComboBox");
+    colorSchemeComboBox->addItem(tr("Auto"));
+    colorSchemeComboBox->addItem(tr("Light"));
+    colorSchemeComboBox->addItem(tr("Dark"));
+    colorSchemeComboBox->setCurrentIndex(static_cast<int>(qApp->styleHints()->colorScheme()));
+
+    auto colorSchemeLabel = createWidget1<QLabel>(tr("&Color Scheme:"), "colorSchemeLabel");
+    colorSchemeLabel->setBuddy(colorSchemeComboBox);
+
+    connect(colorSchemeComboBox, &QComboBox::currentIndexChanged, this, [](int index){
+        QGuiApplication::styleHints()->setColorScheme(static_cast<Qt::ColorScheme>(index));
+    });
+
+    const QKeySequence helpKeySequence(QKeySequence::HelpContents);
+    auto helpLabel = createWidget1<QLabel>(tr("Press <kbd>%1</kbd> over a widget to see Documentation")
+                                            .arg(helpKeySequence.toString(QKeySequence::NativeText)), "helpLabel");
 
     auto disableWidgetsCheckBox = createWidget1<QCheckBox>(tr("&Disable widgets"), "disableWidgetsCheckBox");
 
@@ -156,8 +172,12 @@ WidgetGallery::WidgetGallery(QWidget *parent)
             simpleInputWidgetsGroupBox, &QWidget::setDisabled);
 
     auto topLayout = new QHBoxLayout;
-    topLayout->addWidget(styleLabel);
-    topLayout->addWidget(styleComboBox);
+    auto appearanceLayout = new QGridLayout;
+    appearanceLayout->addWidget(styleLabel, 0, 0);
+    appearanceLayout->addWidget(styleComboBox, 0, 1);
+    appearanceLayout->addWidget(colorSchemeLabel, 1, 0);
+    appearanceLayout->addWidget(colorSchemeComboBox, 1, 1);
+    topLayout->addLayout(appearanceLayout);
     topLayout->addStretch(1);
     topLayout->addWidget(helpLabel);
     topLayout->addStretch(1);
@@ -179,7 +199,7 @@ WidgetGallery::WidgetGallery(QWidget *parent)
 
     setWindowTitle(tr("Widget Gallery Qt %1").arg(QT_VERSION_STR));
 
-    new QShortcut(QKeySequence::HelpContents, this, this, &WidgetGallery::helpOnCurrentWidget);
+    new QShortcut(helpKeySequence, this, this, &WidgetGallery::helpOnCurrentWidget);
 }
 
 void  WidgetGallery::setVisible(bool visible)

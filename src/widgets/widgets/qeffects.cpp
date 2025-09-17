@@ -19,6 +19,15 @@
 
 QT_BEGIN_NAMESPACE
 
+struct DeleteLater
+{
+    void operator()(QObject *o) const
+    {
+        if (o)
+            o->deleteLater();
+    }
+};
+
 /*
   Internal class QAlphaWidget.
 
@@ -58,7 +67,7 @@ private:
     QElapsedTimer checkTime;
 };
 
-static QAlphaWidget* q_blend = nullptr;
+static std::unique_ptr<QAlphaWidget, DeleteLater> q_blend;
 
 /*
   Constructs a QAlphaWidget.
@@ -115,7 +124,7 @@ void QAlphaWidget::run(int time)
     qApp->installEventFilter(this);
     widget->setWindowOpacity(0.0);
     widget->show();
-    connect(&anim, SIGNAL(timeout()), this, SLOT(render()));
+    connect(&anim, &QTimer::timeout, this, &QAlphaWidget::render);
     anim.start(1);
 #else
     //This is roughly equivalent to calling setVisible(true) without actually showing the widget
@@ -138,7 +147,7 @@ void QAlphaWidget::run(int time)
         show();
         setEnabled(false);
 
-        connect(&anim, SIGNAL(timeout()), this, SLOT(render()));
+        connect(&anim, &QTimer::timeout, this, &QAlphaWidget::render);
         anim.start(1);
     } else {
        duration = 0;
@@ -227,8 +236,7 @@ void QAlphaWidget::render()
         anim.stop();
         qApp->removeEventFilter(this);
         widget->setWindowOpacity(1);
-        q_blend = 0;
-        deleteLater();
+        q_blend.reset();
     } else {
         widget->setWindowOpacity(alpha);
     }
@@ -248,8 +256,7 @@ void QAlphaWidget::render()
                 lower();
             }
         }
-        q_blend = nullptr;
-        deleteLater();
+        q_blend.reset();
     } else {
         alphaBlend();
         pm = QPixmap::fromImage(mixedImage);
@@ -292,6 +299,7 @@ void QAlphaWidget::alphaBlend()
                 back_data += bpl;
                 front_data += bpl;
             }
+            break;
         }
     default:
         break;
@@ -340,7 +348,7 @@ private:
     QPixmap pm;
 };
 
-static QRollEffect* q_roll = nullptr;
+static std::unique_ptr<QRollEffect, DeleteLater> q_roll;
 
 /*
   Construct a QRollEffect widget.
@@ -428,7 +436,7 @@ void QRollEffect::run(int time)
         duration = qMin(qMax(dist/3, 50), 120);
     }
 
-    connect(&anim, SIGNAL(timeout()), this, SLOT(scroll()));
+    connect(&anim, &QTimer::timeout, this, &QRollEffect::scroll);
 
     move(widget->geometry().x(),widget->geometry().y());
     resize(qMin(currentWidth, totalWidth), qMin(currentHeight, totalHeight));
@@ -512,8 +520,7 @@ void QRollEffect::scroll()
                 lower();
             }
         }
-        q_roll = nullptr;
-        deleteLater();
+        q_roll.reset();
     }
 }
 
@@ -523,10 +530,7 @@ void QRollEffect::scroll()
 */
 void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
 {
-    if (q_roll) {
-        q_roll->deleteLater();
-        q_roll = nullptr;
-    }
+    q_roll.reset();
 
     if (!w)
         return;
@@ -536,7 +540,7 @@ void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
     Qt::WindowFlags flags = Qt::ToolTip;
 
     // those can be popups - they would steal the focus, but are disabled
-    q_roll = new QRollEffect(w, flags, orient);
+    q_roll.reset(new QRollEffect(w, flags, orient));
     q_roll->run(time);
 }
 
@@ -545,10 +549,7 @@ void qScrollEffect(QWidget* w, QEffects::DirFlags orient, int time)
 */
 void qFadeEffect(QWidget* w, int time)
 {
-    if (q_blend) {
-        q_blend->deleteLater();
-        q_blend = nullptr;
-    }
+    q_blend.reset();
 
     if (!w)
         return;
@@ -559,7 +560,7 @@ void qFadeEffect(QWidget* w, int time)
     Qt::WindowFlags flags = Qt::ToolTip;
 
     // those can be popups - they would steal the focus, but are disabled
-    q_blend = new QAlphaWidget(w, flags);
+    q_blend.reset(new QAlphaWidget(w, flags));
 
     q_blend->run(time);
 }

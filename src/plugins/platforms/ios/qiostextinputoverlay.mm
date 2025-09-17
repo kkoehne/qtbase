@@ -1,5 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIGestureRecognizerSubclass.h>
 #import <UIKit/UITextView.h>
@@ -14,6 +15,8 @@
 
 #include "qiosglobal.h"
 #include "qiostextinputoverlay.h"
+#include "qioswindow.h"
+#include "quiview.h"
 
 typedef QPair<int, int> SelectionPair;
 typedef void (^Block)(void);
@@ -129,6 +132,24 @@ static void executeBlockWithoutAnimation(Block block)
 }
 
 @end
+
+void showEditMenu(UIView *focusView, QPoint touchPos)
+{
+    const bool mouseTriggered = false;
+    const Qt::KeyboardModifiers keyboardModifiers = Qt::NoModifier;
+    QWindow *qtWindow = quiview_cast(focusView).platformWindow->window();
+    const auto globalTouchPos = qtWindow->mapToGlobal(touchPos);
+    const bool contextMenuEventAccepted = QWindowSystemInterface::handleContextMenuEvent<
+        QWindowSystemInterface::SynchronousDelivery>(qtWindow, mouseTriggered, touchPos,
+                                                     globalTouchPos, keyboardModifiers);
+
+    if (!contextMenuEventAccepted) {
+        // Fall back to show the default platform menu, like we did
+        // before we started sending context menu events. This is
+        // to be backwards compatible with Widgets and Quick items.
+        QIOSTextInputOverlay::s_editMenu.visible = YES;
+    }
+}
 
 // -------------------------------------------------------------------------
 
@@ -434,7 +455,7 @@ static void executeBlockWithoutAnimation(Block block)
 
     if (enabled) {
         _focusView = [reinterpret_cast<UIView *>(qApp->focusWindow()->winId()) retain];
-        _desktopView = [qt_apple_sharedApplication().keyWindow.rootViewController.view retain];
+        _desktopView = [presentationWindow(nullptr).rootViewController.view retain];
         Q_ASSERT(_focusView && _desktopView && _desktopView.superview);
         [_desktopView addGestureRecognizer:self];
     } else {
@@ -469,12 +490,14 @@ static void executeBlockWithoutAnimation(Block block)
         // Tell the sub class to move the loupe to the correct position
         [self updateFocalPoint:QPointF::fromCGPoint(_lastTouchPoint)];
         break;
-    case UIGestureRecognizerStateEnded:
+    case UIGestureRecognizerStateEnded: {
         // Restore cursor blinking, and hide the loupe
         QGuiApplication::styleHints()->setCursorFlashTime(_originalCursorFlashTime);
-        QIOSTextInputOverlay::s_editMenu.visible = YES;
+        const QPoint touchPos = QPointF::fromCGPoint(_lastTouchPoint).toPoint();
+        showEditMenu(_focusView, touchPos);
         _loupeLayer.visible = NO;
         break;
+    }
     default:
         _loupeLayer.visible = NO;
         break;
@@ -956,7 +979,10 @@ static void executeBlockWithoutAnimation(Block block)
             _menuShouldBeVisible = true;
             self.state = UIGestureRecognizerStateFailed;
             dispatch_async(dispatch_get_main_queue(), ^{
-                QIOSTextInputOverlay::s_editMenu.visible = _menuShouldBeVisible;
+                if (_menuShouldBeVisible)
+                    showEditMenu(_focusView, touchPos.toPoint());
+                else
+                    QIOSTextInputOverlay::s_editMenu.visible = false;
             });
         } else {
             // The menu is hidden, and the cursor will change position once

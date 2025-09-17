@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2019 Mail.ru Group.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qstringmatcher.h"
 
@@ -241,6 +242,15 @@ QString QStringMatcher::pattern() const
         return q_pattern;
     return q_sv.toString();
 }
+
+/*!
+    \fn QStringView QStringMatcher::patternView() const noexcept
+    \since 6.7
+
+    Returns a string view of the pattern that this string matcher will search for.
+
+    \sa setPattern()
+*/
 
 /*!
     Sets the case sensitivity setting of this string matcher to \a

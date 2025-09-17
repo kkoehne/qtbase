@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwindowdump.h"
 
@@ -79,7 +79,6 @@ void formatWindowFlags(QTextStream &str, Qt::WindowFlags flags)
     debugFlag(str, flags, Qt::NoDropShadowWindowHint)
     debugFlag(str, flags, Qt::WindowFullscreenButtonHint)
     debugFlag(str, flags, Qt::WindowStaysOnBottomHint)
-    debugFlag(str, flags, Qt::MacWindowToolBarButtonHint)
     debugFlag(str, flags, Qt::BypassGraphicsProxyWidget)
 }
 

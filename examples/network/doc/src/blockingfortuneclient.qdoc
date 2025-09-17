@@ -9,7 +9,7 @@
     \ingroup examples-network
     \brief Demonstrates how to create a client for a network service.
 
-    \image blockingfortuneclient-example.png
+    \image blockingfortuneclient-example.png {The user provides server details and Q TcpSocket's blocking API is used to complete network operations}
 
     QTcpSocket supports two general approaches to network programming:
 
@@ -109,7 +109,7 @@
 
     Now we can create a QDataStream object, passing the socket to
     QDataStream's constructor, and as in the other client examples we set
-    the stream protocol version to QDataStream::Qt_4_0.
+    the stream protocol version to QDataStream::Qt_6_5.
 
     \snippet blockingfortuneclient/fortunethread.cpp 12
 

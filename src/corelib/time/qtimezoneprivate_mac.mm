@@ -57,12 +57,10 @@ QMacTimeZonePrivate *QMacTimeZonePrivate::clone() const
 
 void QMacTimeZonePrivate::init(const QByteArray &ianaId)
 {
-    if (availableTimeZoneIds().contains(ianaId)) {
-        m_nstz = [[NSTimeZone timeZoneWithName:QString::fromUtf8(ianaId).toNSString()] retain];
-        if (m_nstz)
-            m_id = ianaId;
-    }
-    if (!m_nstz) {
+    m_nstz = [[NSTimeZone timeZoneWithName:QString::fromUtf8(ianaId).toNSString()] retain];
+    if (m_nstz) {
+        m_id = ianaId;
+    } else {
         // macOS has been seen returning a systemTimeZone which reports its name
         // as Asia/Kolkata, which doesn't appear in knownTimeZoneNames (which
         // calls the zone Asia/Calcutta). So explicitly check for the name
@@ -185,14 +183,14 @@ bool QMacTimeZonePrivate::hasTransitions() const
 
 QTimeZonePrivate::Data QMacTimeZonePrivate::nextTransition(qint64 afterMSecsSinceEpoch) const
 {
-    QTimeZonePrivate::Data tran;
+    Data tran;
     const NSTimeInterval seconds = afterMSecsSinceEpoch / 1000.0;
     NSDate *nextDate = [NSDate dateWithTimeIntervalSince1970:seconds];
     nextDate = [m_nstz nextDaylightSavingTimeTransitionAfterDate:nextDate];
     const NSTimeInterval nextSecs = nextDate.timeIntervalSince1970;
     if (nextDate == nil || nextSecs <= seconds) {
         [nextDate release];
-        return invalidData();
+        return {};
     }
     tran.atMSecsSinceEpoch = nextSecs * 1000;
     tran.offsetFromUtc = [m_nstz secondsFromGMTForDate:nextDate];
@@ -275,7 +273,7 @@ QTimeZonePrivate::Data QMacTimeZonePrivate::previousTransition(qint64 beforeMSec
         return data(qint64(prevSecs * 1e3));
 
     // No transition data; or first transition later than requested time.
-    return invalidData();
+    return {};
 }
 
 QByteArray QMacTimeZonePrivate::systemTimeZoneId() const
@@ -284,6 +282,12 @@ QByteArray QMacTimeZonePrivate::systemTimeZoneId() const
     [NSTimeZone resetSystemTimeZone];
     Q_ASSERT(NSTimeZone.systemTimeZone);
     return QString::fromNSString(NSTimeZone.systemTimeZone.name).toUtf8();
+}
+
+bool QMacTimeZonePrivate::isTimeZoneIdAvailable(const QByteArray& ianaId) const
+{
+    QMacAutoReleasePool pool;
+    return [NSTimeZone timeZoneWithName:QString::fromUtf8(ianaId).toNSString()] != nil;
 }
 
 QList<QByteArray> QMacTimeZonePrivate::availableTimeZoneIds() const

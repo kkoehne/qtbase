@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 /*!
     \class QMdiArea
     \brief The QMdiArea widget provides an area in which MDI windows are displayed.
@@ -21,10 +19,7 @@
 
     Unlike the window managers for top-level windows, all window flags
     (Qt::WindowFlags) are supported by QMdiArea as long as the flags
-    are supported by the current widget style. If a specific flag is
-    not supported by the style (e.g., the
-    \l{Qt::}{WindowShadeButtonHint}), you can still shade the window
-    with showShaded().
+    are supported by the current widget style.
 
     Subwindows in QMdiArea are instances of QMdiSubWindow. They
     are added to an MDI area with addSubWindow(). It is common to pass
@@ -652,9 +647,7 @@ QMdiAreaPrivate::QMdiAreaPrivate()
       indexToNextWindow(-1),
       indexToPreviousWindow(-1),
       indexToHighlighted(-1),
-      indexToLastActiveTab(-1),
-      resizeTimerId(-1),
-      tabToPreviousTimerId(-1)
+      indexToLastActiveTab(-1)
 {
 }
 
@@ -776,6 +769,17 @@ void QMdiAreaPrivate::_q_moveTab(int from, int to)
     Q_UNUSED(to);
 #else
     childWindows.move(from, to);
+
+    // Put the active window in front to update activation order.
+    const int indexToActiveWindow = childWindows.indexOf(active);
+    if (indexToActiveWindow != -1) {
+        const int index = indicesToActivatedChildren.indexOf(indexToActiveWindow);
+        Q_ASSERT(index != -1);
+        if (index != 0) { // if it's not in front
+            indicesToActivatedChildren.move(index, 0);
+            internalRaise(active);
+        }
+    }
 #endif // QT_CONFIG(tabbar)
 }
 
@@ -984,7 +988,7 @@ void QMdiAreaPrivate::activateHighlightedWindow()
         return;
 
     Q_ASSERT(indexToHighlighted < childWindows.size());
-    if (tabToPreviousTimerId != -1)
+    if (tabToPreviousTimer.isActive())
         activateWindow(nextVisibleSubWindow(-1, QMdiArea::ActivationHistoryOrder));
     else
         activateWindow(childWindows.at(indexToHighlighted));
@@ -1077,6 +1081,13 @@ void QMdiAreaPrivate::updateActiveWindow(int removedIndex, bool activeRemoved)
 {
     Q_ASSERT(indicesToActivatedChildren.size() == childWindows.size());
 
+    // Update indices list first so that we don't rely
+    for (int i = 0; i < indicesToActivatedChildren.size(); ++i) {
+        int &index = indicesToActivatedChildren[i];
+        if (index > removedIndex)
+            --index;
+    }
+
 #if QT_CONFIG(tabbar)
     if (tabBar && removedIndex >= 0) {
         const QSignalBlocker blocker(tabBar);
@@ -1101,13 +1112,6 @@ void QMdiAreaPrivate::updateActiveWindow(int removedIndex, bool activeRemoved)
         // or update index if necessary.
         if (indexToHighlighted > removedIndex)
             --indexToHighlighted;
-    }
-
-    // Update indices list
-    for (int i = 0; i < indicesToActivatedChildren.size(); ++i) {
-        int *index = &indicesToActivatedChildren[i];
-        if (*index > removedIndex)
-            --*index;
     }
 
     if (!activeRemoved)
@@ -1166,6 +1170,8 @@ void QMdiAreaPrivate::updateScrollBars()
     const int startX = q->isLeftToRight() ? childrenRect.left() : viewportRect.right()
                                                                   - childrenRect.right();
 
+    const auto singleStep = defaultSingleStep();
+
     // Horizontal scroll bar.
     if (isSubWindowsTiled && hbar->value() != 0)
         hbar->setValue(0);
@@ -1173,7 +1179,7 @@ void QMdiAreaPrivate::updateScrollBars()
     hbar->setRange(qMin(0, xOffset),
                    qMax(0, xOffset + childrenRect.width() - viewportRect.width()));
     hbar->setPageStep(childrenRect.width());
-    hbar->setSingleStep(childrenRect.width() / 20);
+    hbar->setSingleStep(childrenRect.width() / singleStep);
 
     // Vertical scroll bar.
     if (isSubWindowsTiled && vbar->value() != 0)
@@ -1182,7 +1188,7 @@ void QMdiAreaPrivate::updateScrollBars()
     vbar->setRange(qMin(0, yOffset),
                    qMax(0, yOffset + childrenRect.height() - viewportRect.height()));
     vbar->setPageStep(childrenRect.height());
-    vbar->setSingleStep(childrenRect.height() / 20);
+    vbar->setSingleStep(childrenRect.height() / singleStep);
 }
 
 /*!
@@ -1485,7 +1491,7 @@ void QMdiAreaPrivate::highlightNextSubWindow(int increaseFactor)
 
     // Only highlight if we're not switching back to the previously active window (Ctrl-Tab once).
 #if QT_CONFIG(rubberband)
-    if (tabToPreviousTimerId == -1)
+    if (!tabToPreviousTimer.isActive())
         showRubberBandFor(highlight);
 #endif
 
@@ -2328,13 +2334,11 @@ void QMdiArea::resizeEvent(QResizeEvent *resizeEvent)
 void QMdiArea::timerEvent(QTimerEvent *timerEvent)
 {
     Q_D(QMdiArea);
-    if (timerEvent->timerId() == d->resizeTimerId) {
-        killTimer(d->resizeTimerId);
-        d->resizeTimerId = -1;
+    if (timerEvent->id() == d->resizeTimer.id()) {
+        d->resizeTimer.stop();
         d->arrangeMinimizedSubWindows();
-    } else if (timerEvent->timerId() == d->tabToPreviousTimerId) {
-        killTimer(d->tabToPreviousTimerId);
-        d->tabToPreviousTimerId = -1;
+    } else if (timerEvent->id() == d->tabToPreviousTimer.id()) {
+        d->tabToPreviousTimer.stop();
         if (d->indexToHighlighted < 0)
             return;
 #if QT_CONFIG(rubberband)
@@ -2378,6 +2382,11 @@ void QMdiArea::showEvent(QShowEvent *showEvent)
         for (QMdiSubWindow *window : copy) {
             if (!window)
                 continue;
+            if (d->viewMode == TabbedView && window->d_func()->isActive && !d->active) {
+                d->showActiveWindowMaximized = true;
+                d->emitWindowActivated(window); // Also maximizes the window
+                continue;
+            }
             if (!window->testAttribute(Qt::WA_Resized)) {
                 QSize newSize(window->sizeHint().boundedTo(viewport()->size()));
                 window->resize(newSize.expandedTo(qSmartMinSize(window)));

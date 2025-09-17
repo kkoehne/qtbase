@@ -19,13 +19,18 @@ function(qt_internal_create_wrapper_scripts)
         set(generate_non_unix TRUE)
     endif()
 
+    set(extra_qt_cmake_code "")
     if(generate_unix)
-        if(IOS)
-            set(infix ".ios")
-        else()
-            set(infix "")
+
+        if(UIKIT)
+            set(extra_qt_cmake_code [=[
+# Specify Xcode as the default generator by assigning it to the CMAKE_GENERATOR env var.
+# An explicit -G or -D CMAKE_GENERATOR given on the command line will still take precedence.
+export CMAKE_GENERATOR=Xcode
+]=])
         endif()
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-cmake${infix}.in"
+
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-cmake.in"
                        "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-cmake" @ONLY
                        NEWLINE_STYLE LF)
         qt_install(PROGRAMS "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-cmake"
@@ -53,15 +58,20 @@ function(qt_internal_create_wrapper_scripts)
         qt_install(PROGRAMS "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-cmake-create.bat"
                 DESTINATION "${INSTALL_BINDIR}")
     endif()
-    # Provide a private convenience wrapper with options which should not be propagated via the
+
+    # Reset the contents for the next script.
+    set(extra_qt_cmake_code "")
+
+    # Provide a private convenience wrapper with options that should not be propagated via the
     # public qt-cmake wrapper e.g. CMAKE_GENERATOR.
     # These options can not be set in a toolchain file, but only on the command line.
     # These options should not be in the public wrapper, because a consumer of Qt might want to
     # build their CMake app with the Unix Makefiles generator, while Qt should be built with the
-    # Ninja generator.
-    # The private wrapper is more conveient for building Qt itself, because a developer doesn't need
-    # to specify the same options for each qt module built.
-    set(__qt_cmake_extra "-G\"${CMAKE_GENERATOR}\"")
+    # Ninja generator. In a similar vein, we do want to use the same compiler for all Qt modules,
+    # but not for user applications.
+    # The private wrapper is more convenient for building Qt itself, because a developer doesn't
+    # need to specify the same options for each qt module built.
+    set(__qt_cmake_extra "-G\"${CMAKE_GENERATOR}\" -DQT_USE_ORIGINAL_COMPILER=ON")
     if(generate_unix)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-cmake.in"
             "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/qt-cmake-private" @ONLY
@@ -202,16 +212,36 @@ function(qt_internal_create_wrapper_scripts)
     elseif(CMAKE_BUILD_TYPE)
         set(__qt_configured_configs "${CMAKE_BUILD_TYPE}")
     endif()
+
+    if(
+        # Skip stripping pure debug builds so it's easier to debug issues in CI VMs.
+        (NOT QT_FEATURE_debug_and_release
+            AND QT_FEATURE_debug
+            AND NOT QT_FEATURE_separate_debug_info)
+
+        # Skip stripping on MSVC because ${CMAKE_STRIP} might contain a MinGW strip binary
+        # and the breaks the linker version flag embedded in the binary and causes Qt Creator
+        # to mis-identify the Kit ABI.
+        OR MSVC
+        )
+        set(__qt_skip_strip_installed_artifacts TRUE)
+    else()
+        set(__qt_skip_strip_installed_artifacts FALSE)
+    endif()
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/${__qt_cmake_install_script_name}.in"
                    "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/${__qt_cmake_install_script_name}" @ONLY)
     qt_install(FILES "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/${__qt_cmake_install_script_name}"
                DESTINATION "${INSTALL_LIBEXECDIR}")
 
-    qt_internal_create_qt_configure_tests_wrapper_script()
-    qt_internal_create_qt_configure_redo_script()
+    qt_internal_create_qt_configure_part_wrapper_script("STANDALONE_TESTS")
+    qt_internal_create_qt_configure_part_wrapper_script("STANDALONE_EXAMPLES")
+
+    if(NOT CMAKE_CROSSCOMPILING)
+        qt_internal_create_qt_android_runner_wrapper_script()
+    endif()
 endfunction()
 
-function(qt_internal_create_qt_configure_tests_wrapper_script)
+function(qt_internal_create_qt_configure_part_wrapper_script component)
     if(QT_GENERATE_WRAPPER_SCRIPTS_FOR_ALL_HOSTS)
         set(generate_unix TRUE)
         set(generate_non_unix TRUE)
@@ -221,17 +251,27 @@ function(qt_internal_create_qt_configure_tests_wrapper_script)
         set(generate_non_unix TRUE)
     endif()
 
-    # Create a private wrapper script to configure and build all standalone tests.
+    # Create a private wrapper script to configure and build all standalone tests / examples.
     #
     # The script uses qt-cmake instead of qt-cmake-private on purpose. That's to ensure we build
     # only one configuration of tests (e.g RelWithDebInfo only) when Qt is configured with more
     # than one configuration (RelWithDebInfo;Debug).
     # Meant to be used by our CI instructions.
     #
-    # The script takes a path to the repo for which the standalone tests will be configured.
-    set(script_name "qt-internal-configure-tests")
+    # The script takes a path to the repo for which the standalone tests / examples will be
+    # configured.
 
-    set(script_passed_args "-DQT_BUILD_STANDALONE_TESTS=ON")
+    if(component STREQUAL "STANDALONE_TESTS")
+        set(script_name "qt-internal-configure-tests")
+        set(script_passed_args "-DQT_BUILD_STANDALONE_TESTS=ON -DQT_BUILD_EXAMPLES=OFF")
+    elseif(component STREQUAL "STANDALONE_EXAMPLES")
+        set(script_name "qt-internal-configure-examples")
+        set(script_passed_args "-DQT_BUILD_STANDALONE_EXAMPLES=ON -DQT_BUILD_TESTS=OFF")
+    else()
+        message(FATAL_ERROR "Invalid component type: ${component}")
+    endif()
+
+    string(APPEND script_passed_args " -DQT_USE_ORIGINAL_COMPILER=ON")
 
     file(RELATIVE_PATH relative_path_from_libexec_dir_to_bin_dir
         ${__qt_libexec_dir_absolute}
@@ -265,32 +305,84 @@ endfunction()
 # The script is created in the root of the build dir and is called config.redo
 # It has the same contents as the 'config.status' script we created in qt 5.
 function(qt_internal_create_qt_configure_redo_script)
-    set(input_script_name "qt-internal-config.redo")
-    set(input_script_path "${CMAKE_CURRENT_SOURCE_DIR}/libexec/${input_script_name}")
+    # Protect against creating the script once per repo in a top level build. Only one file should
+    # be created.
+    get_cmake_property(script_created _qt_configure_redo_script_created)
+    if(script_created)
+        return()
+    endif()
+
+    set(wrapper_extension "")
+
+    if(NOT CMAKE_HOST_UNIX)
+        set(wrapper_extension ".bat")
+    endif()
+
+    set(script_name "qt-internal-config.redo")
+
+    set(wrapper_rel_path "${script_name}${wrapper_extension}.in")
+
+    # Need to find the input file depending whether the qtbase sources are available.
+    # This mirrors the logic in qt_set_up_build_internals_paths.
+    # TODO: Clean this up, together with qt_set_up_build_internals_paths to only use the
+    # the qtbase sources when building qtbase. And perhaps also when doing a non-prefix
+    # developer-build.
+    set(qtbase_in_path "${QT_SOURCE_TREE}/cmake/${wrapper_rel_path}")
+    set(installed_in_path
+        "${_qt_cmake_dir}/${QT_CMAKE_EXPORT_NAMESPACE}/${wrapper_rel_path}")
+
+    # qtbase sources available, always use them, regardless of prefix or non-prefix builds.
+    if(EXISTS "${qtbase_in_path}")
+        set(input_script_path "${qtbase_in_path}")
+
+    # qtbase sources unavailable, use installed files.
+    elseif(EXISTS "${installed_in_path}")
+        set(input_script_path "${installed_in_path}")
+    else()
+        message(FATAL_ERROR "Can't find ${script_name}${wrapper_extension}.in file.")
+    endif()
 
     # We don't use QT_BUILD_DIR because we want the file in the root of the build dir in a top-level
     # build.
     set(output_script_name "config.redo")
-    set(output_path "${CMAKE_BINARY_DIR}/${output_script_name}")
+    set(output_path "${CMAKE_BINARY_DIR}/${output_script_name}${wrapper_extension}")
 
+    set(repo_path "")
     if(QT_SUPERBUILD)
-        set(configure_script_path "${Qt_SOURCE_DIR}")
+        set(configure_script_path "${Qt_SOURCE_DIR}/configure")
+    elseif(QtBase_SOURCE_DIR)
+        set(configure_script_path "${QtBase_SOURCE_DIR}/configure")
     else()
-        set(configure_script_path "${QtBase_SOURCE_DIR}")
+        if(QT_WILL_INSTALL)
+            set(configure_script_path "${QT_STAGING_PREFIX}")
+        else()
+            set(configure_script_path "${QT_BUILD_DIR}")
+        endif()
+
+        string(APPEND configure_script_path
+            "/${INSTALL_BINDIR}/qt-configure-module${wrapper_extension}")
+
+        # When configuring a repo other than qtbase, we also need to provide the location
+        # to the repo sources.
+        set(repo_path "${CMAKE_SOURCE_DIR}")
     endif()
-    string(APPEND configure_script_path "/configure")
 
     # Used in the file contents.
     file(TO_NATIVE_PATH "${configure_script_path}" configure_path)
 
     if(CMAKE_HOST_UNIX)
-        string(APPEND input_script_path ".in")
         set(newline_style "LF")
     else()
-        string(APPEND input_script_path ".bat.in")
-        string(APPEND output_path ".bat")
         set(newline_style "CRLF")
     endif()
 
     configure_file("${input_script_path}" "${output_path}" @ONLY NEWLINE_STYLE ${newline_style})
+
+    set_property(GLOBAL PROPERTY _qt_configure_redo_script_created TRUE)
+endfunction()
+
+function(qt_internal_create_qt_android_runner_wrapper_script)
+    qt_path_join(android_runner_destination "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_path_join(android_runner "${CMAKE_CURRENT_SOURCE_DIR}" "libexec" "qt-android-runner.py")
+    qt_copy_or_install(PROGRAMS "${android_runner}" DESTINATION "${android_runner_destination}")
 endfunction()

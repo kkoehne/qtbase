@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlocalserver.h"
 #include "qlocalserver_p.h"
@@ -279,8 +280,7 @@ void QLocalServerPrivate::_q_onNewConnection()
 void QLocalServerPrivate::waitForNewConnection(int msec, bool *timedOut)
 {
     pollfd pfd = qt_make_pollfd(listenSocket, POLLIN);
-
-    switch (qt_poll_msecs(&pfd, 1, msec)) {
+    switch (qt_safe_poll(&pfd, 1, QDeadlineTimer(msec))) {
     case 0:
         if (timedOut)
             *timedOut = true;

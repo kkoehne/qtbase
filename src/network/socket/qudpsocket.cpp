@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //#define QUDPSOCKET_DEBUG
 
@@ -382,7 +383,7 @@ qint64 QUdpSocket::writeDatagram(const QNetworkDatagram &datagram)
     if (state() == UnconnectedState)
         bind();
 
-    qint64 sent = d->socketEngine->writeDatagram(datagram.d->data,
+    qint64 sent = d->socketEngine->writeDatagram(datagram.d->data.constData(),
                                                  datagram.d->data.size(),
                                                  datagram.d->header);
     d->cachedSocketDescriptor = d->socketEngine->socketDescriptor();
@@ -430,6 +431,7 @@ QNetworkDatagram QUdpSocket::receiveDatagram(qint64 maxSize)
     qint64 readBytes = d->socketEngine->readDatagram(result.d->data.data(), maxSize, &result.d->header,
                                                      QAbstractSocketEngine::WantAll);
     d->hasPendingData = false;
+    d->hasPendingDatagram = false;
     d->socketEngine->setReadNotificationEnabled(true);
     if (readBytes < 0) {
         d->setErrorAndEmit(d->socketEngine->error(), d->socketEngine->errorString());
@@ -479,6 +481,7 @@ qint64 QUdpSocket::readDatagram(char *data, qint64 maxSize, QHostAddress *addres
     }
 
     d->hasPendingData = false;
+    d->hasPendingDatagram = false;
     d->socketEngine->setReadNotificationEnabled(true);
     if (readBytes < 0) {
         if (readBytes == -2) {

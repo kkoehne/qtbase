@@ -64,6 +64,16 @@ public:
         return registerNativeMethods(clazz, std::data(methods), methods.size());
     }
 
+    template<typename Class
+#ifndef Q_QDOC
+             , std::enable_if_t<QtJniTypes::isObjectType<Class>(), bool> = true
+#endif
+    >
+    bool registerNativeMethods(std::initializer_list<JNINativeMethod> methods)
+    {
+        return registerNativeMethods(QtJniTypes::Traits<Class>::className().data(), methods);
+    }
+
 #if QT_DEPRECATED_SINCE(6, 2)
     // ### Qt 7: remove
     QT_DEPRECATED_VERSION_X_6_2("Use the overload with a const JNINativeMethod[] instead.")
@@ -78,9 +88,11 @@ public:
     bool checkAndClearExceptions(OutputMode outputMode = OutputMode::Verbose);
     static bool checkAndClearExceptions(JNIEnv *env, OutputMode outputMode = OutputMode::Verbose);
 
+    static JNIEnv *getJniEnv();
+
 private:
     Q_DISABLE_COPY_MOVE(QJniEnvironment)
-    QScopedPointer<QJniEnvironmentPrivate> d;
+    std::unique_ptr<QJniEnvironmentPrivate> d;
 };
 
 QT_END_NAMESPACE

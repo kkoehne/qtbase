@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef MYOBJECT_H
 #define MYOBJECT_H
@@ -71,11 +71,13 @@ public:
     int m_prop1;
     int prop1() const
     {
+        Q_ASSERT(QDBusContext::calledFromDBus());
         ++callCount;
         return m_prop1;
     }
     void setProp1(int value)
     {
+        Q_ASSERT(QDBusContext::calledFromDBus());
         ++callCount;
         m_prop1 = value;
     }
@@ -83,11 +85,13 @@ public:
     QList<int> m_complexProp;
     QList<int> complexProp() const
     {
+        Q_ASSERT(QDBusContext::calledFromDBus());
         ++callCount;
         return m_complexProp;
     }
     void setComplexProp(const QList<int> &value)
     {
+        Q_ASSERT(QDBusContext::calledFromDBus());
         ++callCount;
         m_complexProp = value;
     }

@@ -11,6 +11,7 @@
 #include <qmath.h>
 
 #include "private/qpushbutton_p.h"
+#include "private/qstylesheetstyle_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -172,7 +173,7 @@ bool QCommandLinkButtonPrivate::usingVistaStyle() const
     //### This is a hack to detect if we are indeed running Vista style themed and not in classic
     // When we add api to query for this, we should change this implementation to use it.
     return q->property("_qt_usingVistaStyle").toBool()
-        && q->style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, nullptr) == 0;
+        && q->style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, nullptr, q) == 0;
 }
 
 void QCommandLinkButtonPrivate::init()
@@ -189,7 +190,7 @@ void QCommandLinkButtonPrivate::init()
     q->setIconSize(QSize(20, 20));
     QStyleOptionButton opt;
     q->initStyleOption(&opt);
-    q->setIcon(q->style()->standardIcon(QStyle::SP_CommandLink, &opt));
+    q->setIcon(q->style()->standardIcon(QStyle::SP_CommandLink, &opt, q));
 }
 
 // Calculates the height of the description text based on widget width
@@ -276,6 +277,21 @@ QCommandLinkButton::~QCommandLinkButton()
 /*! \reimp */
 bool QCommandLinkButton::event(QEvent *e)
 {
+    if (e->type() == QEvent::StyleChange) {
+        // If the new style is a QStyleSheetStyle, don't reset the icon, because:
+        // - either it has been explicitly set, in which case we want to keep it.
+        // - or it has been initialised by the previous style, which is now the base style,
+        //   in which case we want to keep it as well.
+        // - or it has been set in the style sheet, in which case we don't want to override it here.
+        // When a style sheet with an icon is replaced by one without an icon, the old icon
+        // will be reset, when baseStyle()->repolish() is called.
+        if (!qobject_cast<QStyleSheetStyle *>(style())) {
+            QStyleOptionButton opt;
+            initStyleOption(&opt);
+            setIcon(style()->standardIcon(QStyle::SP_CommandLink, &opt, this));
+        }
+    }
+
     return QPushButton::event(e);
 }
 
@@ -315,26 +331,28 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
 {
     Q_D(QCommandLinkButton);
     QStylePainter p(this);
-    p.save();
 
     QStyleOptionButton option;
     initStyleOption(&option);
 
     option.text = QString();
     option.icon = QIcon(); //we draw this ourselves
-    QSize pixmapSize = icon().actualSize(iconSize());
 
     const int vOffset = isDown()
-        ? style()->pixelMetric(QStyle::PM_ButtonShiftVertical, &option) : 0;
+        ? style()->pixelMetric(QStyle::PM_ButtonShiftVertical, &option, this) : 0;
     const int hOffset = isDown()
-        ? style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, &option) : 0;
+        ? style()->pixelMetric(QStyle::PM_ButtonShiftHorizontal, &option, this) : 0;
 
     //Draw icon
     p.drawControl(QStyle::CE_PushButton, option);
-    if (!icon().isNull())
-        p.drawPixmap(d->leftMargin() + hOffset, d->topMargin() + vOffset,
-        icon().pixmap(pixmapSize, isEnabled() ? QIcon::Normal : QIcon::Disabled,
-                                  isChecked() ? QIcon::On : QIcon::Off));
+    if (!icon().isNull()) {
+        const auto size = icon().actualSize(iconSize());
+        const auto mode = isEnabled() ? QIcon::Normal : QIcon::Disabled;
+        const auto state = isChecked() ? QIcon::On : QIcon::Off;
+        const auto rect = QRect(d->leftMargin() + hOffset, d->topMargin() + vOffset,
+                                size.width(), size.height());
+        icon().paint(&p, rect, Qt::AlignCenter, mode, state);
+    }
 
     //Draw title
     QColor textColor = palette().buttonText().color();
@@ -360,7 +378,6 @@ void QCommandLinkButton::paintEvent(QPaintEvent *)
     p.setFont(d->descriptionFont());
     p.drawItemText(d->descriptionRect().translated(hOffset, vOffset), textflags,
                     option.palette, isEnabled(), description(), QPalette::ButtonText);
-    p.restore();
 }
 
 void QCommandLinkButton::setDescription(const QString &description)

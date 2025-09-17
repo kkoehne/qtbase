@@ -67,14 +67,15 @@ static void findFileRecursion(const QDir &directory, Platform platform,
     const QFileInfoList &subDirs = directory.entryInfoList(QStringList(), QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
     for (const QFileInfo &subDirFi : subDirs) {
         QDir subDirectory(subDirFi.absoluteFilePath());
-        if (subDirectory.isReadable())
+        // Don't enter other QML modules when recursing!
+        if (subDirectory.isReadable() && !subDirectory.exists(QStringLiteral("qmldir")))
             findFileRecursion(subDirectory, platform, debugMatchMode, matches);
     }
 }
 
 QmlImportScanResult runQmlImportScanner(const QString &directory, const QStringList &qmlImportPaths,
                                         bool usesWidgets, int platform, DebugMatchMode debugMatchMode,
-                                        QString *errorMessage)
+                                        QString *errorMessage, int timeout)
 {
     Q_UNUSED(usesWidgets);
     QmlImportScanResult result;
@@ -86,7 +87,8 @@ QmlImportScanResult runQmlImportScanner(const QString &directory, const QStringL
     QByteArray stdOut;
     QByteArray stdErr;
     const QString binary = QStringLiteral("qmlimportscanner");
-    if (!runProcess(binary, arguments, QDir::currentPath(), &exitCode, &stdOut, &stdErr, errorMessage))
+    if (!runProcess(binary, arguments, QDir::currentPath(), &exitCode, &stdOut, &stdErr,
+                    errorMessage, timeout))
         return result;
     if (exitCode) {
         *errorMessage = binary + QStringLiteral(" returned ") + QString::number(exitCode)

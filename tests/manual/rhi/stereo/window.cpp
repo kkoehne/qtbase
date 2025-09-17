@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "window.h"
 #include <QPlatformSurfaceEvent>
@@ -16,12 +16,14 @@ Window::Window(QRhi::Implementation graphicsApi)
     case QRhi::OpenGLES2:
         setSurfaceType(OpenGLSurface);
         break;
+#if QT_CONFIG(vulkan)
     case QRhi::Vulkan:
         instance.setLayers({ "VK_LAYER_KHRONOS_validation" });
         instance.create();
         setVulkanInstance(&instance);
         setSurfaceType(VulkanSurface);
         break;
+#endif
     case QRhi::D3D11:
     case QRhi::D3D12:
         setSurfaceType(Direct3DSurface);
@@ -74,6 +76,7 @@ void Window::init()
     QRhi::Flags rhiFlags = QRhi::EnableDebugMarkers;
 
     switch (m_graphicsApi) {
+#if QT_CONFIG(vulkan)
     case QRhi::Vulkan:
     {
         QRhiVulkanInitParams params;
@@ -82,6 +85,7 @@ void Window::init()
         m_rhi.reset(QRhi::create(QRhi::Vulkan, &params, rhiFlags));
         break;
     }
+#endif
     case QRhi::Null:
     case QRhi::Metal:
     case QRhi::OpenGLES2:
@@ -93,6 +97,7 @@ void Window::init()
         m_rhi.reset(QRhi::create(QRhi::OpenGLES2, &params, rhiFlags));
         break;
     }
+#ifdef Q_OS_WIN
     case QRhi::D3D11:
     {
         QRhiD3D11InitParams params;
@@ -106,6 +111,7 @@ void Window::init()
         m_rhi.reset(QRhi::create(QRhi::D3D12, &params, rhiFlags));
         break;
     }
+#endif
     default:
         break;
     }

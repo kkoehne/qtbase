@@ -10,6 +10,8 @@
 
 #include <QtGui/qwindow.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
+#include <qpa/qplatforminputcontextfactory_p.h>
+
 #include <cmath>
 
 QT_BEGIN_NAMESPACE
@@ -61,35 +63,6 @@ void clearVariant(VARIANT *variant)
 {
     variant->vt = VT_EMPTY;
     variant->punkVal = nullptr;
-}
-
-void setVariantI4(int value, VARIANT *variant)
-{
-    variant->vt = VT_I4;
-    variant->lVal = value;
-}
-
-void setVariantBool(bool value, VARIANT *variant)
-{
-    variant->vt = VT_BOOL;
-    variant->boolVal = value ? -1 : 0;
-}
-
-void setVariantDouble(double value, VARIANT *variant)
-{
-    variant->vt = VT_R8;
-    variant->dblVal = value;
-}
-
-BSTR bStrFromQString(const QString &value)
-{
-    return SysAllocString(reinterpret_cast<const wchar_t *>(value.utf16()));
-}
-
-void setVariantString(const QString &value, VARIANT *variant)
-{
-    variant->vt = VT_BSTR;
-    variant->bstrVal = bStrFromQString(value);
 }
 
 // Scales a rect to native coordinates, according to high dpi settings.
@@ -176,9 +149,25 @@ long roleToControlTypeId(QAccessible::Role role)
         {QAccessible::PageTabList, UIA_TabControlTypeId},
         {QAccessible::Clock, UIA_CustomControlTypeId},
         {QAccessible::Splitter, UIA_CustomControlTypeId},
+        {QAccessible::Paragraph, UIA_TextControlTypeId},
+        {QAccessible::WebDocument, UIA_DocumentControlTypeId},
+        {QAccessible::Heading, UIA_TextControlTypeId},
+        {QAccessible::BlockQuote, UIA_GroupControlTypeId},
     };
 
-    return mapping.value(role, UIA_CustomControlTypeId);
+    long controlType = mapping.value(role, UIA_CustomControlTypeId);
+
+    // The native OSK should be disabled if the Qt OSK is in use,
+    // or if disabled via application attribute.
+    static bool imModuleEmpty = QPlatformInputContextFactory::requested().isEmpty();
+    bool nativeVKDisabled = QCoreApplication::testAttribute(Qt::AA_DisableNativeVirtualKeyboard);
+
+    // If we want to disable the native OSK auto-showing
+    // we have to report text fields as non-editable.
+    if (controlType == UIA_EditControlTypeId && (!imModuleEmpty || nativeVKDisabled))
+        controlType = UIA_TextControlTypeId;
+
+    return controlType;
 }
 
 // True if a character can be a separator for a text unit.

@@ -1,11 +1,20 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-#include <QCoreApplication>
-#include <QDebug>
-#include <QElapsedTimer>
-#include <QSignalSpy>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtConcurrent>
+#include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
+
+#include <QtConcurrent/qtconcurrentfilter.h>
+#include <QtConcurrent/qtconcurrentmap.h>
+#include <QtConcurrent/qtconcurrentrun.h>
+
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qelapsedtimer.h>
+#include <QtCore/qfuturesynchronizer.h>
+#include <QtCore/qfuturewatcher.h>
+#include <QtCore/qset.h>
+
 #include <private/qfutureinterface_p.h>
 
 using namespace QtConcurrent;
@@ -26,6 +35,7 @@ private slots:
     void cancelAndFinish();
     void resultAt();
     void resultReadyAt();
+    void orderedResultReadyAt();
     void futureSignals();
     void watchFinishedFuture();
     void watchCanceledFuture();
@@ -278,6 +288,28 @@ void tst_QFutureWatcher::resultReadyAt()
     futureWatcher.setFuture(future);
 
     QVERIFY(resultSpy.wait());
+}
+
+void tst_QFutureWatcher::orderedResultReadyAt()
+{
+    for (int i = 0; i < 1000; ++i) {
+        QObject context;
+        QFuture<QString> f = run([](QPromise<QString> &fi) {
+            fi.addResult("First");
+            fi.addResult("Second");
+        });
+        QList<int> actualIndices;
+
+        QFutureWatcher<QString> watcher;
+        connect(&watcher, &QFutureWatcherBase::resultReadyAt, &context,
+                [&actualIndices](int index) { actualIndices.append(index); });
+        watcher.setFuture(f);
+        f.waitForFinished();
+        QCoreApplication::processEvents();
+        const QList<int> expectedIndices{0, 1};
+        QCOMPARE(actualIndices.size(), expectedIndices.size());
+        QCOMPARE(actualIndices, expectedIndices);
+    }
 }
 
 class SignalSlotObject : public QObject

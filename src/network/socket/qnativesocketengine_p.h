@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNATIVESOCKETENGINE_P_H
 #define QNATIVESOCKETENGINE_P_H
@@ -154,11 +155,14 @@ public:
     int option(SocketOption option) const override;
     bool setOption(SocketOption option, int value) override;
 
-    bool waitForRead(int msecs = 30000, bool *timedOut = nullptr) override;
-    bool waitForWrite(int msecs = 30000, bool *timedOut = nullptr) override;
+    bool waitForRead(QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                     bool *timedOut = nullptr) override;
+    bool waitForWrite(QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                      bool *timedOut = nullptr) override;
     bool waitForReadOrWrite(bool *readyToRead, bool *readyToWrite,
                             bool checkRead, bool checkWrite,
-                            int msecs = 30000, bool *timedOut = nullptr) override;
+                            QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                            bool *timedOut = nullptr) override;
 
     bool isReadNotificationEnabled() const override;
     void setReadNotificationEnabled(bool enable) override;

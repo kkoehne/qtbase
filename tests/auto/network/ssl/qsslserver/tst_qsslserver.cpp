@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QDebug>
@@ -9,6 +9,8 @@
 #include <QtNetwork/QSslServer>
 #include <QtNetwork/QSslKey>
 #include "private/qtlsbackend_p.h"
+
+#include <QtTest/private/qtesthelpers_p.h>
 
 class tst_QSslServer : public QObject
 {
@@ -125,6 +127,8 @@ QSslConfiguration tst_QSslServer::createQSslConfiguration(QString keyFileName,
 
 void tst_QSslServer::testOneSuccessfulConnection()
 {
+    if (QTestPrivate::isSecureTransportBlockingTest())
+        QSKIP("SecureTransport will block this test while requesting keychain access");
     // Setup server
     QSslConfiguration serverConfiguration = selfSignedServerQSslConfiguration();
     SslServerSpy server(serverConfiguration);
@@ -204,6 +208,8 @@ void tst_QSslServer::testOneSuccessfulConnection()
 
 void tst_QSslServer::testSelfSignedCertificateRejectedByServer()
 {
+    if (QTestPrivate::isSecureTransportBlockingTest())
+        QSKIP("SecureTransport will block this test while requesting keychain access");
     // Set up server that verifies client
     QSslConfiguration serverConfiguration = selfSignedServerQSslConfiguration();
     serverConfiguration.setPeerVerifyMode(QSslSocket::VerifyPeer);
@@ -257,6 +263,8 @@ void tst_QSslServer::testSelfSignedCertificateRejectedByServer()
 
 void tst_QSslServer::testSelfSignedCertificateRejectedByClient()
 {
+    if (QTestPrivate::isSecureTransportBlockingTest())
+        QSKIP("SecureTransport will block this test while requesting keychain access");
     // Set up server without verification of client
     QSslConfiguration serverConfiguration = selfSignedServerQSslConfiguration();
     SslServerSpy server(serverConfiguration);
@@ -490,6 +498,9 @@ void tst_QSslServer::quietClient()
 
 void tst_QSslServer::twoGoodAndManyBadClients()
 {
+    if (QTestPrivate::isSecureTransportBlockingTest())
+        QSKIP("SecureTransport will block this test while requesting keychain access");
+
     QSslConfiguration serverConfiguration = selfSignedServerQSslConfiguration();
     SslServerSpy server(serverConfiguration);
     server.server.setHandshakeTimeout(750);

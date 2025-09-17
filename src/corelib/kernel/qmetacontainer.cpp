@@ -14,6 +14,8 @@ QT_BEGIN_NAMESPACE
 
     \ingroup objectmodel
 
+    \compares equality
+
     The class provides a number of primitive container operations, using void*
     as operands. This way, you can manipulate a generic container retrieved from
     a Variant without knowing its type.
@@ -33,6 +35,28 @@ QT_BEGIN_NAMESPACE
     \since 6.0
 
     Returns the QMetaSequence corresponding to the type given as template parameter.
+*/
+
+/*!
+    \class QMetaContainer
+    \inmodule QtCore
+    \since 6.0
+    \brief The QMetaContainer class provides common functionality for sequential
+        and associative containers.
+
+    QMetaContainer is part of Qt's meta-type system that allows type-erased access
+    to container-like types at runtime.
+
+    It serves as a common base for accessing properties of containers in a generic
+    way, such as size, iteration, and clearing operations, without knowing the actual
+    container type.
+
+    Derived classes, such as QMetaSequence, provide specialized interfaces for
+    sequential containers.
+
+    \ingroup objectmodel
+
+    \compares equality
 */
 
 /*!
@@ -162,7 +186,7 @@ void QMetaSequence::addValueAtBegin(void *container, const void *value) const
 
 /*!
     Returns \c true if values can be removed from the beginning of the container
-    using \l removeValue() can be placed at the, otherwise returns \c false.
+    using \l removeValue(), otherwise returns \c false.
 
     \sa removeValueAtBegin(), canRemoveValueAtEnd()
  */
@@ -216,7 +240,7 @@ void QMetaSequence::addValueAtEnd(void *container, const void *value) const
 
 /*!
     Returns \c true if values can be removed from the end of the container
-    using \l removeValue() can be placed at the, otherwise returns \c false.
+    using \l removeValue(), otherwise returns \c false.
 
     \sa removeValueAtEnd(), canRemoveValueAtBegin()
  */
@@ -310,7 +334,7 @@ void QMetaSequence::valueAtIndex(const void *container, qsizetype index, void *r
 }
 
 /*!
-    Returns \c true if an value can be written to the container by index,
+    Returns \c true if a value can be written to the container by index,
     otherwise \c false.
 
     \sa setValueAtIndex()
@@ -382,7 +406,7 @@ bool QMetaSequence::canRemoveValue() const
 }
 
 /*!
-    Removes an value from the \a container if possible. If
+    Removes a value from the \a container if possible. If
     \l canRemoveValue() returns \c false, no value is removed. Else, if
     \l canRemoveValueAtEnd() returns \c true, the last value in
     the \a container is removed. Else, if \l canRemoveValueAtBegin()
@@ -443,7 +467,7 @@ void *QMetaContainer::begin(void *container) const
 
     Returns \c nullptr if the container doesn't offer any non-const iterators.
 
-    \sa hasIterator(), end(), constBegin(), constEnd(), destroyIterator()
+    \sa hasIterator(), begin(), constBegin(), constEnd(), destroyIterator()
  */
 void *QMetaContainer::end(void *container) const
 {
@@ -490,7 +514,7 @@ void QMetaContainer::copyIterator(void *target, const void *source) const
 }
 
 /*!
-    Advances the non-const \a iterator by \a step steps. If \a steps is negative
+    Advances the non-const \a iterator by \a step steps. If \a step is negative
     the \a iterator is moved backwards, towards the beginning of the container.
     The behavior is unspecified for negative values of \a step if
     \l hasBidirectionalIterator() returns false.
@@ -738,7 +762,7 @@ void QMetaContainer::copyConstIterator(void *target, const void *source) const
 }
 
 /*!
-    Advances the const \a iterator by \a step steps. If \a steps is negative
+    Advances the const \a iterator by \a step steps. If \a step is negative
     the \a iterator is moved backwards, towards the beginning of the container.
     The behavior is unspecified for negative values of \a step if
     \l hasBidirectionalIterator() returns false.
@@ -790,25 +814,24 @@ void QMetaSequence::valueAtConstIterator(const void *iterator, void *result) con
 }
 
 /*!
-    \fn bool operator==(QMetaSequence a, QMetaSequence b)
+    \fn bool QMetaSequence::operator==(const QMetaSequence &lhs, const QMetaSequence &rhs)
     \since 6.0
-    \relates QMetaSequence
 
-    Returns \c true if the QMetaSequence \a a represents the same container type
-    as the QMetaSequence \a b, otherwise returns \c false.
+    Returns \c true if the QMetaSequence \a lhs represents the same container type
+    as the QMetaSequence \a rhs, otherwise returns \c false.
 */
 
 /*!
-    \fn bool operator!=(QMetaSequence a, QMetaSequence b)
+    \fn bool QMetaSequence::operator!=(const QMetaSequence &lhs, const QMetaSequence &rhs)
     \since 6.0
-    \relates QMetaSequence
 
-    Returns \c true if the QMetaSequence \a a represents a different container
-    type than the QMetaSequence \a b, otherwise returns \c false.
+    Returns \c true if the QMetaSequence \a lhs represents a different container
+    type than the QMetaSequence \a rhs, otherwise returns \c false.
 */
 
 
 /*!
+    \internal
     Returns the meta type for keys in the container.
  */
 QMetaType QMetaAssociation::keyMetaType() const
@@ -819,6 +842,7 @@ QMetaType QMetaAssociation::keyMetaType() const
 }
 
 /*!
+    \internal
     Returns the meta type for mapped values in the container.
  */
 QMetaType QMetaAssociation::mappedMetaType() const

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCONCURRENT_REDUCEKERNEL_H
 #define QTCONCURRENT_REDUCEKERNEL_H
@@ -117,7 +118,7 @@ class ReduceKernel
 public:
     ReduceKernel(QThreadPool *pool, ReduceOptions _reduceOptions)
         : reduceOptions(_reduceOptions), progress(0), resultsMapSize(0),
-          threadCount(pool->maxThreadCount())
+          threadCount(std::max(pool->maxThreadCount(), 1))
     { }
 
     void runReduce(ReduceFunctor &reduce,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <QDir>
+#include <QLocale>
 
 #include "qandroidplatformfontdatabase.h"
 
@@ -44,9 +45,46 @@ void QAndroidPlatformFontDatabase::populateFontDatabase()
 QStringList QAndroidPlatformFontDatabase::fallbacksForFamily(const QString &family,
                                                              QFont::Style style,
                                                              QFont::StyleHint styleHint,
-                                                             QChar::Script script) const
+                                                             QFontDatabasePrivate::ExtendedScript script) const
 {
     QStringList result;
+
+    if (script == QFontDatabasePrivate::Script_Emoji) {
+        result.append(QStringLiteral("Noto Color Emoji"));
+        result.append(QStringLiteral("Noto Color Emoji Flags"));
+    }
+
+    // Prepend CJK fonts by the locale.
+    QLocale locale = QLocale::system();
+    switch (locale.language()) {
+    case QLocale::Chinese: {
+        switch (locale.territory()) {
+        case QLocale::China:
+        case QLocale::Singapore:
+            result.append(QStringLiteral("Noto Sans Mono CJK SC"));
+            break;
+        case QLocale::Taiwan:
+        case QLocale::HongKong:
+        case QLocale::Macao:
+            result.append(QStringLiteral("Noto Sans Mono CJK TC"));
+            break;
+        default:
+            // no modifications.
+            break;
+        }
+        break;
+    }
+    case QLocale::Japanese:
+        result.append(QStringLiteral("Noto Sans Mono CJK JP"));
+        break;
+    case QLocale::Korean:
+        result.append(QStringLiteral("Noto Sans Mono CJK KR"));
+        break;
+    default:
+        // no modifications.
+        break;
+    }
+
     if (styleHint == QFont::Monospace || styleHint == QFont::Courier)
         result.append(QString(qgetenv("QT_ANDROID_FONTS_MONOSPACE")).split(u';'));
     else if (styleHint == QFont::Serif)

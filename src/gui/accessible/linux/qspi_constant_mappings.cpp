@@ -36,6 +36,8 @@ quint64 spiStatesFromQState(QAccessible::State state)
         setSpiStateBit(&spiState, ATSPI_STATE_FOCUSED);
     if (state.pressed)
         setSpiStateBit(&spiState, ATSPI_STATE_PRESSED);
+    if (state.checkable)
+        setSpiStateBit(&spiState, ATSPI_STATE_CHECKABLE);
     if (state.checked)
         setSpiStateBit(&spiState, ATSPI_STATE_CHECKED);
     if (state.checkStateMixed)
@@ -75,7 +77,8 @@ quint64 spiStatesFromQState(QAccessible::State state)
     if (state.extSelectable)
         setSpiStateBit(&spiState, ATSPI_STATE_SELECTABLE);
     //        if (state.Protected)
-    //        if (state.HasPopup)
+    if (state.hasPopup)
+        setSpiStateBit(&spiState, ATSPI_STATE_HAS_POPUP);
     if (state.modal)
         setSpiStateBit(&spiState, ATSPI_STATE_MODAL);
     if (state.multiLine)
@@ -93,6 +96,16 @@ QSpiUIntList spiStateSetFromSpiStates(quint64 states)
     stateList.append(low);
     stateList.append(high);
     return stateList;
+}
+
+quint64 spiStatesFromSpiStateSet(QSpiUIntList stateSet)
+{
+    if (stateSet.size() != 2) {
+        qWarning() << "State set doesn't use expected size of 64 bit";
+        return 0;
+    }
+
+    return stateSet.at(0) | (quint64(stateSet.at(1)) << 32);
 }
 
 AtspiRelationType qAccessibleRelationToAtSpiRelation(QAccessible::Relation relation)

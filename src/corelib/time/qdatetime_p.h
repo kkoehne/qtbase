@@ -73,6 +73,22 @@ public:
     };
     Q_DECLARE_FLAGS(StatusFlags, StatusFlag)
 
+
+    enum TransitionOption {
+        // Handling of a spring-forward (or other gap):
+        GapUseBefore = 2,
+        GapUseAfter = 4,
+        // Handling of a fall-back (or other repeated period):
+        FoldUseBefore = 0x20,
+        FoldUseAfter = 0x40,
+        // Quirk for negative DST:
+        FlipForReverseDst = 0x400,
+
+        GapMask = GapUseBefore | GapUseAfter,
+        FoldMask = FoldUseBefore | FoldUseAfter,
+    };
+    Q_DECLARE_FLAGS(TransitionOptions, TransitionOption)
+
     enum {
         TimeSpecShift = 4,
     };
@@ -89,14 +105,16 @@ public:
             : when(w), offset(o), dst(d), valid(v) {}
     };
 
-    static QDateTime::Data create(QDate toDate, QTime toTime, const QTimeZone &timeZone);
+    static QDateTime::Data create(QDate toDate, QTime toTime, const QTimeZone &timeZone,
+                                  QDateTime::TransitionResolution resolve);
 #if QT_CONFIG(timezone)
-    static ZoneState zoneStateAtMillis(const QTimeZone &zone, qint64 millis, DaylightStatus dst);
+    static ZoneState zoneStateAtMillis(const QTimeZone &zone, qint64 millis,
+                                       TransitionOptions resolve);
 #endif // timezone
 
     static ZoneState expressUtcAsLocal(qint64 utcMSecs);
 
-    static ZoneState localStateAtMillis(qint64 millis, DaylightStatus dst);
+    static ZoneState localStateAtMillis(qint64 millis, TransitionOptions resolve);
     static QString localNameAtMillis(qint64 millis, DaylightStatus dst); // empty if unknown
 
     StatusFlags m_status = StatusFlag(Qt::LocalTime << TimeSpecShift);
@@ -106,24 +124,36 @@ public:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimePrivate::StatusFlags)
+Q_DECLARE_OPERATORS_FOR_FLAGS(QDateTimePrivate::TransitionOptions)
 
 namespace QtPrivate {
 namespace DateTimeConstants {
 using namespace std::chrono;
+inline
 constexpr qint64 SECS_PER_MIN = minutes::period::num;
+inline
 constexpr qint64 SECS_PER_HOUR = hours::period::num;
+inline
 constexpr qint64 SECS_PER_DAY = SECS_PER_HOUR * 24; // std::chrono::days is C++20
 
+inline
 constexpr qint64 MINS_PER_HOUR = std::ratio_divide<hours::period, minutes::period>::num;
 
+inline
 constexpr qint64 MSECS_PER_SEC = milliseconds::period::den;
+inline
 constexpr qint64 MSECS_PER_MIN = SECS_PER_MIN * MSECS_PER_SEC;
+inline
 constexpr qint64 MSECS_PER_HOUR = SECS_PER_HOUR * MSECS_PER_SEC;
+inline
 constexpr qint64 MSECS_PER_DAY = SECS_PER_DAY * MSECS_PER_SEC;
 
+inline
 constexpr qint64 JULIAN_DAY_FOR_EPOCH = 2440588; // result of QDate(1970, 1, 1).toJulianDay()
 
+inline
 constexpr qint64 JulianDayMax = Q_INT64_C( 784354017364);
+inline
 constexpr qint64 JulianDayMin = Q_INT64_C(-784350574879);
 }
 }

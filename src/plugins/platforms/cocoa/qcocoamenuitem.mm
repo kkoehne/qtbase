@@ -1,6 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -357,11 +358,11 @@ NSMenuItem *QCocoaMenuItem::sync()
 
         QChar cocoaKey = QAppleKeyMapper::toCocoaKey(key);
         if (cocoaKey.isNull())
-            cocoaKey = QChar(key).toLower().unicode();
+            cocoaKey = char16_t(QChar::toLower(key));
         // Similar to qt_mac_removePrivateUnicode change the delete key,
         // so the symbol is correctly seen in native menu bar.
         if (cocoaKey.unicode() == NSDeleteFunctionKey)
-            cocoaKey = QChar(NSDeleteCharacter);
+            cocoaKey = char16_t(NSDeleteCharacter);
 
         m_native.keyEquivalent = QStringView(&cocoaKey, 1).toNSString();
         m_native.keyEquivalentModifierMask = QAppleKeyMapper::toCocoaModifiers(modifiers);
@@ -372,7 +373,11 @@ NSMenuItem *QCocoaMenuItem::sync()
         m_native.keyEquivalentModifierMask = NSEventModifierFlagCommand;
     }
 
-    m_native.image = [NSImage imageFromQIcon:m_icon withSize:m_iconSize];
+    const QIcon::Mode mode = m_enabled ? QIcon::Normal : QIcon::Disabled;
+    const QIcon::State state = m_checked ? QIcon::On : QIcon::Off;
+    m_native.image = [NSImage imageFromQIcon:m_icon withSize:m_iconSize
+                                                    withMode:mode
+                                                   withState:state];
 
     m_native.state = m_checked ?  NSControlStateValueOn : NSControlStateValueOff;
     return m_native;

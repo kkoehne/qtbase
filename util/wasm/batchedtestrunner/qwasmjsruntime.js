@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 // Exposes platform capabilities as static properties
 
@@ -129,16 +129,9 @@ export class CompiledModule {
         return await new Promise(async (resolve, reject) => {
             let instance = undefined;
             let result = undefined;
-            const continuation = () => {
-                if (!(instance && result))
-                    return;
-                resolve({
-                    stdout: result.stdout,
-                    exitCode: result.exitCode,
-                    instance,
-                });
-            };
 
+            let testFinished = false;
+            const testFinishedEvent = new CustomEvent('testFinished');
             instance = await this.#createQtAppInstanceFn((() => {
                 const params = this.#makeDefaultExecParams({
                     onInstantiationError: (error) => { reject(error); },
@@ -154,12 +147,26 @@ export class CompiledModule {
                 params.quit = (code, exception) => {
                     if (exception && exception.name !== 'ExitStatus')
                         reject(exception);
+                };
+                params.notifyTestFinished = (code) => {
                     result = { stdout: data, exitCode: code };
-                    continuation();
+                    testFinished = true;
+                    window.dispatchEvent(testFinishedEvent);
                 };
                 return params;
             })());
-            continuation();
+            if (!testFinished) {
+                await new Promise((resolve) => {
+                    window.addEventListener('testFinished', () => {
+                        resolve();
+                    });
+                });
+            }
+            resolve({
+                stdout: result.stdout,
+                exitCode: result.exitCode,
+                instance,
+            });
         });
     }
 

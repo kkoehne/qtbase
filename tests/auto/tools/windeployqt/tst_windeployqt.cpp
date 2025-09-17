@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QDebug>
 #include <QtCore/QDir>
@@ -10,7 +10,7 @@
 #include <QtCore/QProcessEnvironment>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTextStream>
-#include <QtTest/QtTest>
+#include <QtTest/QTest>
 
 static const QString msgProcessError(const QProcess &process, const QString &what,
                                      const QByteArray &stdOut = QByteArray(),

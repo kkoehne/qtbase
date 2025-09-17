@@ -1,5 +1,6 @@
 // Copyright (C) 2021 Ilya Fedin <fedin-ilja2010@ya.ru>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <QtNetwork/private/qnetworkinformation_p.h>
 
@@ -31,7 +32,11 @@ QNetworkInformation::Reachability reachabilityFromGNetworkConnectivity(GNetworkC
 }
 }
 
-static QString backendName = QStringLiteral("glib");
+static const QString &backendName()
+{
+    static auto name = u"glib"_s;
+    return name;
+}
 
 class QGlibNetworkInformationBackend : public QNetworkInformationBackend
 {
@@ -40,7 +45,7 @@ public:
     QGlibNetworkInformationBackend();
     ~QGlibNetworkInformationBackend();
 
-    QString name() const override { return backendName; }
+    QString name() const override { return backendName(); }
     QNetworkInformation::Features featuresSupported() const override
     {
         if (!isValid())
@@ -76,7 +81,7 @@ class QGlibNetworkInformationBackendFactory : public QNetworkInformationBackendF
 public:
     QGlibNetworkInformationBackendFactory() = default;
     ~QGlibNetworkInformationBackendFactory() = default;
-    QString name() const override { return backendName; }
+    QString name() const override { return backendName(); }
     QNetworkInformation::Features featuresSupported() const override
     {
         return QGlibNetworkInformationBackend::featuresSupportedStatic();
@@ -116,7 +121,7 @@ QGlibNetworkInformationBackend::~QGlibNetworkInformationBackend()
 
 bool QGlibNetworkInformationBackend::isValid() const
 {
-    return G_OBJECT_TYPE_NAME(networkMonitor) != "GNetworkMonitorBase"_L1;
+    return QLatin1StringView(G_OBJECT_TYPE_NAME(networkMonitor)) != "GNetworkMonitorBase"_L1;
 }
 
 void QGlibNetworkInformationBackend::updateConnectivity(QGlibNetworkInformationBackend *backend)

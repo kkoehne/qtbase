@@ -5,6 +5,7 @@
 #define QCOMMONSTYLE_P_H
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include <QtGui/private/qguiapplication_p.h>
 #include "qhash.h"
 #include "qcommonstyle.h"
 #include "qstyle_p.h"
@@ -92,13 +93,29 @@ public:
 
     int animationFps;
 #if QT_CONFIG(animation)
-    void _q_removeAnimation();
-
-    QList<const QObject*> animationTargets() const;
     QStyleAnimation* animation(const QObject *target) const;
     void startAnimation(QStyleAnimation *animation) const;
     void stopAnimation(const QObject *target) const;
+    void removeAnimation(const QObject *target) const;
+#endif
 
+    QIcon iconFromWindowsTheme(QCommonStyle::StandardPixmap standardIcon,
+                               const QStyleOption *option,
+                               const QWidget *widget) const;
+    QIcon iconFromMacTheme(QCommonStyle::StandardPixmap standardIcon,
+                           const QStyleOption *option,
+                           const QWidget *widget) const;
+    QIcon iconFromApplicationTheme(QCommonStyle::StandardPixmap standardIcon,
+                                   const QStyleOption *option,
+                                   const QWidget *widget) const;
+    QIcon iconFromResourceTheme(QCommonStyle::StandardPixmap standardIcon,
+                                const QStyleOption *option,
+                                const QWidget *widget) const;
+    static bool inline rtl(const QStyleOption *option) {
+        return (option && option->direction == Qt::RightToLeft) ||
+            (!option && QGuiApplication::isRightToLeft());
+    }
+#if QT_CONFIG(animation)
 private:
     mutable QHash<const QObject*, QStyleAnimation*> animations;
 #endif // animation

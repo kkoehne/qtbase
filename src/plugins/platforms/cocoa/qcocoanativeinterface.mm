@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -60,17 +61,17 @@ void *QCocoaNativeInterface::nativeResourceForWindow(const QByteArray &resourceS
 QPlatformNativeInterface::NativeResourceForIntegrationFunction QCocoaNativeInterface::nativeResourceFunctionForIntegration(const QByteArray &resource)
 {
     if (resource.toLower() == "registerdraggedtypes")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerDraggedTypes);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::registerDraggedTypes));
     if (resource.toLower() == "registertouchwindow")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerTouchWindow);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::registerTouchWindow));
     if (resource.toLower() == "setembeddedinforeignview")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::setEmbeddedInForeignView);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::setEmbeddedInForeignView));
     if (resource.toLower() == "registercontentborderarea")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::registerContentBorderArea);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::registerContentBorderArea));
     if (resource.toLower() == "setcontentborderareaenabled")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::setContentBorderAreaEnabled);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::setContentBorderAreaEnabled));
     if (resource.toLower() == "testcontentborderposition")
-        return NativeResourceForIntegrationFunction(QCocoaNativeInterface::testContentBorderPosition);
+        return NativeResourceForIntegrationFunction(QFunctionPointer(QCocoaNativeInterface::testContentBorderPosition));
 
     return nullptr;
 }

@@ -13,22 +13,22 @@ It allows browsers to, for example:
 - Highlight the most important part of a domain name in the user interface
 
 - Accurately sort history entries by site",
-    "SecurityCritical": true,
-
     "Files": "psl_data.cpp",
     "QtUsage": "Used in Qt Network to avoid setting \"supercookies\" in the cookie jar
 supported by Qt (by the QNetworkCookieJar class).",
 
     "Comment": "Consult https://github.com/publicsuffix/list for the sha1 but download from ...",
     "Homepage": "http://publicsuffix.org/",
-    "Version": "1a4824549b093abc3077205ae5386ed57f73806d, fetched on 2023-09-20",
+    "Comment": "Suggested update schedule: twice per year (before a 6.x.0 release), no relevant CPE found",
+    "Comment": "Updated by util/update_public_suffix_list.sh; if you add fields here, update the script, too!",
+    "Version": "2025-06-16_09-45-02_UTC",
     "DownloadLocation": "https://publicsuffix.org/list/public_suffix_list.dat",
+    "PURL": "pkg:generic/psl-data@2141aa8a1f634c2b839175c559ceaac6a849592c?download_url=https://publicsuffix.org/list/public_suffix_list.dat",
 
     "License": "Mozilla Public License 2.0",
     "LicenseFile": "PSL-LICENSE.txt",
     "LicenseId": "MPL-2.0",
-    "Copyright": "The list was originally provided by Jo Hermans <jo.hermans@gmail.com>.
-It is now maintained on github (https://github.com/publicsuffix/list)."
+    "Copyright": "The list was originally provided by Jo Hermans <jo.hermans@gmail.com>.\nIt is now maintained on github (https://github.com/publicsuffix/list)."
 },
 {
     "Id": "libpsl",
@@ -40,9 +40,11 @@ It is now maintained on github (https://github.com/publicsuffix/list)."
 to lookup entries in it.",
     "Homepage": "https://github.com/rockdaboot/libpsl",
     "Version": "664f3dc85259ec65e30248a61fa1c45b7b0e4c3f",
+    "PURL": "pkg:github/rockdaboot/libpsl@$<VERSION>",
     "License": "BSD 3-clause \"New\" or \"Revised\" License",
     "LicenseFile": "src/LICENSE.chromium",
     "LicenseId": "BSD-3-Clause",
-    "Copyright": "Copyright 2014-2016 The Chromium Authors. All rights reserved."
+    "Copyright": "Copyright 2014-2016 The Chromium Authors. All rights reserved.",
+    "Comment": "no relevant CPE found"
 }
 ]

@@ -21,6 +21,7 @@
 #include "QtWidgets/qlineedit.h"
 #include "QtWidgets/qstyleoption.h"
 #include "QtGui/qvalidator.h"
+#include "QtCore/qbasictimer.h"
 #include "QtCore/qdatetime.h"
 #include "QtCore/qvariant.h"
 #include "private/qwidget_p.h"
@@ -74,8 +75,8 @@ public:
     virtual QString textFromValue(const QVariant &n) const;
     virtual QVariant valueFromText(const QString &input) const;
 
-    void _q_editorTextChanged(const QString &);
-    virtual void _q_editorCursorPositionChanged(int oldpos, int newpos);
+    void editorTextChanged(const QString &);
+    virtual void editorCursorPositionChanged(int oldpos, int newpos);
 
     virtual QStyle::SubControl newHoverControl(const QPoint &pos);
     bool updateHoverControl(const QPoint &pos);
@@ -98,9 +99,9 @@ public:
     QLineEdit *edit = nullptr;
     QSpinBoxValidator *validator = nullptr;
     QMetaType::Type type = QMetaType::UnknownType;
-    int spinClickTimerId = -1;
+    QBasicTimer spinClickTimer;
     int spinClickTimerInterval = 100;
-    int spinClickThresholdTimerId = -1;
+    QBasicTimer spinClickThresholdTimer;
     int spinClickThresholdTimerInterval = -1;
     qreal effectiveSpinRepeatRate = 1;
     int acceleration = 0;

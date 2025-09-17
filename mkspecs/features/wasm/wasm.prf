@@ -9,9 +9,9 @@ exists($$QMAKE_QT_CONFIG) {
 
     ## qmake puts a space if done otherwise
     !isEmpty(QT_WASM_EXTRA_EXPORTED_METHODS): {
-        EXPORTED_METHODS = UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,$$QT_WASM_EXTRA_EXPORTED_METHODS
+        EXPORTED_METHODS = UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain,$$QT_WASM_EXTRA_EXPORTED_METHODS
     } else {
-        EXPORTED_METHODS = UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS
+        EXPORTED_METHODS = UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain
     }
     EMCC_LFLAGS += -s EXPORTED_RUNTIME_METHODS=$$EXPORTED_METHODS
 
@@ -23,6 +23,7 @@ exists($$QMAKE_QT_CONFIG) {
     }
 
     EMCC_LFLAGS += -s EXPORT_NAME=$$EXPORT_NAME
+
 
     qtConfig(thread) {
 
@@ -48,6 +49,19 @@ exists($$QMAKE_QT_CONFIG) {
         INITIAL_MEMORY = $$QT_WASM_INITIAL_MEMORY
     }
     EMCC_LFLAGS += -s INITIAL_MEMORY=$$INITIAL_MEMORY
+    isEmpty(QT_WASM_MAXIMUM_MEMORY) {
+        qtConfig(wasm-jspi) {
+            MAXIMUM_MEMORY = 2GB # Avoid triggering Emscripten bug #23834
+        } else {
+            MAXIMUM_MEMORY = 4GB # 32-bit max
+        }
+    } else {
+        MAXIMUM_MEMORY = $$QT_WASM_MAXIMUM_MEMORY
+    }
+    EMCC_LFLAGS += -s MAXIMUM_MEMORY=$$MAXIMUM_MEMORY
+
+    target_filename_base = $$replace(TARGET, \.js$, )
+    QMAKE_DISTCLEAN += qtloader.js qtlogo.svg $${target_filename_base}.wasm $${target_filename_base}.js $${target_filename_base}.html
 
     qtConfig(sse2) {
         QMAKE_CFLAGS += -O2 -msimd128 -msse -msse2
@@ -65,6 +79,14 @@ exists($$QMAKE_QT_CONFIG) {
         }
         EMCC_CFLAGS += $$EMCC_MODULE_FLAGS
         EMCC_LFLAGS += $$EMCC_MODULE_FLAGS
+    }
+
+    qtConfig(wasm-jspi) {
+        EMCC_LFLAGS += -sJSPI
+    }
+
+    qtConfig(wasm-exceptions) {
+        EMCC_LFLAGS += -fwasm-exceptions
     }
 
     QMAKE_LFLAGS       += $$EMCC_LFLAGS

@@ -4,6 +4,8 @@
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
 #include "qandroidplatformtheme.h"
+#include "qandroidplatformfileiconengine.h"
+#include "qandroidplatformiconengine.h"
 #include "qandroidplatformmenubar.h"
 #include "qandroidplatformmenu.h"
 #include "qandroidplatformmenuitem.h"
@@ -21,6 +23,8 @@
 #include <qandroidplatformintegration.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcQpaMenus, "qt.qpa.menus")
 
 using namespace Qt::StringLiterals;
 
@@ -158,17 +162,13 @@ QJsonObject AndroidStyle::loadStyleData()
     if (!stylePath.isEmpty() && !stylePath.endsWith(slashChar))
         stylePath += slashChar;
 
-    if (QAndroidPlatformIntegration::colorScheme() == Qt::ColorScheme::Dark)
+    const Qt::ColorScheme colorScheme = QAndroidPlatformTheme::instance()
+                                      ? QAndroidPlatformTheme::instance()->colorScheme()
+                                      : QAndroidPlatformIntegration::colorScheme();
+    if (colorScheme == Qt::ColorScheme::Dark)
         stylePath += "darkUiMode/"_L1;
 
     Q_ASSERT(!stylePath.isEmpty());
-
-    QString androidTheme = QLatin1StringView(qgetenv("QT_ANDROID_THEME"));
-    if (!androidTheme.isEmpty() && !androidTheme.endsWith(slashChar))
-        androidTheme += slashChar;
-
-    if (!androidTheme.isEmpty() && QFileInfo::exists(stylePath + androidTheme + "style.json"_L1))
-        stylePath += androidTheme;
 
     QFile f(stylePath + "style.json"_L1);
     if (!f.open(QIODevice::ReadOnly))
@@ -400,27 +400,44 @@ void QAndroidPlatformTheme::updateStyle()
 
 QPlatformMenuBar *QAndroidPlatformTheme::createPlatformMenuBar() const
 {
-    return new QAndroidPlatformMenuBar;
+    auto *menuBar = new QAndroidPlatformMenuBar;
+    qCDebug(lcQpaMenus) << "Created" << menuBar;
+    return menuBar;
 }
 
 QPlatformMenu *QAndroidPlatformTheme::createPlatformMenu() const
 {
-    return new QAndroidPlatformMenu;
+    auto *menu = new QAndroidPlatformMenu;
+    qCDebug(lcQpaMenus) << "Created" << menu;
+    return menu;
 }
 
 QPlatformMenuItem *QAndroidPlatformTheme::createPlatformMenuItem() const
 {
-    return new QAndroidPlatformMenuItem;
+    auto *menuItem = new QAndroidPlatformMenuItem;
+    qCDebug(lcQpaMenus) << "Created" << menuItem;
+    return menuItem;
 }
 
 void QAndroidPlatformTheme::showPlatformMenuBar()
 {
+    qCDebug(lcQpaMenus) << "Showing platform menu bar";
     QtAndroidMenu::openOptionsMenu();
 }
 
 Qt::ColorScheme QAndroidPlatformTheme::colorScheme() const
 {
+    if (m_colorSchemeOverride != Qt::ColorScheme::Unknown)
+        return m_colorSchemeOverride;
     return QAndroidPlatformIntegration::colorScheme();
+}
+
+void QAndroidPlatformTheme::requestColorScheme(Qt::ColorScheme scheme)
+{
+    m_colorSchemeOverride = scheme;
+    QMetaObject::invokeMethod(qGuiApp, [this]{
+        updateColorScheme();
+    });
 }
 
 static inline int paletteType(QPlatformTheme::Palette type)
@@ -488,6 +505,28 @@ const QFont *QAndroidPlatformTheme::font(Font type) const
     return 0;
 }
 
+QIconEngine *QAndroidPlatformTheme::createIconEngine(const QString &iconName) const
+{
+    return new QAndroidPlatformIconEngine(iconName);
+}
+
+QIcon QAndroidPlatformTheme::fileIcon(const QFileInfo &fileInfo,
+                                      QPlatformTheme::IconOptions options) const
+{
+#ifndef QT_NO_ICON
+    std::unique_ptr<QIconEngine> iconEngine(new QAndroidPlatformFileIconEngine(fileInfo, options));
+    if (iconEngine->isNull()) {
+        // If we didn't get an icon for the file type, return a generic file
+        // icon. Assuming the Material Symbols font, this is the "draft" icon
+        // with code point e66d.
+        iconEngine.reset(new QAndroidPlatformIconEngine(u"\ue66d"_s));
+    }
+    return QIcon(iconEngine.release());
+#else
+    return {};
+#endif
+}
+
 QVariant QAndroidPlatformTheme::themeHint(ThemeHint hint) const
 {
     switch (hint) {
@@ -522,6 +561,8 @@ QVariant QAndroidPlatformTheme::themeHint(ThemeHint hint) const
 
             Q_FALLTHROUGH();
     }
+    case PreferFileIconFromTheme:
+        return true;
     default:
         return QPlatformTheme::themeHint(hint);
     }

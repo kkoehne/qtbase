@@ -15,8 +15,11 @@ qt_internal_add_test(tst_qdate
     SOURCES
         tst_qdate.cpp
     DEFINES
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
         QT_NO_FOREACH
         QT_NO_KEYWORDS
     LIBRARIES
         Qt::CorePrivate
+        Qt::TestPrivate
 )

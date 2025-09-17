@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qtexthtmlparser_p.h"
 
@@ -1181,7 +1182,7 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
     QCss::ValueExtractor extractor(declarations);
     extractor.extractBox(margin, padding);
 
-    if (id == Html_td || id == Html_th) {
+    auto getBorderValues = [&extractor](qreal *borderWidth, QBrush *borderBrush, QTextFrameFormat::BorderStyle *borderStyles) {
         QCss::BorderStyle cssStyles[4];
         int cssBorder[4];
         QSize cssRadii[4]; // unused
@@ -1193,12 +1194,16 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
         // QCss::BorderWidth parsing below which expects a single value
         // will not work as expected - which in this case does not matter
         // because tableBorder is not relevant for cells.
-        extractor.extractBorder(cssBorder, tableCellBorderBrush, cssStyles, cssRadii);
+        bool hit = extractor.extractBorder(cssBorder, borderBrush, cssStyles, cssRadii);
         for (int i = 0; i < 4; ++i) {
-            tableCellBorderStyle[i] = toQTextFrameFormat(cssStyles[i]);
-            tableCellBorder[i] = static_cast<qreal>(cssBorder[i]);
+            borderStyles[i] = toQTextFrameFormat(cssStyles[i]);
+            borderWidth[i] = static_cast<qreal>(cssBorder[i]);
         }
-    }
+        return hit;
+    };
+
+    if (id == Html_td || id == Html_th)
+        getBorderValues(tableCellBorder, tableCellBorderBrush, tableCellBorderStyle);
 
     for (int i = 0; i < declarations.size(); ++i) {
         const QCss::Declaration &decl = declarations.at(i);
@@ -1209,7 +1214,13 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
             identifier = static_cast<QCss::KnownValue>(decl.d->values.constFirst().variant.toInt());
 
         switch (decl.d->propertyId) {
-        case QCss::BorderColor: borderBrush = QBrush(decl.colorValue()); break;
+        case QCss::BorderColor: {
+            QBrush bordersBrush[4];
+            decl.brushValues(bordersBrush);
+            if (bordersBrush[0].color().isValid())
+                borderBrush = bordersBrush[0];
+            break;
+        }
         case QCss::BorderStyles:
             if (decl.styleValue() != QCss::BorderStyle_Unknown && decl.styleValue() != QCss::BorderStyle_Native)
                 borderStyle = static_cast<QTextFrameFormat::BorderStyle>(decl.styleValue() - 1);
@@ -1220,6 +1231,19 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
             tableBorder = borders[0];
             }
             break;
+        case QCss::Border: {
+            qreal tblBorder[4];
+            QBrush tblBorderBrush[4];
+            QTextFrameFormat::BorderStyle tblBorderStyle[4];
+            if (getBorderValues(tblBorder, tblBorderBrush, tblBorderStyle)) {
+                tableBorder = tblBorder[0];
+                if (tblBorderBrush[0].color().isValid())
+                    borderBrush = tblBorderBrush[0];
+                if (tblBorderStyle[0] != static_cast<QTextFrameFormat::BorderStyle>(-1))
+                    borderStyle = tblBorderStyle[0];
+            }
+        }
+        break;
         case QCss::BorderCollapse:
             borderCollapse = decl.borderCollapseValue();
             break;
@@ -1387,6 +1411,92 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
             }
             break;
         }
+        case QCss::QtStrokeColor:
+        {
+            QPen pen = charFormat.textOutline();
+            pen.setStyle(Qt::SolidLine);
+            pen.setColor(decl.colorValue());
+            charFormat.setTextOutline(pen);
+            break;
+        }
+        case QCss::QtStrokeWidth:
+        {
+            qreal width;
+            if (decl.realValue(&width, "px")) {
+                QPen pen = charFormat.textOutline();
+                pen.setWidthF(width);
+                charFormat.setTextOutline(pen);
+            }
+            break;
+        }
+        case QCss::QtStrokeLineCap:
+        {
+            QPen pen = charFormat.textOutline();
+            switch (identifier) {
+            case QCss::Value_SquareCap: pen.setCapStyle(Qt::SquareCap); break;
+            case QCss::Value_FlatCap: pen.setCapStyle(Qt::FlatCap); break;
+            case QCss::Value_RoundCap: pen.setCapStyle(Qt::RoundCap); break;
+            default: break;
+            }
+            charFormat.setTextOutline(pen);
+            break;
+        }
+        case QCss::QtStrokeLineJoin:
+        {
+            QPen pen = charFormat.textOutline();
+            switch (identifier) {
+            case QCss::Value_MiterJoin: pen.setJoinStyle(Qt::MiterJoin); break;
+            case QCss::Value_BevelJoin: pen.setJoinStyle(Qt::BevelJoin); break;
+            case QCss::Value_RoundJoin: pen.setJoinStyle(Qt::RoundJoin); break;
+            case QCss::Value_SvgMiterJoin: pen.setJoinStyle(Qt::SvgMiterJoin); break;
+            default: break;
+            }
+            charFormat.setTextOutline(pen);
+            break;
+        }
+        case QCss::QtStrokeMiterLimit:
+        {
+            qreal miterLimit;
+            if (decl.realValue(&miterLimit)) {
+                QPen pen = charFormat.textOutline();
+                pen.setMiterLimit(miterLimit);
+                charFormat.setTextOutline(pen);
+            }
+            break;
+        }
+        case QCss::QtStrokeDashArray:
+        {
+            QList<qreal> dashes = decl.dashArray();
+            if (!dashes.empty()) {
+                QPen pen = charFormat.textOutline();
+                pen.setDashPattern(dashes);
+                charFormat.setTextOutline(pen);
+            }
+            break;
+        }
+        case QCss::QtStrokeDashOffset:
+        {
+            qreal dashOffset;
+            if (decl.realValue(&dashOffset)) {
+                QPen pen = charFormat.textOutline();
+                pen.setDashOffset(dashOffset);
+                charFormat.setTextOutline(pen);
+            }
+            break;
+        }
+        case QCss::QtForeground:
+        {
+            QBrush brush = decl.brushValue();
+            charFormat.setForeground(brush);
+            break;
+        }
+        case QCss::MaximumWidth:
+            if (id == Html_img) {
+                auto imageFormat = charFormat.toImageFormat();
+                imageFormat.setMaximumWidth(extractor.textLength(decl));
+                charFormat = imageFormat;
+            }
+            break;
         default: break;
         }
     }
@@ -1697,7 +1807,8 @@ void QTextHtmlParser::applyAttributes(const QStringList &attributes)
                 }
                 break;
             case Html_table:
-                if (key == "border"_L1) {
+                // If table border already set through css style, prefer that one otherwise consider this value
+                if (key == "border"_L1 && !node->tableBorder) {
                     setFloatAttribute(&node->tableBorder, value);
                 } else if (key == "bgcolor"_L1) {
                     QColor c = QColor::fromString(value);
@@ -2164,7 +2275,8 @@ bool QTextHtmlParser::nodeIsChildOf(int i, QTextHTMLElements id) const
     return false;
 }
 
-QT_END_NAMESPACE
 #endif // QT_NO_CSSPARSER
+
+QT_END_NAMESPACE
 
 #endif // QT_NO_TEXTHTMLPARSER

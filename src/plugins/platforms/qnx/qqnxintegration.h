@@ -6,15 +6,20 @@
 
 #include <qpa/qplatformintegration.h>
 #include <private/qtguiglobal_p.h>
+#include <QtCore/qhash.h>
 #include <QtCore/qmutex.h>
 
 #include <screen/screen.h>
+#include <QtCore/QLoggingCategory>
 
 #if QT_CONFIG(opengl)
 #include <EGL/egl.h>
 #endif
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcQpaQnx);
+Q_DECLARE_LOGGING_CATEGORY(lcQpaGLContext);
 
 class QQnxScreenEventThread;
 class QQnxFileDialogHelper;
@@ -28,9 +33,9 @@ class QQnxAbstractVirtualKeyboard;
 class QQnxServices;
 
 class QSimpleDrag;
+class QQnxInputContext;
 
 #if QT_CONFIG(qqnx_pps)
-class QQnxInputContext;
 class QQnxNavigatorEventNotifier;
 class QQnxButtonEventNotifier;
 #endif
@@ -39,8 +44,7 @@ class QQnxButtonEventNotifier;
 class QQnxClipboard;
 #endif
 
-template<class K, class V> class QHash;
-typedef QHash<screen_window_t, QWindow *> QQnxWindowMapper;
+using QQnxWindowMapper = QHash<screen_window_t, QWindow *>;
 
 class QQnxIntegration : public QPlatformIntegration
 {
@@ -50,7 +54,8 @@ public:
         FullScreenApplication = 0x1,
         RootWindow = 0x2,
         AlwaysFlushScreenContext = 0x4,
-        SurfacelessEGLContext = 0x8
+        SurfacelessEGLContext = 0x8,
+        Desktop = 0x10
     };
     Q_DECLARE_FLAGS(Options, Option)
     explicit QQnxIntegration(const QStringList &paramList);
@@ -69,9 +74,7 @@ public:
     QPlatformOpenGLContext *createPlatformOpenGLContext(QOpenGLContext *context) const override;
 #endif
 
-#if QT_CONFIG(qqnx_pps)
     QPlatformInputContext *inputContext() const override;
-#endif
 
     void moveToScreen(QWindow *window, int screen);
 
@@ -120,13 +123,13 @@ private:
     QQnxScreenEventThread *m_screenEventThread;
     QQnxNavigatorEventHandler *m_navigatorEventHandler;
     QQnxAbstractVirtualKeyboard *m_virtualKeyboard;
+    QQnxInputContext *m_inputContext;
 #if QT_CONFIG(qqnx_pps)
     QQnxNavigatorEventNotifier *m_navigatorEventNotifier;
-    QQnxInputContext *m_inputContext;
     QQnxButtonEventNotifier *m_buttonsNotifier;
 #endif
     QPlatformInputContext *m_qpaInputContext;
-    QQnxServices *m_services;
+    mutable QQnxServices *m_services = nullptr;
     QPlatformFontDatabase *m_fontDatabase;
     mutable QAbstractEventDispatcher *m_eventDispatcher;
     QQnxNativeInterface *m_nativeInterface;

@@ -132,13 +132,11 @@ protected:
     virtual StepEnabled stepEnabled() const;
 Q_SIGNALS:
     void editingFinished();
+    void returnPressed();
 protected:
     QAbstractSpinBox(QAbstractSpinBoxPrivate &dd, QWidget *parent = nullptr);
 
 private:
-    Q_PRIVATE_SLOT(d_func(), void _q_editorTextChanged(const QString &))
-    Q_PRIVATE_SLOT(d_func(), void _q_editorCursorPositionChanged(int, int))
-
     Q_DECLARE_PRIVATE(QAbstractSpinBox)
     Q_DISABLE_COPY(QAbstractSpinBox)
     friend class QAccessibleAbstractSpinBox;

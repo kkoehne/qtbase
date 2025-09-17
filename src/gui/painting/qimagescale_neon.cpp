@@ -3,11 +3,13 @@
 
 #include "qimagescale_p.h"
 #include "qimage.h"
+#include <private/qtguiglobal_p.h>
 #include <private/qsimd_p.h>
 
-#if QT_CONFIG(thread) && !defined(Q_OS_WASM)
-#include <qsemaphore.h>
+#if QT_CONFIG(qtgui_threadpool)
+#include <private/qlatch_p.h>
 #include <qthreadpool.h>
+#include <private/qguiapplication_p.h>
 #include <private/qthreadpool_p.h>
 #endif
 
@@ -20,22 +22,22 @@ using namespace QImageScale;
 template<typename T>
 static inline void multithread_pixels_function(QImageScaleInfo *isi, int dh, const T &scaleSection)
 {
-#if QT_CONFIG(thread) && !defined(Q_OS_WASM)
+#if QT_CONFIG(qtgui_threadpool)
     int segments = (qsizetype(isi->sh) * isi->sw) / (1<<16);
     segments = std::min(segments, dh);
-    QThreadPool *threadPool = QThreadPoolPrivate::qtGuiInstance();
+    QThreadPool *threadPool = QGuiApplicationPrivate::qtGuiThreadPool();
     if (segments > 1 && threadPool && !threadPool->contains(QThread::currentThread())) {
-        QSemaphore semaphore;
+        QLatch semaphore(segments);
         int y = 0;
         for (int i = 0; i < segments; ++i) {
             int yn = (dh - y) / (segments - i);
             threadPool->start([&, y, yn]() {
                 scaleSection(y, y + yn);
-                semaphore.release(1);
+                semaphore.countDown();
             });
             y += yn;
         }
-        semaphore.acquire(segments);
+        semaphore.wait();
         return;
     }
 #endif

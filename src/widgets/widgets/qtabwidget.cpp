@@ -29,7 +29,7 @@ using namespace Qt::StringLiterals;
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-tabwidget.png
+    \image fusion-tabwidget.png
 
     A tab widget provides a tab bar (see QTabBar) and a "page area"
     that is used to display pages related to each tab. By default, the
@@ -156,9 +156,9 @@ public:
     QTabWidgetPrivate();
     ~QTabWidgetPrivate();
     void updateTabBarPosition();
-    void _q_showTab(int);
-    void _q_removeTab(int);
-    void _q_tabMoved(int from, int to);
+    void showTab(int);
+    void removeTab(int);
+    void tabMoved(int from, int to);
     void init();
     bool isAutoHidden() const
     {
@@ -197,7 +197,7 @@ void QTabWidgetPrivate::init()
     // hack so that QMacStyle::layoutSpacing() can detect tab widget pages
     stack->setSizePolicy(QSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred, QSizePolicy::TabWidget));
 
-    QObject::connect(stack, SIGNAL(widgetRemoved(int)), q, SLOT(_q_removeTab(int)));
+    QObjectPrivate::connect(stack, &QStackedWidget::widgetRemoved, this, &QTabWidgetPrivate::removeTab);
     QTabBar *tabBar = new QTabBar(q);
     tabBar->setObjectName("qt_tabwidget_tabbar"_L1);
     tabBar->setDrawBase(false);
@@ -296,7 +296,7 @@ void QTabWidget::initStyleOption(QStyleOptionTabWidgetFrame *option) const
         }
     }
 
-    if (d->rightCornerWidget) {
+    if (d->rightCornerWidget && d->rightCornerWidget->isVisible()) {
         const QSize rightCornerSizeHint = d->rightCornerWidget->sizeHint();
         const QSize bounds(rightCornerSizeHint.width(), t.height() - exth);
         option->rightCornerWidgetSize = rightCornerSizeHint.boundedTo(bounds);
@@ -304,7 +304,7 @@ void QTabWidget::initStyleOption(QStyleOptionTabWidgetFrame *option) const
         option->rightCornerWidgetSize = QSize(0, 0);
     }
 
-    if (d->leftCornerWidget) {
+    if (d->leftCornerWidget && d->leftCornerWidget->isVisible()) {
         const QSize leftCornerSizeHint = d->leftCornerWidget->sizeHint();
         const QSize bounds(leftCornerSizeHint.width(), t.height() - exth);
         option->leftCornerWidgetSize = leftCornerSizeHint.boundedTo(bounds);
@@ -720,17 +720,17 @@ void QTabWidget::setTabBar(QTabBar* tb)
     delete d->tabs;
     d->tabs = tb;
     setFocusProxy(d->tabs);
-    connect(d->tabs, SIGNAL(currentChanged(int)),
-            this, SLOT(_q_showTab(int)));
-    connect(d->tabs, SIGNAL(tabMoved(int,int)),
-            this, SLOT(_q_tabMoved(int,int)));
-    connect(d->tabs, SIGNAL(tabBarClicked(int)),
-            this, SIGNAL(tabBarClicked(int)));
-    connect(d->tabs, SIGNAL(tabBarDoubleClicked(int)),
-            this, SIGNAL(tabBarDoubleClicked(int)));
+    QObjectPrivate::connect(d->tabs, &QTabBar::currentChanged,
+                            d, &QTabWidgetPrivate::showTab);
+    QObjectPrivate::connect(d->tabs, &QTabBar::tabMoved,
+                            d, &QTabWidgetPrivate::tabMoved);
+    connect(d->tabs, &QTabBar::tabBarClicked,
+            this, &QTabWidget::tabBarClicked);
+    connect(d->tabs, &QTabBar::tabBarDoubleClicked,
+            this, &QTabWidget::tabBarDoubleClicked);
     if (d->tabs->tabsClosable())
-        connect(d->tabs, SIGNAL(tabCloseRequested(int)),
-                this, SIGNAL(tabCloseRequested(int)));
+        connect(d->tabs, &QTabBar::tabCloseRequested,
+                this, &QTabWidget::tabCloseRequested);
     tb->setExpanding(!documentMode());
     setUpLayout();
 }
@@ -752,7 +752,7 @@ QTabBar* QTabWidget::tabBar() const
     sized.
 */
 
-void QTabWidgetPrivate::_q_showTab(int index)
+void QTabWidgetPrivate::showTab(int index)
 {
     Q_Q(QTabWidget);
     if (index < stack->count() && index >= 0)
@@ -760,7 +760,7 @@ void QTabWidgetPrivate::_q_showTab(int index)
     emit q->currentChanged(index);
 }
 
-void QTabWidgetPrivate::_q_removeTab(int index)
+void QTabWidgetPrivate::removeTab(int index)
 {
     Q_Q(QTabWidget);
     tabs->removeTab(index);
@@ -768,7 +768,7 @@ void QTabWidgetPrivate::_q_removeTab(int index)
     q->tabRemoved(index);
 }
 
-void QTabWidgetPrivate::_q_tabMoved(int from, int to)
+void QTabWidgetPrivate::tabMoved(int from, int to)
 {
     const QSignalBlocker blocker(stack);
     QWidget *w = stack->widget(from);
@@ -808,9 +808,9 @@ void QTabWidget::setUpLayout(bool onlyCheck)
 
     d->tabs->setGeometry(tabRect);
     d->stack->setGeometry(contentsRect);
-    if (d->leftCornerWidget)
+    if (d->leftCornerWidget && d->leftCornerWidget->isVisible())
         d->leftCornerWidget->setGeometry(leftCornerRect);
-    if (d->rightCornerWidget)
+    if (d->rightCornerWidget && d->rightCornerWidget->isVisible())
         d->rightCornerWidget->setGeometry(rightCornerRect);
 
     if (!onlyCheck)
@@ -842,9 +842,9 @@ QSize QTabWidget::sizeHint() const
     initStyleOption(&opt);
     opt.state = QStyle::State_None;
 
-    if (d->leftCornerWidget)
+    if (d->leftCornerWidget && d->leftCornerWidget->isVisible())
         lc = d->leftCornerWidget->sizeHint();
-    if (d->rightCornerWidget)
+    if (d->rightCornerWidget  && d->rightCornerWidget->isVisible())
         rc = d->rightCornerWidget->sizeHint();
     if (!d->dirty) {
         QTabWidget *that = const_cast<QTabWidget*>(this);
@@ -882,9 +882,9 @@ QSize QTabWidget::minimumSizeHint() const
     Q_D(const QTabWidget);
     QSize lc(0, 0), rc(0, 0);
 
-    if (d->leftCornerWidget)
+    if (d->leftCornerWidget && d->leftCornerWidget->isVisible())
         lc = d->leftCornerWidget->minimumSizeHint();
-    if (d->rightCornerWidget)
+    if (d->rightCornerWidget && d->rightCornerWidget->isVisible())
         rc = d->rightCornerWidget->minimumSizeHint();
     if (!d->dirty) {
         QTabWidget *that = const_cast<QTabWidget*>(this);
@@ -918,9 +918,9 @@ int QTabWidget::heightForWidth(int width) const
     const QSize padding = style()->sizeFromContents(QStyle::CT_TabWidget, &opt, zero, this);
 
     QSize lc(0, 0), rc(0, 0);
-    if (d->leftCornerWidget)
+    if (d->leftCornerWidget && d->leftCornerWidget->isVisible())
         lc = d->leftCornerWidget->sizeHint();
-    if (d->rightCornerWidget)
+    if (d->rightCornerWidget && d->rightCornerWidget->isVisible())
         rc = d->rightCornerWidget->sizeHint();
     if (!d->dirty) {
         QTabWidget *that = const_cast<QTabWidget*>(this);
@@ -1139,7 +1139,7 @@ void QTabWidget::keyPressEvent(QKeyEvent *e)
                       ) {
                 page = 0;
             }
-            if (d->tabs->isTabEnabled(page)) {
+            if (d->tabs->isTabEnabled(page) && d->tabs->isTabVisible(page)) {
                 setCurrentIndex(page);
                 break;
             }
@@ -1255,20 +1255,22 @@ void QTabWidget::paintEvent(QPaintEvent *)
 {
     Q_D(QTabWidget);
     if (documentMode()) {
-        QStylePainter p(this, tabBar());
-        if (QWidget *w = cornerWidget(Qt::TopLeftCorner)) {
-            QStyleOptionTabBarBase opt;
-            QTabBarPrivate::initStyleBaseOption(&opt, tabBar(), w->size());
-            opt.rect.moveLeft(w->x() + opt.rect.x());
-            opt.rect.moveTop(w->y() + opt.rect.y());
-            p.drawPrimitive(QStyle::PE_FrameTabBarBase, opt);
-        }
-        if (QWidget *w = cornerWidget(Qt::TopRightCorner)) {
-            QStyleOptionTabBarBase opt;
-            QTabBarPrivate::initStyleBaseOption(&opt, tabBar(), w->size());
-            opt.rect.moveLeft(w->x() + opt.rect.x());
-            opt.rect.moveTop(w->y() + opt.rect.y());
-            p.drawPrimitive(QStyle::PE_FrameTabBarBase, opt);
+        if (d->tabs->drawBase()) {
+            QStylePainter p(this, tabBar());
+            if (QWidget *w = cornerWidget(Qt::TopLeftCorner); w && w->isVisible()) {
+                QStyleOptionTabBarBase opt;
+                QTabBarPrivate::initStyleBaseOption(&opt, tabBar(), w->size());
+                opt.rect.moveLeft(w->x() + opt.rect.x());
+                opt.rect.moveTop(w->y() + opt.rect.y());
+                p.drawPrimitive(QStyle::PE_FrameTabBarBase, opt);
+            }
+            if (QWidget *w = cornerWidget(Qt::TopRightCorner); w && w->isVisible()) {
+                QStyleOptionTabBarBase opt;
+                QTabBarPrivate::initStyleBaseOption(&opt, tabBar(), w->size());
+                opt.rect.moveLeft(w->x() + opt.rect.x());
+                opt.rect.moveTop(w->y() + opt.rect.y());
+                p.drawPrimitive(QStyle::PE_FrameTabBarBase, opt);
+            }
         }
         return;
     }
@@ -1361,7 +1363,8 @@ void QTabWidget::setUsesScrollButtons(bool useButtons)
 bool QTabWidget::documentMode() const
 {
     Q_D(const QTabWidget);
-    return d->tabs->documentMode();
+    // QStyleSheetStyle could query documentMode during creation of our QTabBar.
+    return d->tabs ? d->tabs->documentMode() : false;
 }
 
 void QTabWidget::setDocumentMode(bool enabled)
@@ -1402,9 +1405,20 @@ void QTabWidget::setTabBarAutoHide(bool enabled)
 */
 void QTabWidget::clear()
 {
-    // ### optimize by introduce QStackedLayout::clear()
-    while (count())
-        removeTab(0);
+    Q_D(QTabWidget);
+    Q_ASSERT(d->stack->layout());
+    d->stack->layout()->setEnabled(false);
+    d->stack->setUpdatesEnabled(false);
+    d->tabs->setUpdatesEnabled(false);
+
+    int c = count();
+    while (c)
+        removeTab(--c);
+
+    d->tabs->setUpdatesEnabled(true);
+    d->stack->setUpdatesEnabled(true);
+    d->stack->layout()->setEnabled(true);
+    d->stack->layout()->activate();
 }
 
 QTabBar::Shape _q_tb_tabBarShapeFrom(QTabWidget::TabShape shape, QTabWidget::TabPosition position)

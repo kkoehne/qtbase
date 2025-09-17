@@ -18,9 +18,10 @@
 #include <QtCore/qabstractitemmodel.h>
 #include <QtWidgets/qabstractitemview.h>
 #include <QtWidgets/qlistwidget.h>
-#include <qitemdelegate.h>
 #include <private/qlistview_p.h>
 #include <private/qwidgetitemdata_p.h>
+
+#include <array>
 
 QT_REQUIRE_CONFIG(listwidget);
 
@@ -49,6 +50,8 @@ public:
     QListModel(QListWidget *parent);
     ~QListModel();
 
+    inline QListWidget *view() const { return qobject_cast<QListWidget *>(QObject::parent()); }
+
     void clear();
     QListWidgetItem *at(int row) const;
     void insert(int row, QListWidgetItem *item);
@@ -76,10 +79,10 @@ public:
 
     void sort(int column, Qt::SortOrder order) override;
     void ensureSorted(int column, Qt::SortOrder order, int start, int end);
-    static bool itemLessThan(const QPair<QListWidgetItem*,int> &left,
-                             const QPair<QListWidgetItem*,int> &right);
-    static bool itemGreaterThan(const QPair<QListWidgetItem*,int> &left,
-                                const QPair<QListWidgetItem*,int> &right);
+    static bool itemLessThan(const std::pair<QListWidgetItem*,int> &left,
+                             const std::pair<QListWidgetItem*,int> &right);
+    static bool itemGreaterThan(const std::pair<QListWidgetItem*,int> &left,
+                                const std::pair<QListWidgetItem*,int> &right);
     static QList<QListWidgetItem*>::iterator sortedInsertionIterator(
         const QList<QListWidgetItem*>::iterator &begin,
         const QList<QListWidgetItem*>::iterator &end,
@@ -94,8 +97,8 @@ public:
     bool dropMimeData(const QMimeData *data, Qt::DropAction action,
                       int row, int column, const QModelIndex &parent) override;
     Qt::DropActions supportedDropActions() const override;
+    Qt::DropActions supportedDragActions() const override;
 #endif
-
     QMimeData *internalMimeData()  const;
 private:
     QList<QListWidgetItem*> items;
@@ -113,17 +116,22 @@ public:
     QListWidgetPrivate() : QListViewPrivate(), sortOrder(Qt::AscendingOrder), sortingEnabled(false) {}
     inline QListModel *listModel() const { return qobject_cast<QListModel*>(model); }
     void setup();
-    void _q_emitItemPressed(const QModelIndex &index);
-    void _q_emitItemClicked(const QModelIndex &index);
-    void _q_emitItemDoubleClicked(const QModelIndex &index);
-    void _q_emitItemActivated(const QModelIndex &index);
-    void _q_emitItemEntered(const QModelIndex &index);
-    void _q_emitItemChanged(const QModelIndex &index);
-    void _q_emitCurrentItemChanged(const QModelIndex &current, const QModelIndex &previous);
-    void _q_sort();
-    void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void clearConnections();
+    void emitItemPressed(const QModelIndex &index);
+    void emitItemClicked(const QModelIndex &index);
+    void emitItemDoubleClicked(const QModelIndex &index);
+    void emitItemActivated(const QModelIndex &index);
+    void emitItemEntered(const QModelIndex &index);
+    void emitItemChanged(const QModelIndex &index);
+    void emitCurrentItemChanged(const QModelIndex &current, const QModelIndex &previous);
+    void sort();
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+
     Qt::SortOrder sortOrder;
     bool sortingEnabled;
+    std::optional<Qt::DropActions> supportedDragActions;
+    std::array<QMetaObject::Connection, 8> connections;
+    std::array<QMetaObject::Connection, 2> selectionModelConnections;
 };
 
 class QListWidgetItemPrivate

@@ -1,6 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QCoreApplication>
 
@@ -16,16 +16,18 @@ QT_REQUIRE_CONFIG(process);
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QProcess>
 
 #include <QTest>
 
-#include <QProcess>
-
-#include <private/cycle_p.h>
+#include <regex>
+#include <private/cycle_include_p.h>
 
 #include <QtTest/private/qemulationdetector_p.h>
 
 using namespace Qt::StringLiterals;
+
+enum class Throw { OnFail = 1 };
 
 struct BenchmarkResult
 {
@@ -86,7 +88,8 @@ static bool compareBenchmarkResult(BenchmarkResult const &r1, BenchmarkResult co
 
 // Split the passed block of text into an array of lines, replacing any
 // filenames and line numbers with generic markers to avoid failing the test
-// due to compiler-specific behaviour.
+// due to compiler-specific behavior. For some known differences in output,
+// it normalizes the stored text.
 static QList<QByteArray> splitLines(QByteArray ba)
 {
     ba.replace('\r', "");
@@ -111,6 +114,32 @@ static QList<QByteArray> splitLines(QByteArray ba)
                 continue;
             }
             line.replace(index, end-index + 1, markers[j][1]);
+        }
+
+        // There's some difference on how floating point numbers are printed by
+        // the various snprintf(), both in decimal and in hexadecimal form. The
+        // following regex catches them so we can normalize the output to the
+        // current running libc.
+        //
+        // Examples (most but not all attested):
+        //  1    0x1p+0     0x8p-3
+        //  1.00000000000000000   0x1.0000000000000p+0
+        //  1.5  0x1.8p+0   0xcp-3
+        //  1e6  1e+06      1e+6
+        //  1e-7 1e-07      1e-007
+        //  -1.797693134862316e+308 -0xf.ffffffffffff8p+1020 -0x1.fffffffffffffp+1023
+        static std::regex fpValueRx(R"(-?\d+(?:\.\d*)?(?:e[-+]\d\d+)? \((-?0x[\da-f.]+p[-+]?\d+)\))");
+        if (std::cmatch match; std::regex_search(line.cbegin(), line.cend(), match, fpValueRx)) {
+            if (double value; sscanf(match[1].first, "%la", &value) == 1) {
+                // remove the decimal and hexadecimal string representations
+                line.truncate(match[0].first - line.cbegin());
+
+                // append normalized hexfloat
+                // this won't fail and the buffer is definitely big enough
+                char buf[128];
+                int n = snprintf(buf, sizeof(buf), "%a", value);
+                line += std::string_view(buf, n);
+            }
         }
     }
 
@@ -638,11 +667,6 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         return true;
 #endif
 
-    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
-        qDebug() << "TestLogger::shouldIgnoreTest() ignore" << test << "on wayland/xwayland!";
-        return true;
-    }
-
     // These tests are affected by timing and whether the CPU tick counter
     // is monotonically increasing. They won't work on some machines so
     // leave them off by default. Feel free to enable them for your own
@@ -675,6 +699,10 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
 
     if (test == "benchlibcallgrind") {
 #if defined(__GNUC__) && (defined(__i386) || defined(__x86_64)) && defined(Q_OS_LINUX)
+#  ifdef __AVX512F__
+        WARN("Valgrind does not support AVX512/AVX10 as of the time of this writing");
+        return true;
+#  endif
         // Check that it's actually available
         QProcess checkProcess;
         QStringList args{u"--version"_s};
@@ -687,6 +715,18 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
         // Skip on platforms where callgrind is not available
         return true;
 #endif
+    }
+
+#ifndef __cpp_lib_three_way_comparison
+    if (test == "threewaycompare") {
+        WARN("The threewaycompare test requires C++20 support. Skipping.");
+        return true;
+    }
+#endif
+
+    if (!QT_CONFIG(signaling_nan) && test == "float") {
+        WARN("Test output was designed for machines with signaling NaN");
+        return true;
     }
 
     if (logger != QTestLog::Plain || outputMode == FileOutput) {
@@ -931,6 +971,8 @@ static QProcessEnvironment testEnvironment()
         const auto envKeys = systemEnvironment.keys();
         for (const QString &key : envKeys) {
             const bool useVariable = key == "PATH" || key == "QT_QPA_PLATFORM"
+                || key == "QTEST_THROW_ON_FAIL"_L1 || key == "QTEST_THROW_ON_SKIP"_L1
+                || key == "ASAN_OPTIONS"
 #if defined(Q_OS_QNX)
                 || key == "GRAPHICS_ROOT" || key == "TZ"
 #elif defined(Q_OS_UNIX)
@@ -956,6 +998,13 @@ static QProcessEnvironment testEnvironment()
 #if defined(Q_OS_UNIX)
         // Avoid the warning from QCoreApplication
         environment.insert("LC_ALL", "en_US.UTF-8");
+#endif
+
+#if defined(Q_OS_MACOS)
+        // Work around system framework spamming logs with
+        // "+[IMKClient subclass]: chose IMKClient_Legacy"
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSequoia)
+            environment.insert("CFLOG_FORCE_DISABLE_STDERR", "1");
 #endif
     }
     return environment;
@@ -1232,6 +1281,7 @@ SCENARIO("Exit code is as expected")
         { 0, "globaldata  testGlobal:global=true" },
         { 0, "globaldata  testGlobal:local=true" },
         { 0, "globaldata  testGlobal:global=true:local=true" },
+        { 0, "globaldata  testGlobal  -repeat  2" },
         { 1, "globaldata  testGlobal:local=true:global=true" },
         { 1, "globaldata  testGlobal:global=true:blah" },
         { 1, "globaldata  testGlobal:blah:local=true" },
@@ -1243,6 +1293,15 @@ SCENARIO("Exit code is as expected")
         { 1, "globaldata  testGlobal:blah         skipSingle:global=true:local=true" },
         { 1, "globaldata  testGlobal:global=true  skipSingle:blah" },
         { 2, "globaldata  testGlobal:blah         skipSingle:blue" },
+    // Passing -repeat argument
+        { 1, "pass  testNumber1  -repeat" },
+        { 0, "pass  testNumber1  -repeat  1" },
+        { 0, "pass  testNumber1  -repeat  1  -o  out.xml,xml" },
+        { 0, "pass  testNumber1  -repeat  2" },
+        { 0, "pass  testNumber1  -repeat  2  -o  -,txt" },
+        { 0, "pass  testNumber1  -repeat  2  -o  -,txt  -o  log.txt,txt" },
+        { 1, "pass  testNumber1  -repeat  2  -o  log.xml,xml" },
+        { 1, "pass  testNumber1  -repeat  2  -o  -,txt  -o  -,xml" },
     };
 
     size_t n_testCases = sizeof(testCases) / sizeof(*testCases);

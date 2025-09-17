@@ -55,7 +55,6 @@ QBenchmarkMeasurerBase * QBenchmarkGlobalData::createMeasurer()
     } else {
         measurer =  new QBenchmarkTimeMeasurer;
     }
-    measurer->init();
     return measurer;
 }
 
@@ -167,7 +166,7 @@ QTest::QBenchmarkIterationController::~QBenchmarkIterationController()
 
 /*! \internal
 */
-bool QTest::QBenchmarkIterationController::isDone()
+bool QTest::QBenchmarkIterationController::isDone() const noexcept
 {
     if (QBenchmarkTestMethodData::current->runOnce)
         return i > 0;
@@ -176,14 +175,14 @@ bool QTest::QBenchmarkIterationController::isDone()
 
 /*! \internal
 */
-void QTest::QBenchmarkIterationController::next()
+void QTest::QBenchmarkIterationController::next() noexcept
 {
     ++i;
 }
 
 /*! \internal
 */
-int QTest::iterationCount()
+int QTest::iterationCount() noexcept
 {
     return QBenchmarkTestMethodData::current->iterationCount;
 }

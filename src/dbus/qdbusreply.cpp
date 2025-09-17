@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusreply.h"
 #include "qdbusmetatype.h"
@@ -141,7 +142,7 @@ using namespace Qt::StringLiterals;
 */
 
 /*!
-    \fn template <typename T> QDBusReply<T>::value() const
+    \fn template <typename T> Type QDBusReply<T>::value() const
     Returns the remote function's calls return value. If the remote call returned with an error,
     the return value of this function is undefined and may be undistinguishable from a valid return
     value.

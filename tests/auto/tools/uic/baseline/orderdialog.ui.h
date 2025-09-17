@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -61,9 +61,9 @@ public:
         pageList = new QListWidget(groupBox);
         pageList->setObjectName("pageList");
         pageList->setMinimumSize(QSize(344, 0));
-        pageList->setDragDropMode(QAbstractItemView::InternalMove);
-        pageList->setSelectionMode(QAbstractItemView::ContiguousSelection);
-        pageList->setMovement(QListView::Snap);
+        pageList->setDragDropMode(QAbstractItemView::DragDropMode::InternalMove);
+        pageList->setSelectionMode(QAbstractItemView::SelectionMode::ContiguousSelection);
+        pageList->setMovement(QListView::Movement::Snap);
 
         hboxLayout->addWidget(pageList);
 
@@ -81,7 +81,7 @@ public:
 
         vboxLayout1->addWidget(downButton);
 
-        spacerItem = new QSpacerItem(20, 99, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 99, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout1->addItem(spacerItem);
 
@@ -93,8 +93,8 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__OrderDialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok|QDialogButtonBox::Reset);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok|QDialogButtonBox::StandardButton::Reset);
 
         vboxLayout->addWidget(buttonBox);
 

@@ -9,6 +9,8 @@
 #include <functional>
 #include <jni.h>
 #include <qevent.h>
+
+#include <QtCore/qpointer.h>
 #include <QTimer>
 
 QT_BEGIN_NAMESPACE
@@ -77,6 +79,7 @@ public:
     bool isComposing() const;
     void clear();
     void setFocusObject(QObject *object) override;
+    QObject *focusObject();
     void sendShortcut(const QKeySequence &);
 
     //---------------//
@@ -90,6 +93,7 @@ public:
     QString getSelectedText(jint flags);
     QString getTextAfterCursor(jint length, jint flags);
     QString getTextBeforeCursor(jint length, jint flags);
+    jboolean replaceText(jint start, jint end, const QString text, jint newCursorPosition);
     jboolean setComposingText(const QString &text, jint newCursorPosition);
     jboolean setComposingRegion(jint start, jint end);
     jboolean setSelection(jint start, jint end);
@@ -98,6 +102,8 @@ public:
     jboolean copy();
     jboolean copyURL();
     jboolean paste();
+    void reportFullscreenMode(jboolean enabled);
+    jboolean fullscreenMode();
 
 public slots:
     void safeCall(const std::function<void()> &func, Qt::ConnectionType conType = Qt::BlockingQueuedConnection);
@@ -130,6 +136,7 @@ private:
     int m_batchEditNestingLevel;
     QPointer<QObject> m_focusObject;
     QTimer m_hideCursorHandleTimer;
+    bool m_fullScreenMode;
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(QAndroidInputContext::HandleModes)
 QT_END_NAMESPACE

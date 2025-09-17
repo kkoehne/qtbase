@@ -17,11 +17,12 @@
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
 #include <QtCore/qabstractitemmodel.h>
 #include <private/qabstractitemmodel_p.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qbasictimer.h>
 #include <QtWidgets/qtreewidget.h>
 #include <private/qtreeview_p.h>
 #include <QtWidgets/qheaderview.h>
+
+#include <array>
 
 QT_REQUIRE_CONFIG(treewidget);
 
@@ -75,10 +76,10 @@ public:
     void sort(int column, Qt::SortOrder order) override;
     void ensureSorted(int column, Qt::SortOrder order,
                       int start, int end, const QModelIndex &parent);
-    static bool itemLessThan(const QPair<QTreeWidgetItem*,int> &left,
-                             const QPair<QTreeWidgetItem*,int> &right);
-    static bool itemGreaterThan(const QPair<QTreeWidgetItem*,int> &left,
-                                const QPair<QTreeWidgetItem*,int> &right);
+    static bool itemLessThan(const std::pair<QTreeWidgetItem*,int> &left,
+                             const std::pair<QTreeWidgetItem*,int> &right);
+    static bool itemGreaterThan(const std::pair<QTreeWidgetItem*,int> &left,
+                                const std::pair<QTreeWidgetItem*,int> &right);
     static QList<QTreeWidgetItem*>::iterator sortedInsertionIterator(
         const QList<QTreeWidgetItem*>::iterator &begin,
         const QList<QTreeWidgetItem*>::iterator &end,
@@ -95,6 +96,7 @@ public:
     bool dropMimeData(const QMimeData *data, Qt::DropAction action,
                       int row, int column, const QModelIndex &parent) override;
     Qt::DropActions supportedDropActions() const override;
+    Qt::DropActions supportedDragActions() const override;
 
     QMimeData *internalMimeData() const;
 
@@ -186,26 +188,30 @@ class QTreeWidgetPrivate : public QTreeViewPrivate
     Q_DECLARE_PUBLIC(QTreeWidget)
 public:
     QTreeWidgetPrivate() : QTreeViewPrivate(), explicitSortColumn(-1) {}
+    void clearConnections();
     inline QTreeModel *treeModel() const { return qobject_cast<QTreeModel*>(model); }
     inline QModelIndex index(const QTreeWidgetItem *item, int column = 0) const
         { return treeModel()->index(item, column); }
     inline QTreeWidgetItem *item(const QModelIndex &index) const
         { return treeModel()->item(index); }
-    void _q_emitItemPressed(const QModelIndex &index);
-    void _q_emitItemClicked(const QModelIndex &index);
-    void _q_emitItemDoubleClicked(const QModelIndex &index);
-    void _q_emitItemActivated(const QModelIndex &index);
-    void _q_emitItemEntered(const QModelIndex &index);
-    void _q_emitItemChanged(const QModelIndex &index);
-    void _q_emitItemExpanded(const QModelIndex &index);
-    void _q_emitItemCollapsed(const QModelIndex &index);
-    void _q_emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &index);
-    void _q_sort();
-    void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
-    void _q_selectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
+    void emitItemPressed(const QModelIndex &index);
+    void emitItemClicked(const QModelIndex &index);
+    void emitItemDoubleClicked(const QModelIndex &index);
+    void emitItemActivated(const QModelIndex &index);
+    void emitItemEntered(const QModelIndex &index);
+    void emitItemChanged(const QModelIndex &index);
+    void emitItemExpanded(const QModelIndex &index);
+    void emitItemCollapsed(const QModelIndex &index);
+    void emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &index);
+    void sort();
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void selectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
 
      // used by QTreeWidgetItem::sortChildren to make sure the column argument is used
     int explicitSortColumn;
+
+    std::array<QMetaObject::Connection, 12> connections;
+    std::optional<Qt::DropActions> supportedDragActions;
 };
 
 QT_END_NAMESPACE

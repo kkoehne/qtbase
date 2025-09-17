@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef HTTP2SRV_H
 #define HTTP2SRV_H
@@ -12,7 +12,6 @@
 
 #include <QtNetwork/qabstractsocket.h>
 #include <QtCore/qsharedpointer.h>
-#include <QtCore/qscopedpointer.h>
 #include <QtNetwork/qtcpserver.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qatomic.h>
@@ -21,6 +20,7 @@
 
 #include <vector>
 #include <map>
+#include <memory>
 #include <set>
 
 QT_BEGIN_NAMESPACE
@@ -58,13 +58,18 @@ public:
     ~Http2Server();
 
 
+    // To send responses with status code 1xx
+    void setInformationalStatusCode(int code);
     // To be called before server started:
     void enablePushPromise(bool enabled, const QByteArray &path = QByteArray());
     void setResponseBody(const QByteArray &body);
+    void enableSendEarlyError(bool enable);
     // No content encoding is actually performed, call setResponseBody with already encoded data
     void setContentEncoding(const QByteArray &contentEncoding);
     // No authentication data is generated for the method, the full header value must be set
     void setAuthenticationHeader(const QByteArray &authentication);
+    // Authentication always required, no challenge provided
+    void setAuthenticationRequired(bool enable);
     // Set the redirect URL and count. The server will return a redirect response with the url
     // 'count' amount of times
     void setRedirect(const QByteArray &redirectUrl, int count);
@@ -130,7 +135,7 @@ private:
     bool verifyProtocolUpgradeRequest();
     void triggerGOAWAYEmulation();
 
-    QScopedPointer<QAbstractSocket> socket;
+    std::unique_ptr<QAbstractSocket> socket;
 
     H2Type connectionType = H2Type::h2Alpn;
     // Connection preface:
@@ -143,6 +148,7 @@ private:
     RawSettings expectedClientSettings;
 
     bool connectionError = false;
+    bool sendEarlyError = false;
 
     Http2::FrameReader reader;
     Http2::Frame inboundFrame;
@@ -189,7 +195,7 @@ private:
     // We need QHttpNetworkReply (actually its private d-object) to handle the
     // first HTTP/1.1 request. QHttpNetworkReplyPrivate does parsing + in case
     // of POST it is also reading the body for us.
-    QScopedPointer<Http11Reply> protocolUpgradeHandler;
+    std::unique_ptr<Http11Reply> protocolUpgradeHandler;
     // We need it for PUSH_PROMISE, with the correct port number appended,
     // when replying to essentially 1.1 request.
     QByteArray authority;
@@ -202,11 +208,15 @@ private:
 
     QByteArray contentEncoding;
     QByteArray authenticationHeader;
+    bool authenticationRequired = false;
 
     QByteArray redirectUrl;
     int redirectCount = 0;
 
     bool sendTrailingHEADERS = false;
+    int informationalStatusCode = 0;
+
+    std::optional<quint32> pendingMaxTableSizeUpdate;
 protected slots:
     void ignoreErrorSlot();
 };

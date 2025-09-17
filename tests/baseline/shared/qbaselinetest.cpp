@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qbaselinetest.h"
 #include "baselineprotocol.h"
@@ -11,6 +11,7 @@
 namespace QBaselineTest {
 
 static char *fargv[MAXCMDLINEARGS];
+static QString server;
 static bool simfail = false;
 static PlatformInfo customInfo;
 static bool customAutoModeSet = false;
@@ -26,6 +27,7 @@ static QByteArray curFunction;
 static ImageItemList itemList;
 static bool gotBaselines;
 
+static int pauseOnCompare = 0;
 
 void handleCmdLineArgs(int *argcp, char ***argvp)
 {
@@ -33,6 +35,7 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
         return;
 
     bool showHelp = false;
+    bool abortOnHelp = true;
 
     int fargc = 0;
     int numArgs = *argcp;
@@ -41,7 +44,16 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
         QByteArray arg = (*argvp)[i];
         QByteArray nextArg = (i+1 < numArgs) ? (*argvp)[i+1] : nullptr;
 
-        if (arg == "-simfail") {
+        if (arg == "-server") {
+            i++;
+            if (!nextArg.isEmpty()) {
+                server = QString::fromLocal8Bit(nextArg);
+            } else {
+                qWarning() << "-server requires parameter";
+                showHelp = true;
+                break;
+            }
+        } else if (arg == "-simfail") {
             simfail = true;
         } else if (arg == "-fuzzlevel") {
             i++;
@@ -76,11 +88,23 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
                 break;
             }
             customInfo.addOverride(key, value);
-        } else {
-            if ( (arg == "-help") || (arg == "--help") )
+        } else if (arg == "-pause-compare") {
+            i++;
+            bool ok = false;
+            pauseOnCompare = nextArg.toInt(&ok);
+            if (!ok) {
+                qWarning() << "-pause-compare requires integer parameter";
                 showHelp = true;
+                break;
+            }
+        } else {
+            if ( (arg == "-help") || (arg == "--help") ) {
+                showHelp = true;
+                abortOnHelp = false;
+            }
             if (fargc >= MAXCMDLINEARGS) {
                 qWarning() << "Too many command line arguments!";
+                showHelp = true;
                 break;
             }
             fargv[fargc++] = (*argvp)[i];
@@ -93,7 +117,9 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
         // TBD: arrange for this to be printed *after* QTest's help
         QTextStream out(stdout);
         out << "\n Baseline testing (lancelot) options:\n";
-        out << " -simfail            : Force an image comparison mismatch. For testing purposes.\n";
+        out << " -server <host>      : Set the network baseline server to connect to.\n";
+        out << "                       The default is taken from the environment variable QT_LANCELOT_SERVER.\n";
+        out << " -simfail            : Force an image comparison mismatch. For development purposes.\n";
         out << " -fuzzlevel <int>    : Specify the percentage of fuzziness in comparison. Overrides server default. 0 means exact match.\n";
         out << " -auto               : Inform server that this run is done by a daemon, CI system or similar.\n";
         out << " -adhoc (default)    : The inverse of -auto; this run is done by human, e.g. for testing.\n";
@@ -103,7 +129,11 @@ void handleCmdLineArgs(int *argcp, char ***argvp)
         out << " -compareto KEY=VAL  : Force comparison to baselines from a different client,\n";
         out << "                       for example: -compareto QtVersion=4.8.0\n";
         out << "                       Multiple -compareto client specifications may be given.\n";
+        out << " -pause-compare <ms> : Pauses for the given number of ms before each compare\n";
         out << "\n";
+        out.flush();
+        if (abortOnHelp)
+            std::exit(1);
     }
 }
 
@@ -182,7 +212,7 @@ bool connect(QByteArray *msg, bool *error)
         return false;
     }
 
-    if (!proto.connect(testCase, &dryRunMode, clientInfo)) {
+    if (!proto.connect(testCase, &dryRunMode, clientInfo, server)) {
         *msg += "Failed to connect to baseline server: " + proto.errorMessage().toLatin1();
         *error = true;
         return false;
@@ -207,6 +237,23 @@ bool connectToBaselineServer(QByteArray *msg)
     bool dummy;
     QByteArray dummyMsg;
     return connect(msg ? msg : &dummyMsg, &dummy);
+}
+
+bool finalizeTesting(QByteArray *msg) {
+    QByteArray dummyMsg;
+    return proto.finalizeTesting(msg ? msg : &dummyMsg);
+}
+
+void finalizeAndDisconnect()
+{
+    if (QByteArray msg; finalizeTesting(&msg)) {
+        if (msg.isEmpty())
+            qInfo() << "No baseline server report produced.";
+        else
+            qInfo() << "Baseline server report:" << msg.data();
+    }
+
+    disconnectFromBaselineServer();
 }
 
 void setAutoMode(bool mode)
@@ -249,6 +296,12 @@ void modifyImage(QImage *img)
 
 bool compareItem(const ImageItem &baseline, const QImage &img, QByteArray *msg, bool *error)
 {
+    if (pauseOnCompare) {
+        qDebug() << "Pausing for" << pauseOnCompare << "ms...";
+        QTest::qWait(pauseOnCompare);
+    }
+
+    *error = false;
     ImageItem item = baseline;
     if (simfail) {
         // Simulate test failure by forcing image mismatch; for testing purposes
@@ -259,6 +312,7 @@ bool compareItem(const ImageItem &baseline, const QImage &img, QByteArray *msg, 
     } else {
         item.image = img;
     }
+    bool isNewItem = false;
     item.imageChecksums.clear();
     item.imageChecksums.prepend(ImageItem::computeChecksum(item.image));
     QByteArray srvMsg;
@@ -270,9 +324,11 @@ bool compareItem(const ImageItem &baseline, const QImage &img, QByteArray *msg, 
         return true;
         break;
     case ImageItem::BaselineNotFound:
-        if (!customInfo.overrides().isEmpty() || baselinePolicy == UploadNone) {
-            qWarning() << "Cannot compare to baseline: No such baseline found on server.";
+        if (!customInfo.overrides().isEmpty())
             return true;
+        if (baselinePolicy == UploadNone) {
+            isNewItem = true;
+            break;
         }
         if (proto.submitNewBaseline(item, &srvMsg))
             qDebug() << msg->constData() << "Baseline not found on server. New baseline uploaded.";
@@ -285,7 +341,6 @@ bool compareItem(const ImageItem &baseline, const QImage &img, QByteArray *msg, 
         return true;
         break;
     }
-    *error = false;
     // The actual comparison of the given image with the baseline:
     if (baseline.imageChecksums.contains(item.imageChecksums.at(0))) {
         if (!proto.submitMatch(item, &srvMsg))
@@ -306,7 +361,11 @@ bool compareItem(const ImageItem &baseline, const QImage &img, QByteArray *msg, 
         qInfo() << "Baseline server reports:" << srvMsg;
         return true;            // The server decides: a fuzzy match means no mismatch
     }
-    *msg += "Mismatch. See report:\n   " + srvMsg;
+    if (isNewItem)
+        *msg += "No baseline on server, so cannot compare.";
+    else
+        *msg += "Mismatch.";
+    *msg += " See report:\n   " + srvMsg;
     if (dryRunMode) {
         qDebug() << "Dryrun, so ignoring" << *msg;
         return true;
@@ -344,6 +403,10 @@ bool checkImage(const QImage &img, const char *name, quint16 checksum, QByteArra
     item.itemName = QString::fromLatin1(itemName);
     item.itemChecksum = checksum;
     item.testFunction = QString::fromLatin1(QTest::currentTestFunction());
+
+    for (auto key: img.textKeys())
+        item.metaData[key] = img.text(key);
+
     ImageItemList list;
     list.append(item);
     if (!proto.requestBaselineChecksums(QLatin1String(QTest::currentTestFunction()), &list) || list.isEmpty()) {
@@ -372,22 +435,21 @@ QTestData &newRow(const char *dataTag, quint16 checksum)
     return QTest::newRow(dataTag);
 }
 
-
-bool testImage(const QImage& img, QByteArray *msg, bool *error)
+const ImageItem *findCurrentItem(QByteArray *msg, bool *error)
 {
     if (!connected && !connect(msg, error))
-        return true;
+        return nullptr;
 
     if (QTest::currentTestFunction() != curFunction || itemList.isEmpty()) {
-        qWarning() << "Usage error: QBASELINE_TEST used without corresponding QBaselineTest::newRow()";
-        return true;
+        qWarning() << "Usage error: QBASELINE_ macro used without corresponding QBaselineTest::newRow()";
+        return nullptr;
     }
 
     if (!gotBaselines) {
         if (!proto.requestBaselineChecksums(QString::fromLatin1(QTest::currentTestFunction()), &itemList) || itemList.isEmpty()) {
             *msg = "Communication with baseline server failed: " + proto.errorMessage().toLatin1();
             *error = true;
-            return true;
+            return nullptr;
         }
         gotBaselines = true;
     }
@@ -397,10 +459,24 @@ bool testImage(const QImage& img, QByteArray *msg, bool *error)
     while (it != itemList.constEnd() && it->itemName != curTag)
         ++it;
     if (it == itemList.constEnd()) {
-        qWarning() << "Usage error: QBASELINE_TEST used without corresponding QBaselineTest::newRow() for row" << curTag;
-        return true;
+        qWarning() << "Usage error: QBASELINE_ macro used without corresponding QBaselineTest::newRow() for row" << curTag;
+        return nullptr;
     }
-    return compareItem(*it, img, msg, error);
+    return &(*it);
+}
+
+bool testImage(const QImage &img, QByteArray *msg, bool *error)
+{
+    const ImageItem *item = findCurrentItem(msg, error);
+    return item ? compareItem(*item, img, msg, error) : true;
+}
+
+bool isCurrentItemBlacklisted()
+{
+    QByteArray msg;
+    bool error = false;
+    const ImageItem *item = findCurrentItem(&msg, &error);
+    return item ? (item->status == ImageItem::IgnoreItem) : false;
 }
 
 }

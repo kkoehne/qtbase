@@ -31,14 +31,21 @@ qt_deploy_runtime_dependencies(
     [ADDITIONAL_MODULES files...]
     [GENERATE_QT_CONF]
     [BIN_DIR bin_dir]
+    [LIBEXEC_DIR libexec_dir]
     [LIB_DIR lib_dir]
     [PLUGINS_DIR plugins_dir]
     [QML_DIR qml_dir]
     [VERBOSE]
     [NO_OVERWRITE]
     [NO_APP_STORE_COMPLIANCE]
+    [NO_PLUGINS]                                  # since Qt 6.10
+    [EXCLUDE_PLUGIN_TYPES type...]                # since Qt 6.10
+    [INCLUDE_PLUGIN_TYPES type...]                # since Qt 6.10
+    [EXCLUDE_PLUGINS name...]                     # since Qt 6.10
+    [INCLUDE_PLUGINS name...]                     # since Qt 6.10
     [NO_TRANSLATIONS]
     [NO_COMPILER_RUNTIME]
+    [DEPLOY_TOOL_OPTIONS]
     [PRE_INCLUDE_REGEXES regexes...]
     [PRE_EXCLUDE_REGEXES regexes...]
     [POST_INCLUDE_REGEXES regexes...]
@@ -72,14 +79,14 @@ The \c{EXECUTABLE} option must be provided.
 The \c{executable} argument should be the path to the executable file in the
 build directory. For example, \c{${CMAKE_CURRENT_BINARY_DIR}/MyApp.exe}, or more
 dynamically \c{$<TARGET_FILE:MyApp>}. Specifying raw target names not wrapped in
-a generator expression like \c{<TARGET_FILE:>} is not supported.
+a generator expression like \c{$<TARGET_FILE:>} is not supported.
 
 For macOS app bundles, the \c{executable} argument should be a path to the
 bundle directory, relative to the base install location.
 For example \c{MyApp.app}, or more dynamically
 \c{$<TARGET_FILE_NAME:MyApp>.app}.
-Specifying raw target names not wrapped in a generator epxression like
-\c{<TARGET_FILE_NAME:>} is not supported.
+Specifying raw target names not wrapped in a generator expression like
+\c{$<TARGET_FILE_NAME:>} is not supported.
 
 It may also be desirable to install dependencies for other binaries related to
 the \c{executable}. For example, plugins provided by the project might have
@@ -93,8 +100,8 @@ follows CMake's conventions, so Qt plugins would be specified using
 \c{ADDITIONAL_MODULES}.
 Each value should be a path relative to the base install location. The values
 can use generator expressions, same as with the \c{EXECUTABLE} option.
-Specifying raw target names not wrapped in a generator epxression like
-\c{<TARGET_FILE_NAME:>} is not supported.
+Specifying raw target names not wrapped in a generator expression like
+\c{$<TARGET_FILE_NAME:>} is not supported.
 
 When installing a Windows application, it is common to need a
 \l{Using qt.conf}{qt.conf} file when following CMake's default install
@@ -102,13 +109,41 @@ directory structure. If the \c{GENERATE_QT_CONF} option is given, an appropriate
 \c{qt.conf} file will be written to the same directory as the \c{executable}.
 The paths in that \c{qt.conf} file will be based on the \c{CMAKE_INSTALL_xxxDIR}
 variables, whose defaults are provided by CMake's \l{GNUInstallDirs} module.
-You can override some of those defaults with the \c{BIN_DIR}, \c{LIB_DIR},
-\c{PLUGINS_DIR}, and \c{QML_DIR} options, all of which are expected to be
-relative to the base install location. A \c{qt.conf} file is always written if
-\c{executable} is a macOS app bundle, regardless of whether or not
-\c{GENERATE_QT_CONF} is provided. The \c{..._DIR} options are also ignored in
-that case, since the directory layout of an app bundle is dictated by Apple's
-requirements.
+
+You can override some of those defaults with the parameters in the following
+table, all of which are expected to be relative to the base install location.
+
+\table
+\header
+    \li parameter
+    \li affected variable
+    \li notes
+\row
+    \li \c BIN_DIR
+    \li \l QT_DEPLOY_BIN_DIR
+    \li
+\row
+    \li \c LIBEXEC_DIR
+    \li \l QT_DEPLOY_LIBEXEC_DIR
+    \li since Qt 6.7
+\row
+    \li \c LIB_DIR
+    \li \l QT_DEPLOY_LIB_DIR
+    \li
+\row
+    \li \c PLUGINS_DIR
+    \li \l QT_DEPLOY_PLUGINS_DIR
+    \li
+\row
+    \li \c QML_DIR
+    \li \l QT_DEPLOY_QML_DIR
+    \li
+\endtable
+
+A \c{qt.conf} file is always written if \c{executable} is a macOS app bundle,
+regardless of whether or not \c{GENERATE_QT_CONF} is provided. The \c{..._DIR}
+options are also ignored in that case, since the directory layout of an app
+bundle is dictated by Apple's requirements.
 
 More verbose output about the deployment steps can be enabled by providing the
 \c{VERBOSE} option. Alternatively, the \l{QT_ENABLE_VERBOSE_DEPLOYMENT}
@@ -132,6 +167,10 @@ in a customized way.
 For Windows desktop applications, the required runtime files for the compiler
 are also installed by default. To prevent this, specify \c{NO_COMPILER_RUNTIME}.
 
+Since Qt 6.7, you can use \c{DEPLOY_TOOL_OPTIONS} to pass additional options to
+the underlying deployment tool. This only has an effect if the underlying
+deployment tool is either macdeployqt or windeployqt.
+
 On Linux, deploying runtime dependencies is based on CMake's
 \c{file(GET_RUNTIME_DEPENDENCIES)} command. The options \c{PRE_INCLUDE_REGEXES},
 \c{PRE_EXCLUDE_REGEXES}, \c{POST_INCLUDE_REGEXES}, \c{POST_EXCLUDE_REGEXES},
@@ -150,7 +189,36 @@ The default value of \c{POST_EXCLUDE_REGEXES} is constructed from the value of
     {qt6_deploy_qt_conf}{qt_deploy_qt_conf()},
     {qt6_deploy_qml_imports}{qt_deploy_qml_imports()}
 
+\section1 Controlling deployment of Qt plugins
+
+Qt plugins are automatically deployed into \l QT_DEPLOY_PLUGINS_DIR.
+
+You can turn off plugin deployment with the \c NO_PLUGINS argument.
+
+You can include all plugins of a specific type with the \c INCLUDE_PLUGIN_TYPES
+argument. You can exclude all plugins of a specific type with the \c
+EXCLUDE_PLUGIN_TYPES argument. Both arguments take plugin types, e.g. \c
+imageformats.
+
+You can include or exclude specific plugins with the arguments \c
+INCLUDE_PLUGINS and \c EXCLUDE_PLUGINS. Both arguments take plugin names, for
+example \c qjpeg.
+
+\note Plugin names must not be confused with plugin targets. For example, the \c
+Qt6::QJpegPlugin target's plugin name is \c qjpeg.
+
+\note The arguments \c EXCLUDE_PLUGINS, \c EXCLUDE_PLUGIN_TYPES, \c
+INCLUDE_PLUGINS, and \c INCLUDE_PLUGIN_TYPES only work on Windows and Linux.
+
 \section1 Example
 
+The following example shows how to deploy an application \c{MyApp}.
+
 \include cmake-deploy-runtime-dependencies.qdocinc
+
+The following example shows how to use the \c{DEPLOY_TOOL_OPTIONS} parameter to
+pass different options to macdeployqt and windeployqt.
+
+\include cmake-deploy-runtime-dependencies-deploy-tool-options.qdocinc
+
 */

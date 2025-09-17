@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "tst_qdbusconnection.h"
 
@@ -12,11 +12,6 @@
 #include <QDBusReply>
 #include <QDBusInterface>
 #include <QDBusConnectionInterface>
-
-#ifdef Q_OS_UNIX
-#  include <sys/types.h>
-#  include <signal.h>
-#endif
 
 void MyObject::method(const QDBusMessage &msg)
 {
@@ -1412,6 +1407,34 @@ void tst_QDBusConnection::pendingCallWhenDisconnected()
 #endif
 }
 
+void tst_QDBusConnection::connectionLimit()
+{
+#if !QT_CONFIG(process)
+    QSKIP("Test requires QProcess");
+#else
+    if (!QCoreApplication::instance())
+        QSKIP("Test requires a QCoreApplication");
+
+    QProcess daemon;
+    daemon.start("dbus-daemon",
+                 QStringList() << "--config-file" << QFINDTESTDATA("../qdbusconnection/tst_qdbusconnection.conf")
+                               << "--nofork"
+                               << "--print-address");
+    QVERIFY2(daemon.waitForReadyRead(2000),
+             "Daemon didn't print its address in time; error: \"" + daemon.errorString().toLocal8Bit() +
+             "\"; stderr:\n" + daemon.readAllStandardError());
+
+    QString address = QString::fromLocal8Bit(daemon.readAll().trimmed());
+    QDBusConnection con = QDBusConnection::connectToBus(address, "connectionLimit");
+    QVERIFY2(!con.isConnected(), "Unexpected successful connection");
+    QCOMPARE(con.lastError().type(), QDBusError::LimitsExceeded);
+
+    // kill the bus
+    daemon.terminate();
+    daemon.waitForFinished();
+#endif
+}
+
 void tst_QDBusConnection::emptyServerAddress()
 {
     QDBusServer server({}, nullptr);
@@ -1443,6 +1466,31 @@ void tst_QDBusConnection::parentClassSignal()
 
     emit obj.myObjectSignal();
     QTRY_COMPARE(recv.signalsReceived, 2);
+}
+
+// see also tst_qdbusconnection_delayed
+void tst_QDBusConnection::delayedDeliveryReenabledAfterUsedInMainThread()
+{
+#if !QT_CONFIG(process)
+    QSKIP("Test requires QProcess");
+#elif defined(HAS_HOOKSETUPFUNCTION)
+    QSKIP("No difference to run by tst_QDBusConnection");
+#else
+#  if defined(Q_OS_WIN)
+#    define EXE ".exe"
+#  else
+#    define EXE ""
+#  endif
+    if (!QCoreApplication::instance())
+        QSKIP("Test requires a QCoreApplication");
+
+    QProcess process;
+    process.start(QFINDTESTDATA("qdbusdelayeddeliveryreenablehelper" EXE));
+    QVERIFY2(process.waitForFinished(25000), qPrintable(process.errorString()));
+    QCOMPARE(process.readAllStandardError(), QString());
+    QCOMPARE(process.exitCode(), 0);
+#  undef EXE
+#endif
 }
 
 QString MyObject::path;

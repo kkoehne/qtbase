@@ -75,6 +75,8 @@ struct AnchorVertex
   Represents an edge (anchor) in the internal graph.
 */
 struct AnchorData : public QSimplexVariable {
+    Q_DISABLE_COPY_MOVE(AnchorData)
+
     enum Type {
         Normal = 0,
         Sequential,
@@ -155,20 +157,21 @@ inline QString AnchorData::toString() const
 struct SequentialAnchorData : public AnchorData
 {
     SequentialAnchorData(const QList<AnchorVertex *> &vertices, const QList<AnchorData *> &edges)
-        : AnchorData(), m_children(vertices), m_edges(edges)
+        : AnchorData(), m_edges(edges)
     {
         type = AnchorData::Sequential;
         isVertical = m_edges.at(0)->isVertical;
 #ifdef QT_DEBUG
         name = QString::fromLatin1("%1 -- %2").arg(vertices.first()->toString(), vertices.last()->toString());
+#else
+        Q_UNUSED(vertices);
 #endif
     }
 
     virtual void updateChildrenSizes() override;
     void calculateSizeHints();
 
-    QList<AnchorVertex *> m_children; // list of vertices in the sequence
-    QList<AnchorData *> m_edges; // keep the list of edges too.
+    const QList<AnchorData *> m_edges; // keep the list of edges too.
 };
 
 struct ParallelAnchorData : public AnchorData
@@ -312,7 +315,7 @@ class QGraphicsAnchorPrivate : public QObjectPrivate
     Q_DECLARE_PUBLIC(QGraphicsAnchor)
 
 public:
-    explicit QGraphicsAnchorPrivate(int version = QObjectPrivateVersion);
+    explicit QGraphicsAnchorPrivate(decltype(QObjectPrivateVersion) = QObjectPrivateVersion);
     ~QGraphicsAnchorPrivate();
 
     void setSpacing(qreal value);
@@ -474,14 +477,14 @@ public:
     void identifyFloatItems(const QSet<AnchorData *> &visited, Qt::Orientation orientation);
     void identifyNonFloatItems_helper(const AnchorData *ad, QSet<QGraphicsLayoutItem *> *nonFloatingItemsIdentifiedSoFar);
 
-    inline AnchorVertex *internalVertex(const QPair<QGraphicsLayoutItem*, Qt::AnchorPoint> &itemEdge) const
+    inline AnchorVertex *internalVertex(const std::pair<QGraphicsLayoutItem*, Qt::AnchorPoint> &itemEdge) const
     {
         return m_vertexList.value(itemEdge).first;
     }
 
     inline AnchorVertex *internalVertex(const QGraphicsLayoutItem *item, Qt::AnchorPoint edge) const
     {
-        return internalVertex(qMakePair(const_cast<QGraphicsLayoutItem *>(item), edge));
+        return internalVertex(std::pair(const_cast<QGraphicsLayoutItem *>(item), edge));
     }
 
     inline void changeLayoutVertex(Qt::Orientation orientation, AnchorVertex *oldV, AnchorVertex *newV)
@@ -527,7 +530,7 @@ public:
     // Mapping between high level anchorage points (Item, Edge) to low level
     // ones (Graph Vertices)
 
-    QHash<QPair<QGraphicsLayoutItem*, Qt::AnchorPoint>, QPair<AnchorVertex *, int> > m_vertexList;
+    QHash<std::pair<QGraphicsLayoutItem*, Qt::AnchorPoint>, std::pair<AnchorVertex *, int> > m_vertexList;
 
     // Internal graph of anchorage points and anchors, for both orientations
     QHVContainer<Graph<AnchorVertex, AnchorData>> graph;

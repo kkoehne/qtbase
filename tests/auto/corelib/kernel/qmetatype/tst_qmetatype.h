@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include "tst_qmetatype_common.h"
@@ -44,7 +44,6 @@ private:
     QList<QVariant> propList;
 
 private slots:
-    void defined();
 #if QT_CONFIG(thread)
     void threadSafety();
 #endif
@@ -111,6 +110,7 @@ private slots:
     void customDebugStream();
     void unknownType();
     void fromType();
+    void compareCompiles();
     void operatorEq_data();
     void operatorEq();
     void operatorEq2_data();
@@ -120,6 +120,7 @@ private slots:
     void typesWithInaccessibleDTors();
     void voidIsNotUnknown();
     void typeNameNormalization();
+    void typeNameInQtPrivate();
 
     // Tests for deprecated APIs
 #if QT_DEPRECATED_SINCE(6, 0)

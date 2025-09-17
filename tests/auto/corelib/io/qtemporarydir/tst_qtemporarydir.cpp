@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QStandardPaths>
@@ -53,7 +53,7 @@ private slots:
     void QTBUG_4796_data();
     void QTBUG_4796();
 
-    void QTBUG43352_failedSetPermissions();
+    void nestedTempDirs();
 
 private:
     QString m_previousCurrent;
@@ -185,6 +185,7 @@ void tst_QTemporaryDir::fileTemplate_data()
     QTest::newRow("4Xsuffix") << "qt_XXXXXX_XXXX" << "qt_" << "_XXXX";
     QTest::newRow("4Xprefix") << "qt_XXXX" << "qt_XXXX" << "";
     QTest::newRow("5Xprefix") << "qt_XXXXX" << "qt_XXXXX" << "";
+    QTest::newRow("two placeholders") << "qt_XXXXXX_XXXXXX_" << "qt_XXXXXX_" << "_";
     if (QTestPrivate::canHandleUnicodeFileNames()) {
         // Test Umlauts (contained in Latin1)
         QString prefix = "qt_" + umlautTestText();
@@ -555,16 +556,18 @@ void tst_QTemporaryDir::QTBUG_4796() // unicode support
     cleaner.reset();
 }
 
-void tst_QTemporaryDir::QTBUG43352_failedSetPermissions()
+void tst_QTemporaryDir::nestedTempDirs()
 {
-    QString path = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation) + QStringLiteral("/");
-    int count = QDir(path).entryList().size();
+    QTemporaryDir parentDir;
+    const QString &parentPath = parentDir.path();
 
     {
-        QTemporaryDir dir(path);
+        QTemporaryDir tempdir(parentPath);
     }
 
-    QCOMPARE(QDir(path).entryList().size(), count);
+    QDir dir(parentPath);
+    dir.setFilter(QDir::NoDotAndDotDot);
+    QCOMPARE(dir.count(), 0);
 }
 
 QTEST_MAIN(tst_QTemporaryDir)

@@ -1,5 +1,6 @@
 // Copyright (C) 2014 Ivan Komissarov <ABBAPOH@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSTORAGEINFO_P_H
 #define QSTORAGEINFO_P_H
@@ -21,19 +22,19 @@
 #include <QtCore/private/qglobal_p.h>
 #include "qstorageinfo.h"
 
+#ifdef Q_OS_UNIX
+#include <sys/types.h> // dev_t
+#endif
+
 QT_BEGIN_NAMESPACE
 
-inline Q_LOGGING_CATEGORY(lcStorageInfo, "qt.core.qstorageinfo", QtWarningMsg)
+Q_DECLARE_LOGGING_CATEGORY(lcStorageInfo)
 
 class QStorageInfoPrivate : public QSharedData
 {
 public:
-    inline QStorageInfoPrivate() : QSharedData(),
-        bytesTotal(-1), bytesFree(-1), bytesAvailable(-1), blockSize(-1),
-        readOnly(false), ready(false), valid(false)
-    {}
+    QStorageInfoPrivate() = default;
 
-    void initRootPath();
     void doStat();
 
     static QList<QStorageInfo> mountedVolumes();
@@ -45,20 +46,61 @@ public:
 #else
         return QStorageInfo(QStringLiteral("/"));
 #endif
-    };
+    }
 
 protected:
 #if defined(Q_OS_WIN)
+    void initRootPath();
     void retrieveVolumeInfo();
     void retrieveDiskFreeSpace();
     bool queryStorageProperty();
     void queryFileFsSectorSizeInformation();
 #elif defined(Q_OS_DARWIN)
+    void initRootPath();
     void retrievePosixInfo();
     void retrieveUrlProperties(bool initRootPath = false);
     void retrieveLabel();
-#elif defined(Q_OS_UNIX)
+#elif defined(Q_OS_LINUX)
     void retrieveVolumeInfo();
+
+public:
+    struct MountInfo {
+        QString mountPoint;
+        QByteArray fsType;
+        QByteArray device;
+        QByteArray fsRoot;
+        dev_t stDev = 0;
+        quint64 mntid = 0;
+    };
+
+    void setFromMountInfo(MountInfo &&info)
+    {
+        rootPath = std::move(info.mountPoint);
+        fileSystemType = std::move(info.fsType);
+        device = std::move(info.device);
+        subvolume = std::move(info.fsRoot);
+    }
+
+    QStorageInfoPrivate(MountInfo &&info)
+    {
+        setFromMountInfo(std::move(info));
+    }
+
+#elif defined(Q_OS_UNIX)
+    void initRootPath();
+    void retrieveVolumeInfo();
+#endif
+
+#ifdef Q_OS_UNIX
+    // Common helper functions
+    template <typename String>
+    static bool isParentOf(const String &parent, const QString &dirName)
+    {
+        return dirName.startsWith(parent) &&
+                (dirName.size() == parent.size() || dirName.at(parent.size()) == u'/' ||
+                 parent.size() == 1);
+    }
+    static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fsType);
 #endif
 
 public:
@@ -68,26 +110,18 @@ public:
     QByteArray fileSystemType;
     QString name;
 
-    qint64 bytesTotal;
-    qint64 bytesFree;
-    qint64 bytesAvailable;
-    ulong blockSize;
+    qint64 bytesTotal = -1;
+    qint64 bytesFree = -1;
+    qint64 bytesAvailable = -1;
+    int blockSize = -1;
 
-    bool readOnly;
-    bool ready;
-    bool valid;
+    bool readOnly = false;
+    bool ready = false;
+    bool valid = false;
 };
 
-// Common helper functions
-template <typename String>
-static bool isParentOf(const String &parent, const QString &dirName)
-{
-    return dirName.startsWith(parent) &&
-            (dirName.size() == parent.size() || dirName.at(parent.size()) == u'/' ||
-             parent.size() == 1);
-}
-
-static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fsType)
+#ifdef Q_OS_UNIX
+bool QStorageInfoPrivate::shouldIncludeFs(const QString &mountDir, const QByteArray &fsType)
 {
 #if defined(Q_OS_ANDROID)
     // "rootfs" is the filesystem type of "/" on Android
@@ -129,6 +163,7 @@ static inline bool shouldIncludeFs(const QString &mountDir, const QByteArray &fs
     // size checking in QStorageInfo::mountedVolumes()
     return true;
 }
+#endif // Q_OS_UNIX
 
 QT_END_NAMESPACE
 

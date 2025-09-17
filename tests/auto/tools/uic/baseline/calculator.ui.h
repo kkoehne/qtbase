@@ -54,7 +54,7 @@ public:
         if (Calculator->objectName().isEmpty())
             Calculator->setObjectName("Calculator");
         Calculator->resize(314, 301);
-        QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(Calculator->sizePolicy().hasHeightForWidth());
@@ -146,7 +146,7 @@ public:
         display->setObjectName("display");
         display->setGeometry(QRect(10, 10, 291, 31));
         display->setMaxLength(15);
-        display->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        display->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
         display->setReadOnly(true);
 
         retranslateUi(Calculator);

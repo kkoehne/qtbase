@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIKit.h>
 
@@ -32,10 +33,9 @@ QT_END_NAMESPACE
 - (QWindow *)qwindow;
 - (UIViewController *)viewController;
 - (QIOSViewController*)qtViewController;
-@property (nonatomic, readonly) UIEdgeInsets qt_safeAreaInsets;
 @end
 
-#ifdef Q_OS_IOS
+#if QT_CONFIG(metal)
 @interface QUIMetalView : QUIView
 @end
 #endif

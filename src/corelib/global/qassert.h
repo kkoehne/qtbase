@@ -28,7 +28,7 @@ Q_CORE_EXPORT void qt_assert(const char *assertion, const char *file, int line) 
 #  if defined(QT_NO_DEBUG) && !defined(QT_FORCE_ASSERTS)
 #    define Q_ASSERT(cond) static_cast<void>(false && (cond))
 #  else
-#    define Q_ASSERT(cond) ((cond) ? static_cast<void>(0) : qt_assert(#cond, __FILE__, __LINE__))
+#    define Q_ASSERT(cond) ((cond) ? static_cast<void>(0) : QT_PREPEND_NAMESPACE(qt_assert)(#cond, __FILE__, __LINE__))
 #  endif
 #endif
 
@@ -38,13 +38,25 @@ Q_NORETURN
 Q_DECL_COLD_FUNCTION
 Q_CORE_EXPORT
 void qt_assert_x(const char *where, const char *what, const char *file, int line) noexcept;
+inline bool qt_no_assert_x(bool, const char *, const char *) noexcept { return false; }
 
 #if !defined(Q_ASSERT_X)
 #  if defined(QT_NO_DEBUG) && !defined(QT_FORCE_ASSERTS)
-#    define Q_ASSERT_X(cond, where, what) static_cast<void>(false && (cond))
+#    define Q_ASSERT_X(cond, where, what) \
+        static_cast<void>(false && QT_PREPEND_NAMESPACE(qt_no_assert_x)(bool(cond), where, what))
 #  else
-#    define Q_ASSERT_X(cond, where, what) ((cond) ? static_cast<void>(0) : qt_assert_x(where, what, __FILE__, __LINE__))
+#    define Q_ASSERT_X(cond, where, what) ((cond) ? static_cast<void>(0) : QT_PREPEND_NAMESPACE(qt_assert_x)(where, what, __FILE__, __LINE__))
 #  endif
+#endif
+
+#ifndef Q_PRE
+# define Q_PRE(cond) \
+    Q_ASSERT(cond) /* for now... */
+#endif
+
+#ifndef Q_PRE_X
+# define Q_PRE_X(cond, what) \
+    Q_ASSERT_X(cond, Q_FUNC_INFO, what) /* for now... */
 #endif
 
 Q_NORETURN Q_CORE_EXPORT void qt_check_pointer(const char *, int) noexcept;
@@ -55,10 +67,10 @@ Q_CORE_EXPORT void qBadAlloc();
 #  if defined(QT_NO_DEBUG) && !defined(QT_FORCE_ASSERTS)
 #    define Q_CHECK_PTR(p) qt_noop()
 #  else
-#    define Q_CHECK_PTR(p) do {if (!(p)) qt_check_pointer(__FILE__,__LINE__);} while (false)
+#    define Q_CHECK_PTR(p) do {if (!(p)) QT_PREPEND_NAMESPACE(qt_check_pointer)(__FILE__,__LINE__);} while (false)
 #  endif
 #else
-#  define Q_CHECK_PTR(p) do { if (!(p)) qBadAlloc(); } while (false)
+#  define Q_CHECK_PTR(p) do { if (!(p)) QT_PREPEND_NAMESPACE(qBadAlloc)(); } while (false)
 #endif
 
 template <typename T>
@@ -81,7 +93,7 @@ inline T *q_check_ptr(T *p) { Q_CHECK_PTR(p); return p; }
 
 Q_DECL_DEPRECATED_X("Q_ASSUME() is deprecated because it can produce worse code than when it's absent; "
                     "use C++23 [[assume]] instead")
-inline bool qt_assume_is_deprecateed(bool cond) noexcept { return cond; }
+inline bool qt_assume_is_deprecated(bool cond) noexcept { return cond; }
 #define Q_ASSUME(Expr) \
     [] (bool valueOfExpression) {\
         Q_ASSERT_X(valueOfExpression, "Q_ASSUME()", "Assumption in Q_ASSUME(\"" #Expr "\") was not correct");\

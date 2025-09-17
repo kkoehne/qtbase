@@ -180,6 +180,14 @@ struct QD3D11TextureRenderTarget : public QRhiTextureRenderTarget
     friend class QRhiD3D11;
 };
 
+struct RenderTargetUavUpdateState
+{
+    ID3D11RenderTargetView *rtv[QD3D11RenderTargetData::MAX_COLOR_ATTACHMENTS];
+    ID3D11DepthStencilView *dsv = nullptr;
+    std::array<ID3D11UnorderedAccessView *, QD3D11RenderTargetData::MAX_COLOR_ATTACHMENTS> uav;
+    bool update(QD3D11RenderTargetData *data, ID3D11UnorderedAccessView * const *uavs = nullptr, int count = 0);
+};
+
 struct QD3D11ShaderResourceBindings : public QRhiShaderResourceBindings
 {
     QD3D11ShaderResourceBindings(QRhiImplementation *rhi);
@@ -285,6 +293,7 @@ struct QD3D11ShaderResourceBindings : public QRhiShaderResourceBindings
     StageSamplerBatches csSamplerBatches;
 
     StageUavBatches csUavBatches;
+    StageUavBatches fsUavBatches;
 
     friend class QRhiD3D11;
 };
@@ -521,6 +530,7 @@ struct QD3D11CommandBuffer : public QRhiCommandBuffer
     DXGI_FORMAT currentIndexFormat;
     ID3D11Buffer *currentVertexBuffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
     quint32 currentVertexOffsets[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT];
+    QD3D11RenderTargetData *prevRtD;
 
     QVarLengthArray<QByteArray, 4> dataRetainPool;
     QVarLengthArray<QRhiBufferData, 4> bufferDataRetainPool;
@@ -549,6 +559,7 @@ struct QD3D11CommandBuffer : public QRhiCommandBuffer
         recordingPass = NoPass;
         // do not zero lastGpuTime
         currentTarget = nullptr;
+        prevRtD = nullptr;
         resetCommands();
         resetCachedState();
     }
@@ -625,6 +636,17 @@ struct QD3D11SwapChain : public QRhiSwapChain
     IDCompositionVisual *dcompVisual = nullptr;
     QD3D11SwapChainTimestamps timestamps;
     int currentTimestampPairIndex = 0;
+    HANDLE frameLatencyWaitableObject = nullptr;
+    int lastFrameLatencyWaitSlot = -1;
+};
+
+class QD3D11Adapter : public QRhiAdapter
+{
+public:
+    QRhiDriverInfo info() const override;
+
+    LUID luid;
+    QRhiDriverInfo adapterInfo;
 };
 
 class QRhiD3D11 : public QRhiImplementation
@@ -634,6 +656,7 @@ public:
 
     bool create(QRhi::Flags flags) override;
     void destroy() override;
+    QRhi::AdapterList enumerateAdaptersBeforeCreate(QRhiNativeHandles *nativeHandles) const override;
 
     QRhiGraphicsPipeline *createGraphicsPipeline() override;
     QRhiComputePipeline *createComputePipeline() override;
@@ -661,6 +684,8 @@ public:
 
     QRhiTextureRenderTarget *createTextureRenderTarget(const QRhiTextureRenderTargetDescription &desc,
                                                        QRhiTextureRenderTarget::Flags flags) override;
+
+    QRhiShadingRateMap *createShadingRateMap() override;
 
     QRhiSwapChain *createSwapChain() override;
     QRhi::FrameOpResult beginFrame(QRhiSwapChain *swapChain, QRhi::BeginFrameFlags flags) override;
@@ -696,6 +721,7 @@ public:
     void setScissor(QRhiCommandBuffer *cb, const QRhiScissor &scissor) override;
     void setBlendConstants(QRhiCommandBuffer *cb, const QColor &c) override;
     void setStencilRef(QRhiCommandBuffer *cb, quint32 refValue) override;
+    void setShadingRate(QRhiCommandBuffer *cb, const QSize &coarsePixelSize) override;
 
     void draw(QRhiCommandBuffer *cb, quint32 vertexCount,
               quint32 instanceCount, quint32 firstVertex, quint32 firstInstance) override;
@@ -721,6 +747,7 @@ public:
     double lastCompletedGpuTime(QRhiCommandBuffer *cb) override;
 
     QList<int> supportedSampleCounts() const override;
+    QList<QSize> supportedShadingRates(int sampleCount) const override;
     int ubufAlignment() const override;
     bool isYUpInFramebuffer() const override;
     bool isYUpInNDC() const override;
@@ -733,6 +760,7 @@ public:
     QRhiDriverInfo driverInfo() const override;
     QRhiStats statistics() override;
     bool makeThreadLocalNativeContextCurrent() override;
+    void setQueueSubmitParams(QRhiNativeHandles *params) override;
     void releaseCachedResources() override;
     bool isDeviceLost() const override;
 
@@ -745,12 +773,13 @@ public:
     void updateShaderResourceBindings(QD3D11ShaderResourceBindings *srbD,
                                       const QShader::NativeResourceBindingMap *nativeResourceBindingMaps[]);
     void executeBufferHostWrites(QD3D11Buffer *bufD);
+
     void bindShaderResources(QD3D11ShaderResourceBindings *srbD,
                              const uint *dynOfsPairs, int dynOfsPairCount,
-                             bool offsetOnlyChange);
-    void resetShaderResources();
+                             bool offsetOnlyChange, QD3D11RenderTargetData *rtD, RenderTargetUavUpdateState &rtUavState);
+    void resetShaderResources(QD3D11RenderTargetData *rtD, RenderTargetUavUpdateState &rtUavState);
     void executeCommandBuffer(QD3D11CommandBuffer *cbD);
-    DXGI_SAMPLE_DESC effectiveSampleCount(int sampleCount) const;
+    DXGI_SAMPLE_DESC effectiveSampleDesc(int sampleCount) const;
     void finishActiveReadbacks();
     void reportLiveObjects(ID3D11Device *device);
     void clearShaderCache();
@@ -760,6 +789,7 @@ public:
 
     QRhi::Flags rhiFlags;
     bool debugLayer = false;
+    UINT maxFrameLatency = 2; // 1-3, use 2 to keep CPU-GPU parallelism while reducing lag compared to tripple buffering
     bool importedDeviceAndContext = false;
     ID3D11Device *dev = nullptr;
     ID3D11DeviceContext1 *context = nullptr;
@@ -770,6 +800,7 @@ public:
     IDXGIFactory1 *dxgiFactory = nullptr;
     IDCompositionDevice *dcompDevice = nullptr;
     bool supportsAllowTearing = false;
+    bool useLegacySwapchainModel = false;
     bool deviceLost = false;
     QRhiD3D11NativeHandles nativeHandlesStruct;
     QRhiDriverInfo driverInfoStruct;
@@ -784,6 +815,7 @@ public:
         int fsHighestActiveSrvBinding = -1;
         int csHighestActiveSrvBinding = -1;
         int csHighestActiveUavBinding = -1;
+        int fsHighestActiveUavBinding = -1;
         QD3D11SwapChain *currentSwapChain = nullptr;
     } contextState;
 
@@ -857,7 +889,7 @@ inline bool operator!=(const QRhiD3D11::BytecodeCacheKey &a, const QRhiD3D11::By
 
 inline size_t qHash(const QRhiD3D11::BytecodeCacheKey &k, size_t seed = 0) noexcept
 {
-    return qHash(k.sourceHash, seed) ^ qHash(k.target) ^ qHash(k.entryPoint) ^ k.compileFlags;
+    return qHashMulti(seed, k.sourceHash, k.target, k.entryPoint, k.compileFlags);
 }
 
 QT_END_NAMESPACE

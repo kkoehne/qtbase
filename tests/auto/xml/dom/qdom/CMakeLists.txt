@@ -24,5 +24,7 @@ qt_internal_add_test(tst_qdom
         tst_qdom.cpp
     LIBRARIES
         Qt::Xml
+        Qt::XmlPrivate
+        Qt::TestPrivate
     TESTDATA ${test_data}
 )

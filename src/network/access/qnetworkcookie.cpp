@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnetworkcookie.h"
 #include "qnetworkcookie_p.h"
@@ -18,6 +19,8 @@
 #include "QtCore/qurl.h"
 #include "QtNetwork/qhostaddress.h"
 #include "private/qobject_p.h"
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -117,9 +120,7 @@ QNetworkCookie &QNetworkCookie::operator=(const QNetworkCookie &other)
 /*!
     \fn void QNetworkCookie::swap(QNetworkCookie &other)
     \since 5.0
-
-    Swaps this cookie with \a other. This function is very fast and
-    never fails.
+    \memberswap{cookie}
 */
 
 /*!
@@ -376,7 +377,7 @@ void QNetworkCookie::setValue(const QByteArray &value)
 }
 
 // ### move this to qnetworkcookie_p.h and share with qnetworkaccesshttpbackend
-static QPair<QByteArray, QByteArray> nextField(QByteArrayView text, int &position, bool isNameValue)
+static std::pair<QByteArray, QByteArray> nextField(QByteArrayView text, int &position, bool isNameValue)
 {
     // format is one of:
     //    (1)  token
@@ -392,7 +393,7 @@ static QPair<QByteArray, QByteArray> nextField(QByteArrayView text, int &positio
     int equalsPosition = text.indexOf('=', position);
     if (equalsPosition < 0 || equalsPosition > semiColonPosition) {
         if (isNameValue)
-            return qMakePair(QByteArray(), QByteArray()); //'=' is required for name-value-pair (RFC6265 section 5.2, rule 2)
+            return std::pair(QByteArray(), QByteArray()); //'=' is required for name-value-pair (RFC6265 section 5.2, rule 2)
         equalsPosition = semiColonPosition; //no '=' means there is an attribute-name but no attribute-value
     }
 
@@ -403,7 +404,7 @@ static QPair<QByteArray, QByteArray> nextField(QByteArrayView text, int &positio
         second = text.mid(equalsPosition + 1, secondLength).trimmed().toByteArray();
 
     position = semiColonPosition;
-    return qMakePair(first, second);
+    return std::pair(first, second);
 }
 
 /*!
@@ -932,15 +933,7 @@ static QDateTime parseDateString(QByteArrayView dateString)
     cookie that is parsed.
 
     \sa toRawForm()
-*/
-QList<QNetworkCookie> QNetworkCookie::parseCookies(const QByteArray &cookieString)
-{
-    return parseCookies(QByteArrayView(cookieString));
-}
-
-/*!
-    \overload
-    \since 6.7
+    \note In Qt versions prior to 6.7, this function took QByteArray only.
 */
 QList<QNetworkCookie> QNetworkCookie::parseCookies(QByteArrayView cookieString)
 {
@@ -972,7 +965,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
         QNetworkCookie cookie;
 
         // The first part is always the "NAME=VALUE" part
-        QPair<QByteArray,QByteArray> field = nextField(cookieString, position, true);
+        std::pair<QByteArray,QByteArray> field = nextField(cookieString, position, true);
         if (field.first.isEmpty())
             // parsing error
             break;
@@ -985,9 +978,8 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
             case ';':
                 // new field in the cookie
                 field = nextField(cookieString, position, false);
-                field.first = field.first.toLower(); // everything but the NAME=VALUE is case-insensitive
 
-                if (field.first == "expires") {
+                if (field.first.compare("expires", Qt::CaseInsensitive) == 0) {
                     position -= field.second.size();
                     int end;
                     for (end = position; end < length; ++end)
@@ -1000,7 +992,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
                     if (dt.isValid())
                         cookie.setExpirationDate(dt);
                     //if unparsed, ignore the attribute but not the whole cookie (RFC6265 section 5.2.1)
-                } else if (field.first == "domain") {
+                } else if (field.first.compare("domain", Qt::CaseInsensitive) == 0) {
                     QByteArrayView rawDomain = field.second;
                     //empty domain should be ignored (RFC6265 section 5.2.3)
                     if (!rawDomain.isEmpty()) {
@@ -1021,7 +1013,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
                             return result;
                         }
                     }
-                } else if (field.first == "max-age") {
+                } else if (field.first.compare("max-age", Qt::CaseInsensitive) == 0) {
                     bool ok = false;
                     int secs = field.second.toInt(&ok);
                     if (ok) {
@@ -1033,7 +1025,7 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
                         }
                     }
                     //if unparsed, ignore the attribute but not the whole cookie (RFC6265 section 5.2.2)
-                } else if (field.first == "path") {
+                } else if (field.first.compare("path", Qt::CaseInsensitive) == 0) {
                     if (field.second.startsWith('/')) {
                         // ### we should treat cookie paths as an octet sequence internally
                         // However RFC6265 says we should assume UTF-8 for presentation as a string
@@ -1043,11 +1035,11 @@ QList<QNetworkCookie> QNetworkCookiePrivate::parseSetCookieHeaderLine(QByteArray
                         // and also IETF test case path0030 which has valid and empty path in the same cookie
                         cookie.setPath(QString());
                     }
-                } else if (field.first == "secure") {
+                } else if (field.first.compare("secure", Qt::CaseInsensitive) == 0) {
                     cookie.setSecure(true);
-                } else if (field.first == "httponly") {
+                } else if (field.first.compare("httponly", Qt::CaseInsensitive) == 0) {
                     cookie.setHttpOnly(true);
-                } else if (field.first == "samesite") {
+                } else if (field.first.compare("samesite", Qt::CaseInsensitive) == 0) {
                     cookie.setSameSitePolicy(sameSiteFromRawString(field.second));
                 } else {
                     // ignore unknown fields in the cookie (RFC6265 section 5.2, rule 6)

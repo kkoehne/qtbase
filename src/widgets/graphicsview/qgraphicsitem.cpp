@@ -764,7 +764,6 @@
 #include <QtCore/qbitarray.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qstack.h>
-#include <QtCore/qtimer.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qnumeric.h>
@@ -4637,10 +4636,14 @@ inline void QGraphicsItemPrivate::sendScenePosChange()
 /*!
     \since 4.6
 
-    Stacks this item before \a sibling, which must be a sibling item (i.e., the
-    two items must share the same parent item, or must both be toplevel items).
-    The \a sibling must have the same Z value as this item, otherwise calling
-    this function will have no effect.
+    Stacks this item before \a sibling, which means this item will be drawn
+    behind the sibling item. In other words, the sibling item will visually
+    appear on top of this item.
+
+    The two items must be siblings (i.e., they must share the same parent
+    item, or must both be toplevel items).The \a sibling must have the
+    same Z value as this item, otherwise calling this function will have
+    no effect.
 
     By default, all sibling items are stacked by insertion order (i.e., the
     first item you add is drawn before the next item you add). If two items' Z
@@ -6501,7 +6504,7 @@ void QGraphicsItem::setData(int key, const QVariant &value)
 }
 
 /*!
-    \fn T qgraphicsitem_cast(QGraphicsItem *item)
+    \fn template <class T> qgraphicsitem_cast(QGraphicsItem *item)
     \relates QGraphicsItem
     \since 4.2
 
@@ -9310,7 +9313,7 @@ QVariant QGraphicsLineItem::extension(const QVariant &variant) const
     QPixmap::createHeuristicMask().  The performance and memory consumption
     is similar to MaskShape.
 */
-extern QPainterPath qt_regionToPath(const QRegion &region);
+Q_GUI_EXPORT extern QPainterPath qt_regionToPath(const QRegion &region);
 
 class QGraphicsPixmapItemPrivate : public QGraphicsItemPrivate
 {
@@ -10516,7 +10519,7 @@ void QGraphicsSimpleTextItemPrivate::updateBoundingRect()
     } else {
         QString tmp = text;
         tmp.replace(u'\n', QChar::LineSeparator);
-        QStackTextEngine engine(tmp, font);
+        Q_DECL_UNINITIALIZED QStackTextEngine engine(tmp, font);
         QTextLayout layout(&engine);
         br = setupTextLayout(&layout);
     }
@@ -10529,7 +10532,7 @@ void QGraphicsSimpleTextItemPrivate::updateBoundingRect()
 
 /*!
     \class QGraphicsSimpleTextItem
-    \brief The QGraphicsSimpleTextItem class provides a simple text path item
+    \brief The QGraphicsSimpleTextItem class provides a simple text item
     that you can add to a QGraphicsScene.
     \since 4.2
     \ingroup graphicsview-api
@@ -10677,7 +10680,7 @@ void QGraphicsSimpleTextItem::paint(QPainter *painter, const QStyleOptionGraphic
 
     QString tmp = d->text;
     tmp.replace(u'\n', QChar::LineSeparator);
-    QStackTextEngine engine(tmp, d->font);
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(tmp, d->font);
     QTextLayout layout(&engine);
 
     QPen p;
@@ -11162,10 +11165,8 @@ QDebug operator<<(QDebug debug, const QGraphicsItem *item)
     QDebugStateSaver saver(debug);
     debug.nospace();
 
-    if (!item) {
-        debug << "QGraphicsItem(0)";
-        return debug;
-    }
+    if (!item)
+        return debug << "QGraphicsItem(0x0)";
 
     if (const QGraphicsObject *o = item->toGraphicsObject())
         debug << o->metaObject()->className();
@@ -11180,7 +11181,7 @@ QDebug operator<<(QDebug debug, const QGraphicsItem *item)
                 debug << ", name=" << w->objectName();
             debug << ')';
         } else {
-            debug << "QWidget(0)";
+            debug << "QWidget(0x0)";
         }
     }
     formatGraphicsItemHelper(debug, item);
@@ -11193,10 +11194,8 @@ QDebug operator<<(QDebug debug, const QGraphicsObject *item)
     QDebugStateSaver saver(debug);
     debug.nospace();
 
-    if (!item) {
-        debug << "QGraphicsObject(0)";
-        return debug;
-    }
+    if (!item)
+        return debug << "QGraphicsObject(0x0)";
 
     debug << item->metaObject()->className() << '(' << static_cast<const void *>(item);
     if (!item->objectName().isEmpty())

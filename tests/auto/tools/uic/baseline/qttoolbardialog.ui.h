@@ -106,7 +106,7 @@ public:
         vboxLayout->setObjectName("vboxLayout");
         upButton = new QToolButton(QtToolBarDialog);
         upButton->setObjectName("upButton");
-        QSizePolicy sizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(upButton->sizePolicy().hasHeightForWidth());
@@ -135,7 +135,7 @@ public:
 
         vboxLayout->addWidget(downButton);
 
-        spacerItem = new QSpacerItem(29, 16, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(29, 16, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout->addItem(spacerItem);
 
@@ -159,7 +159,7 @@ public:
 
         buttonBox = new QDialogButtonBox(QtToolBarDialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setStandardButtons(QDialogButtonBox::Apply|QDialogButtonBox::Cancel|QDialogButtonBox::Ok|QDialogButtonBox::RestoreDefaults);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Apply|QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok|QDialogButtonBox::StandardButton::RestoreDefaults);
 
         gridLayout->addWidget(buttonBox, 5, 0, 1, 3);
 

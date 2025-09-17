@@ -12,6 +12,8 @@
 
 #include <QImage>
 #include <private/qjnihelpers_p.h>
+#include <QtCore/QJniObject>
+#include <androidbackendregister.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -22,55 +24,45 @@ class QAndroidPlatformIntegration;
 class QWidget;
 class QString;
 class QWindow;
-class AndroidSurfaceClient;
+class QAndroidPlatformWindow;
 class QBasicMutex;
+
+Q_DECLARE_JNI_CLASS(QtActivityDelegateBase, "org/qtproject/qt/android/QtActivityDelegateBase")
+Q_DECLARE_JNI_CLASS(QtInputDelegate, "org/qtproject/qt/android/QtInputDelegate")
 
 namespace QtAndroid
 {
     QBasicMutex *platformInterfaceMutex();
     QAndroidPlatformIntegration *androidPlatformIntegration();
+    AndroidBackendRegister *backendRegister();
     void setAndroidPlatformIntegration(QAndroidPlatformIntegration *androidPlatformIntegration);
     void setQtThread(QThread *thread);
-
-
-    int createSurface(AndroidSurfaceClient * client, const QRect &geometry, bool onTop, int imageDepth);
-    int insertNativeView(jobject view, const QRect &geometry);
     void setViewVisibility(jobject view, bool visible);
-    void setSurfaceGeometry(int surfaceId, const QRect &geometry);
-    void destroySurface(int surfaceId);
-    void bringChildToFront(int surfaceId);
-    void bringChildToBack(int surfaceId);
 
     QWindow *topLevelWindowAt(const QPoint &globalPos);
+    QWindow *windowFromId(int windowId);
     int availableWidthPixels();
     int availableHeightPixels();
-    double scaledDensity();
     double pixelDensity();
-    JavaVM *javaVM();
     jobject assets();
     AAssetManager *assetManager();
     jclass applicationClass();
-    QtJniTypes::Activity activity();
-    QtJniTypes::Service service();
-
-    // Keep synchronized with flags in ActivityDelegate.java
-    enum SystemUiVisibility {
-        SYSTEM_UI_VISIBILITY_NORMAL = 0,
-        SYSTEM_UI_VISIBILITY_FULLSCREEN = 1,
-        SYSTEM_UI_VISIBILITY_TRANSLUCENT = 2
-    };
-    void setSystemUiVisibility(SystemUiVisibility uiVisibility);
 
     jobject createBitmap(QImage img, JNIEnv *env = nullptr);
     jobject createBitmap(int width, int height, QImage::Format format, JNIEnv *env);
     jobject createBitmapDrawable(jobject bitmap, JNIEnv *env = nullptr);
 
+#if QT_CONFIG(accessibility)
     void notifyAccessibilityLocationChange(uint accessibilityObjectId);
     void notifyObjectHide(uint accessibilityObjectId, uint parentObjectId);
+    void notifyObjectShow(uint parentObjectId);
     void notifyObjectFocus(uint accessibilityObjectId);
     void notifyValueChanged(uint accessibilityObjectId, jstring value);
+    void notifyDescriptionOrNameChanged(uint accessibilityObjectId, const QString &value);
     void notifyScrolledEvent(uint accessibilityObjectId);
-    void notifyQtAndroidPluginRunning(bool running);
+    void notifyAnnouncementEvent(uint accessibilityObjectId, const QString &message);
+#endif
+    void notifyNativePluginIntegrationReady(bool ready);
 
     const char *classErrorMsgFmt();
     const char *methodErrorMsgFmt();
@@ -78,6 +70,8 @@ namespace QtAndroid
 
     QString deviceName();
     bool blockEventLoopsWhenSuspended();
+
+    bool isQtApplication();
 }
 
 QT_END_NAMESPACE

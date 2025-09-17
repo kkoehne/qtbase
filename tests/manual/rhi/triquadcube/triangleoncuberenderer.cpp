@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "triangleoncuberenderer.h"
 #include <QFile>
@@ -41,7 +41,7 @@ void TriangleOnCubeRenderer::initResources(QRhiRenderPassDescriptor *rp)
     if (IMAGE_UNDER_OFFSCREEN_RENDERING) {
         m_image = QImage(QLatin1String(":/qt256.png")).scaled(OFFSCREEN_SIZE).convertToFormat(QImage::Format_RGBA8888);
         if (m_r->isYUpInFramebuffer())
-            m_image = m_image.mirrored(); // just cause we'll flip texcoord Y when y up so accommodate our static background image as well
+            m_image.flip(); // just cause we'll flip texcoord Y when y up so accommodate our static background image as well
     }
 
     m_tex = m_r->newTexture(QRhiTexture::RGBA8, OFFSCREEN_SIZE, 1, QRhiTexture::RenderTarget);

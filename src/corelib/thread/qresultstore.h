@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTCORE_RESULTSTORE_H
 #define QTCORE_RESULTSTORE_H
@@ -46,12 +47,21 @@ public:
     ResultIteratorBase operator++();
     int batchSize() const;
     void batchedAdvance();
+#if QT_CORE_REMOVED_SINCE(6, 8)
     bool operator==(const ResultIteratorBase &other) const;
     bool operator!=(const ResultIteratorBase &other) const;
+#endif
     bool isVector() const;
     bool canIncrementVectorIndex() const;
     bool isValid() const;
 
+private:
+    friend bool comparesEqual(const ResultIteratorBase &lhs,
+                              const ResultIteratorBase &rhs)
+    {
+        return (lhs.mapIterator == rhs.mapIterator && lhs.m_vectorIndex == rhs.m_vectorIndex);
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(ResultIteratorBase)
 protected:
     QMap<int, ResultItem>::const_iterator mapIterator;
     int m_vectorIndex;

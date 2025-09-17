@@ -17,7 +17,6 @@
 #include <qmenu.h>
 #endif
 #include <qstyle.h>
-#include <qtimer.h>
 #include "private/qapplication_p.h"
 #include "private/qtextdocumentlayout_p.h"
 #include "private/qabstracttextdocumentlayout_p.h"
@@ -725,8 +724,14 @@ void QPlainTextEditPrivate::updateViewport()
 }
 
 QPlainTextEditPrivate::QPlainTextEditPrivate()
-    : tabChangesFocus(false), showCursorOnInitialShow(false), backgroundVisible(false),
-      centerOnScroll(false), inDrag(false), clickCausedFocus(false), pageUpDownLastCursorYIsValid(false)
+    : tabChangesFocus(false)
+    , showCursorOnInitialShow(false)
+    , backgroundVisible(false)
+    , centerOnScroll(false)
+    , inDrag(false)
+    , clickCausedFocus(false)
+    , pageUpDownLastCursorYIsValid(false)
+    , placeholderTextShown(false)
 {
 }
 
@@ -776,7 +781,7 @@ void QPlainTextEditPrivate::init(const QString &txt)
     if (!txt.isEmpty())
         control->setPlainText(txt);
 
-    hbar->setSingleStep(20);
+    hbar->setSingleStep(defaultSingleStep());
     vbar->setSingleStep(1);
 
     viewport->setBackgroundRole(QPalette::Base);
@@ -793,14 +798,14 @@ void QPlainTextEditPrivate::init(const QString &txt)
 
 void QPlainTextEditPrivate::updatePlaceholderVisibility()
 {
-    Q_Q(QPlainTextEdit);
-
     // We normally only repaint the part of view that contains text in the
     // document that has changed (in repaintContents). But the placeholder
     // text is not a part of the document, but is drawn on separately. So whenever
     // we either show or hide the placeholder text, we issue a full update.
-    if (q->document()->isEmpty())
+    if (placeholderTextShown != placeHolderTextToBeShown()) {
         viewport->update();
+        placeholderTextShown = placeHolderTextToBeShown();
+    }
 }
 
 void QPlainTextEditPrivate::repaintContents(const QRectF &contentsRect)
@@ -1021,8 +1026,6 @@ void QPlainTextEditPrivate::ensureViewportLayouted()
 
     \ingroup richtext-processing
     \inmodule QtWidgets
-
-    \tableofcontents
 
     \section1 Introduction and Concepts
 
@@ -1551,6 +1554,10 @@ bool QPlainTextEdit::event(QEvent *e)
         }
         return true;
 #endif // QT_NO_GESTURES
+    case QEvent::WindowActivate:
+    case QEvent::WindowDeactivate:
+        d->control->setPalette(palette());
+        break;
     default:
         break;
     }
@@ -1661,8 +1668,7 @@ void QPlainTextEdit::keyPressEvent(QKeyEvent *e)
             break;
         case Qt::Key_Back:
         case Qt::Key_No:
-            if (!QApplicationPrivate::keypadNavigationEnabled()
-                    || (QApplicationPrivate::keypadNavigationEnabled() && !hasEditFocus())) {
+            if (!QApplicationPrivate::keypadNavigationEnabled() || !hasEditFocus()) {
                 e->ignore();
                 return;
             }
@@ -1902,7 +1908,7 @@ void QPlainTextEdit::paintEvent(QPaintEvent *e)
     er.setRight(qMin(er.right(), maxX));
     painter.setClipRect(er);
 
-    if (d->isPlaceHolderTextVisible()) {
+    if (d->placeHolderTextToBeShown()) {
         const QColor col = d->control->palette().placeholderText().color();
         painter.setPen(col);
         painter.setClipRect(e->rect());
@@ -2202,7 +2208,7 @@ QVariant QPlainTextEdit::inputMethodQuery(Qt::InputMethodQuery query, QVariant a
     Q_D(const QPlainTextEdit);
     switch (query) {
     case Qt::ImEnabled:
-        return isEnabled();
+        return isEnabled() && !isReadOnly();
     case Qt::ImHints:
     case Qt::ImInputItemClipRectangle:
         return QWidget::inputMethodQuery(query);
@@ -2292,7 +2298,6 @@ void QPlainTextEdit::changeEvent(QEvent *e)
         d->control->document()->setDefaultFont(font());
         break;
     case QEvent::ActivationChange:
-        d->control->setPalette(palette());
         if (!isActiveWindow())
             d->autoScrollTimer.stop();
         break;
@@ -2594,7 +2599,7 @@ void QPlainTextEdit::insertFromMimeData(const QMimeData *source)
 bool QPlainTextEdit::isReadOnly() const
 {
     Q_D(const QPlainTextEdit);
-    return !(d->control->textInteractionFlags() & Qt::TextEditable);
+    return !d->control || !(d->control->textInteractionFlags() & Qt::TextEditable);
 }
 
 void QPlainTextEdit::setReadOnly(bool ro)
@@ -2888,11 +2893,14 @@ bool QPlainTextEdit::find(const QString &exp, QTextDocument::FindFlags options)
     \overload
 
     Finds the next occurrence, matching the regular expression, \a exp, using the given
-    \a options. The QTextDocument::FindCaseSensitively option is ignored for this overload,
-    use QRegularExpression::CaseInsensitiveOption instead.
+    \a options.
 
     Returns \c true if a match was found and changes the cursor to select the match;
     otherwise returns \c false.
+
+    \warning For historical reasons, the case sensitivity option set on
+    \a exp is ignored. Instead, the \a options are used to determine
+    if the search is case sensitive or not.
 */
 #if QT_CONFIG(regularexpression)
 bool QPlainTextEdit::find(const QRegularExpression &exp, QTextDocument::FindFlags options)

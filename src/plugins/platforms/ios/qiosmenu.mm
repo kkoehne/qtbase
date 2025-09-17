@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qglobal.h>
 #include <qguiapplication.h>
@@ -491,7 +492,7 @@ QIOSMenuItemList QIOSMenu::filterFirstResponderActions(const QIOSMenuItemList &m
     // In case of QIOSTextResponder, edit actions will be converted to key events that ends up
     // triggering the shortcuts of the filtered menu items.
     QIOSMenuItemList filteredMenuItems;
-    UIResponder *responder = [UIResponder currentFirstResponder];
+    UIResponder *responder = [UIResponder qt_currentFirstResponder];
 
     for (int i = 0; i < menuItems.count(); ++i) {
         QIOSMenuItem *menuItem = menuItems.at(i);

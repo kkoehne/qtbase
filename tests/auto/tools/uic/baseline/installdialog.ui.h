@@ -73,7 +73,7 @@ public:
 
         gridLayout->addWidget(closeButton, 3, 4, 1, 1);
 
-        spacerItem = new QSpacerItem(20, 56, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 56, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem, 4, 4, 1, 1);
 
@@ -94,8 +94,8 @@ public:
 
         line = new QFrame(InstallDialog);
         line->setObjectName("line");
-        line->setFrameShape(QFrame::HLine);
-        line->setFrameShadow(QFrame::Sunken);
+        line->setFrameShape(QFrame::Shape::HLine);
+        line->setFrameShadow(QFrame::Shadow::Sunken);
 
         gridLayout->addWidget(line, 6, 0, 1, 5);
 
@@ -107,7 +107,7 @@ public:
         progressBar = new QProgressBar(InstallDialog);
         progressBar->setObjectName("progressBar");
         progressBar->setValue(0);
-        progressBar->setOrientation(Qt::Horizontal);
+        progressBar->setOrientation(Qt::Orientation::Horizontal);
 
         gridLayout->addWidget(progressBar, 7, 2, 1, 3);
 

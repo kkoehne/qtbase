@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qpainter.h>
@@ -61,6 +61,7 @@ private slots:
 #endif
     void drawPixmapFragments();
     void drawPixmapNegativeScale();
+    void drawPixmapRounding();
 
     void drawLine_data();
     void drawLine();
@@ -169,6 +170,8 @@ private slots:
     void radialGradientRgb30();
 #endif
 
+    void radialGradient_QTBUG120332_ubsan();
+    void radialGradient_QTBUG130992_crash();
     void fpe_pixmapTransform();
     void fpe_zeroLengthLines();
     void fpe_divByZero();
@@ -243,6 +246,7 @@ private slots:
 
     void QTBUG14614_gradientCacheRaceCondition();
     void drawTextOpacity();
+    void drawPathOpacity();
 
     void QTBUG17053_zeroDashPattern();
 
@@ -278,6 +282,7 @@ private slots:
 
     void fillPolygon();
 
+    void textOnArgb32();
     void drawImageAtPointF();
     void scaledDashes();
 #if QT_CONFIG(raster_fp)
@@ -744,6 +749,16 @@ void tst_QPainter::drawPixmapNegativeScale()
     QImage resultImage = resultPixmap.toImage().convertToFormat(QImage::Format_ARGB32);
     QVERIFY(resultImage.pixel(4, 8) == qRgba(255, 255, 255, 255)); // left strip is now white
     QVERIFY(resultImage.pixel(12, 8) == qRgba(0, 0, 0, 255)); // and right strip is now black
+}
+
+void tst_QPainter::drawPixmapRounding()
+{
+    // Just test that we don't assert
+    QBitmap bm(8, 8);
+    QImage out(64, 64, QImage::Format_RGB32);
+    QPainter p(&out);
+    qreal y = 26.499999999999996;
+    p.drawPixmap(QPointF(0, y), bm);
 }
 
 void tst_QPainter::drawLine_data()
@@ -1726,6 +1741,25 @@ void tst_QPainter::setClipRect()
         QVERIFY(p.clipRegion().isEmpty());
         p.setClipRect(QRectF(10.5, 10.5, 10.5, -10.5));
         QVERIFY(p.clipRegion().isEmpty());
+    }
+
+    // extreme transform, values reverse-engineered from oss-fuzz issue 406541912
+    // crashed with a failed assert due to an integer overflow
+    {
+        QPainter p(&img);
+        p.setTransform(QTransform(37.7, 0., 0.,
+                                  0., 233., 0.,
+                                  18.85, -163099999883.5, 1.));
+        p.setClipRect(QRect(0, 0, 10, 1), Qt::ReplaceClip);
+    }
+
+    // the same extreme transform, edited to overflow on the x-axis instead
+    {
+        QPainter p(&img);
+        p.setTransform(QTransform(233., 0., 0.,
+                                  0., 37.7, 0.,
+                                  -163099999883.5, 18.85, 1.));
+        p.setClipRect(QRect(0, 0, 1, 10), Qt::ReplaceClip);
     }
 }
 
@@ -2772,7 +2806,7 @@ void tst_QPainter::monoImages()
     for (int i = 1; i < QImage::NImageFormats; ++i) {
         for (int j = 0; j < numColorPairs; ++j) {
             const QImage::Format format = QImage::Format(i);
-            if (format == QImage::Format_Indexed8)
+            if (format == QImage::Format_Indexed8 || format == QImage::Format_CMYK8888)
                 continue;
 
             QImage img(2, 2, format);
@@ -2834,7 +2868,7 @@ void tst_QPainter::monoImages()
 
 #if defined(Q_OS_DARWIN) || defined(Q_OS_FREEBSD) || defined(Q_OS_ANDROID)
 #  define TEST_FPE_EXCEPTIONS
-#elif defined(Q_OS_LINUX) && defined(__GLIBC__)
+#elif defined(__GLIBC__)
 #  define TEST_FPE_EXCEPTIONS
 #elif defined(Q_OS_WIN) && defined(Q_CC_GNU)
 #  define TEST_FPE_EXCEPTIONS
@@ -3542,9 +3576,13 @@ void tst_QPainter::drawImage_data()
 
     for (int srcFormat = QImage::Format_Mono; srcFormat < QImage::NImageFormats; ++srcFormat) {
         for (int dstFormat = QImage::Format_Mono; dstFormat < QImage::NImageFormats; ++dstFormat) {
-            // Indexed8 can't be painted to, and Alpha8 can't hold a color.
-            if (dstFormat == QImage::Format_Indexed8 || dstFormat == QImage::Format_Alpha8)
+            // Indexed8 and CMYK8888 can't be painted to, and Alpha8 can't hold a color.
+            if (dstFormat == QImage::Format_Indexed8 ||
+                dstFormat == QImage::Format_CMYK8888 ||
+                dstFormat == QImage::Format_Alpha8) {
                 continue;
+            }
+
             for (int odd_x = 0; odd_x <= 1; ++odd_x) {
                 for (int odd_width = 0; odd_width <= 1; ++odd_width) {
                     QTest::addRow("srcFormat %d, dstFormat %d, odd x: %d, odd width: %d",
@@ -3847,7 +3885,7 @@ void tst_QPainter::linearGradientSymmetry()
     pb.fillRect(b.rect(), inverseGradient(gradient));
     pb.end();
 
-    b = b.mirrored(true);
+    b = b.flipped(Qt::Horizontal | Qt::Vertical);
     QCOMPARE(a, b);
 }
 
@@ -3894,6 +3932,34 @@ void tst_QPainter::gradientPixelFormat()
     pb.end();
 
     QCOMPARE(a, b.convertToFormat(QImage::Format_ARGB32_Premultiplied));
+}
+
+void tst_QPainter::radialGradient_QTBUG120332_ubsan()
+{
+    // Check if Radial Gradient will cause division by zero or not when
+    // the center point coincide with the focal point.
+    QImage image(8, 8, QImage::Format_ARGB32_Premultiplied);
+    QPainter painter(&image);
+
+    QPointF center(0.5, 0.5);
+    QPointF focal(0.5, 0.5);
+    QRadialGradient gradient(center, 0.5, focal, 0.5);
+    gradient.setColorAt(0, Qt::blue);
+    gradient.setColorAt(1, Qt::red);
+    painter.fillRect(image.rect(), QBrush(gradient));
+}
+
+void tst_QPainter::radialGradient_QTBUG130992_crash()
+{
+    // Check if Radial Gradient will crash on extreme values
+    // The crash was found by oss-fuzz, see
+    // https://issues.oss-fuzz.com/issues/42533347
+    QImage image(8, 8, QImage::Format_ARGB32_Premultiplied);
+    QPainter painter(&image);
+
+    constexpr qreal hugeValue = 1.1E37;
+    QRadialGradient gradient(hugeValue, 0.5, 0.5, hugeValue, 0.5);
+    painter.fillRect(image.rect(), QBrush(gradient));
 }
 
 void tst_QPainter::gradientInterpolation()
@@ -4770,6 +4836,48 @@ void tst_QPainter::drawTextOpacity()
     QCOMPARE(image, copy);
 }
 
+void tst_QPainter::drawPathOpacity()
+{
+    // make sure that drawing a non-opaque QPainterPath will yield the same
+    // result as drawing its fill and outline separately, i.e. that the fill's
+    // edge can be seen through the translucent outline
+    // qtsvg relies on this behavior, so please inform its developers in
+    // case you change it
+
+    QImage image(32, 32, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter p(&image);
+    p.setOpacity(0.5);
+
+    QPainterPath pp;
+    pp.moveTo(5, 5);
+    pp.lineTo(27, 5);
+    pp.lineTo(5, 27);
+    pp.closeSubpath();
+
+    // only fill
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("blue"));
+    p.drawPath(pp);
+
+    // only outline
+    QPen pen;
+    pen.setColor(QColor("yellow"));
+    pen.setWidthF(8.);
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+    p.drawPath(pp);
+    const QImage drawnInTwoPasses = image;
+
+    // draw in one pass
+    image.fill(Qt::white);
+    p.setPen(pen);
+    p.setBrush(QColor("blue"));
+    p.drawPath(pp);
+
+    QCOMPARE(image, drawnInTwoPasses);
+}
+
 void tst_QPainter::QTBUG17053_zeroDashPattern()
 {
     QImage image(32, 32, QImage::Format_RGB32);
@@ -5425,6 +5533,31 @@ void tst_QPainter::fillPolygon()
                     }
                 }
             }
+        }
+    }
+}
+
+void tst_QPainter::textOnArgb32()
+{
+    QImage backing(100, 20, QImage::Format_RGB32);
+    backing.fill(Qt::white);
+    QImage img(100, 20, QImage::Format_ARGB32);
+    img.fill(Qt::transparent); // Filled with transparent black
+
+    QPainter imagePainter(&img);
+    imagePainter.setPen(Qt::red);
+    imagePainter.setFont(QFontDatabase::systemFont(QFontDatabase::GeneralFont));
+    imagePainter.setRenderHints(QPainter::TextAntialiasing);
+    imagePainter.drawText(img.rect(), Qt::AlignCenter,"Text example");
+    imagePainter.end();
+    imagePainter.begin(&backing);
+    imagePainter.drawImage(backing.rect(), img);
+    imagePainter.end();
+    for (int y = 0; y < backing.height(); ++y) {
+        for (int x = 0; x < backing.width(); ++x) {
+            const uint32_t px = backing.pixel(x, y);
+            // Red over white, should always be full red.
+            QCOMPARE(qRed(px), 255);
         }
     }
 }

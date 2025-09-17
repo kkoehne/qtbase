@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSOCKS5SOCKETENGINE_P_H
 #define QSOCKS5SOCKETENGINE_P_H
@@ -59,9 +60,9 @@ public:
 #ifndef QT_NO_UDPSOCKET
 #ifndef QT_NO_NETWORKINTERFACE
     bool joinMulticastGroup(const QHostAddress &groupAddress,
-                            const QNetworkInterface &interface) override;
+                            const QNetworkInterface &iface) override;
     bool leaveMulticastGroup(const QHostAddress &groupAddress,
-                             const QNetworkInterface &interface) override;
+                             const QNetworkInterface &iface) override;
     QNetworkInterface multicastInterface() const override;
     bool setMulticastInterface(const QNetworkInterface &iface) override;
 #endif // QT_NO_NETWORKINTERFACE
@@ -78,11 +79,14 @@ public:
     int option(SocketOption option) const override;
     bool setOption(SocketOption option, int value) override;
 
-    bool waitForRead(int msecs = 30000, bool *timedOut = nullptr) override;
-    bool waitForWrite(int msecs = 30000, bool *timedOut = nullptr) override;
+    bool waitForRead(QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                     bool *timedOut = nullptr) override;
+    bool waitForWrite(QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                      bool *timedOut = nullptr) override;
     bool waitForReadOrWrite(bool *readyToRead, bool *readyToWrite,
                             bool checkRead, bool checkWrite,
-                            int msecs = 30000, bool *timedOut = nullptr) override;
+                            QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                            bool *timedOut = nullptr) override;
 
     bool isReadNotificationEnabled() const override;
     void setReadNotificationEnabled(bool enable) override;
@@ -208,7 +212,7 @@ public:
     void parseRequestMethodReply();
     void parseNewConnection();
 
-    bool waitForConnected(int msecs, bool *timedOut);
+    bool waitForConnected(QDeadlineTimer deadline, bool *timedOut);
 
     void _q_controlSocketConnected();
     void _q_controlSocketReadNotification();

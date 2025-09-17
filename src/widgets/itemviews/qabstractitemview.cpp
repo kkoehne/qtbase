@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include "qabstractitemview.h"
 
 #include <qpointer.h>
@@ -87,7 +85,8 @@ QAbstractItemViewPrivate::QAbstractItemViewPrivate()
         delayedPendingLayout(true),
         moveCursorUpdatedView(false),
         verticalScrollModeSet(false),
-        horizontalScrollModeSet(false)
+        horizontalScrollModeSet(false),
+        updateThreshold(200)
 {
     keyboardInputTime.invalidate();
 }
@@ -104,15 +103,16 @@ void QAbstractItemViewPrivate::init()
     vbar->setRange(0, 0);
     hbar->setRange(0, 0);
 
-    QObject::connect(vbar, SIGNAL(actionTriggered(int)),
-                     q, SLOT(verticalScrollbarAction(int)));
-    QObject::connect(hbar, SIGNAL(actionTriggered(int)),
-                     q, SLOT(horizontalScrollbarAction(int)));
-    QObject::connect(vbar, SIGNAL(valueChanged(int)),
-                     q, SLOT(verticalScrollbarValueChanged(int)));
-    QObject::connect(hbar, SIGNAL(valueChanged(int)),
-                     q, SLOT(horizontalScrollbarValueChanged(int)));
-
+    scrollbarConnections = {
+        QObject::connect(vbar, &QScrollBar::actionTriggered,
+                         q, &QAbstractItemView::verticalScrollbarAction),
+        QObject::connect(hbar, &QScrollBar::actionTriggered,
+                         q, &QAbstractItemView::horizontalScrollbarAction),
+        QObject::connect(vbar, &QScrollBar::valueChanged,
+                         q, &QAbstractItemView::verticalScrollbarValueChanged),
+        QObject::connect(hbar, &QScrollBar::valueChanged,
+                         q, &QAbstractItemView::horizontalScrollbarValueChanged)
+    };
     viewport->setBackgroundRole(QPalette::Base);
 
     q->setAttribute(Qt::WA_InputMethodEnabled);
@@ -174,7 +174,7 @@ void QAbstractItemViewPrivate::checkMouseMove(const QPersistentModelIndex &index
 #if QT_CONFIG(gestures) && QT_CONFIG(scroller)
 
 // stores and restores the selection and current item when flicking
-void QAbstractItemViewPrivate::_q_scrollerStateChanged()
+void QAbstractItemViewPrivate::scrollerStateChanged()
 {
     Q_Q(QAbstractItemView);
 
@@ -210,7 +210,7 @@ void QAbstractItemViewPrivate::_q_scrollerStateChanged()
 
 #endif // QT_NO_GESTURES
 
-void QAbstractItemViewPrivate::_q_delegateSizeHintChanged(const QModelIndex &index)
+void QAbstractItemViewPrivate::delegateSizeHintChanged(const QModelIndex &index)
 {
     Q_Q(QAbstractItemView);
     if (model) {
@@ -218,6 +218,63 @@ void QAbstractItemViewPrivate::_q_delegateSizeHintChanged(const QModelIndex &ind
             qWarning("Delegate size hint changed for a model index that does not belong to this view");
     }
     QMetaObject::invokeMethod(q, &QAbstractItemView::doItemsLayout, Qt::QueuedConnection);
+}
+
+void QAbstractItemViewPrivate::connectDelegate(QAbstractItemDelegate *delegate)
+{
+    if (!delegate)
+        return;
+    Q_Q(QAbstractItemView);
+    QObject::connect(delegate, &QAbstractItemDelegate::closeEditor,
+                     q, &QAbstractItemView::closeEditor);
+    QObject::connect(delegate, &QAbstractItemDelegate::commitData,
+                     q, &QAbstractItemView::commitData);
+    QObjectPrivate::connect(delegate, &QAbstractItemDelegate::sizeHintChanged,
+                            this, &QAbstractItemViewPrivate::delegateSizeHintChanged);
+}
+
+void QAbstractItemViewPrivate::disconnectDelegate(QAbstractItemDelegate *delegate)
+{
+    if (!delegate)
+        return;
+    Q_Q(QAbstractItemView);
+    QObject::disconnect(delegate, &QAbstractItemDelegate::closeEditor,
+                        q, &QAbstractItemView::closeEditor);
+    QObject::disconnect(delegate, &QAbstractItemDelegate::commitData,
+                        q, &QAbstractItemView::commitData);
+    QObjectPrivate::disconnect(delegate, &QAbstractItemDelegate::sizeHintChanged,
+                               this, &QAbstractItemViewPrivate::delegateSizeHintChanged);
+}
+
+void QAbstractItemViewPrivate::disconnectAll()
+{
+    Q_Q(QAbstractItemView);
+    for (const QMetaObject::Connection &connection : modelConnections)
+        QObject::disconnect(connection);
+    for (const QMetaObject::Connection &connection : scrollbarConnections)
+      QObject::disconnect(connection);
+    disconnectDelegate(itemDelegate);
+    for (QAbstractItemDelegate *delegate : std::as_const(rowDelegates))
+        disconnectDelegate(delegate);
+    for (QAbstractItemDelegate *delegate : std::as_const(columnDelegates))
+        disconnectDelegate(delegate);
+    if (model && selectionModel) {
+        QObject::disconnect(model, &QAbstractItemModel::destroyed,
+                            selectionModel, &QItemSelectionModel::deleteLater);
+    }
+    if (selectionModel) {
+        QObject::disconnect(selectionModel, &QItemSelectionModel::selectionChanged,
+                            q, &QAbstractItemView::selectionChanged);
+        QObject::disconnect(selectionModel, &QItemSelectionModel::currentChanged,
+                            q, &QAbstractItemView::currentChanged);
+    }
+    for (const auto &info : std::as_const(indexEditorHash)) {
+        if (!info.isStatic && info.widget)
+            QObject::disconnect(info.widget, &QWidget::destroyed, q, &QAbstractItemView::editorDestroyed);
+    }
+#if QT_CONFIG(gestures) && QT_CONFIG(scroller)
+    QObject::disconnect(scollerConnection);
+#endif
 }
 
 /*!
@@ -427,7 +484,6 @@ void QAbstractItemViewPrivate::_q_delegateSizeHintChanged(const QModelIndex &ind
 */
 
 /*!
-    \since 4.2
     \enum QAbstractItemView::ScrollMode
 
     Describes how the scrollbar should behave. When setting the scroll mode
@@ -633,6 +689,7 @@ QAbstractItemView::~QAbstractItemView()
     d->autoScrollTimer.stop();
     d->delayedLayout.stop();
     d->fetchMoreTimer.stop();
+    d->disconnectAll();
 }
 
 /*!
@@ -661,68 +718,47 @@ void QAbstractItemView::setModel(QAbstractItemModel *model)
     if (model == d->model)
         return;
     if (d->model && d->model != QAbstractItemModelPrivate::staticEmptyModel()) {
-        disconnect(d->model, SIGNAL(destroyed()),
-                   this, SLOT(_q_modelDestroyed()));
-        disconnect(d->model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QList<int>)), this,
-                   SLOT(dataChanged(QModelIndex,QModelIndex,QList<int>)));
-        disconnect(d->model, SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-                   this, SLOT(_q_headerDataChanged()));
-        disconnect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                   this, SLOT(rowsInserted(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                   this, SLOT(rowsAboutToBeRemoved(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_rowsRemoved(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                   this, SLOT(_q_rowsMoved(QModelIndex,int,int,QModelIndex,int)));
-        disconnect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_rowsInserted(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_columnsAboutToBeRemoved(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                   this, SLOT(_q_columnsRemoved(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-                   this, SLOT(_q_columnsInserted(QModelIndex,int,int)));
-        disconnect(d->model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                   this, SLOT(_q_columnsMoved(QModelIndex,int,int,QModelIndex,int)));
-
-        disconnect(d->model, SIGNAL(modelReset()), this, SLOT(reset()));
-        disconnect(d->model, SIGNAL(layoutChanged()), this, SLOT(_q_layoutChanged()));
+        for (const QMetaObject::Connection &connection : d->modelConnections)
+            disconnect(connection);
     }
     d->model = (model ? model : QAbstractItemModelPrivate::staticEmptyModel());
 
     if (d->model != QAbstractItemModelPrivate::staticEmptyModel()) {
-        connect(d->model, SIGNAL(destroyed()),
-                this, SLOT(_q_modelDestroyed()));
-        connect(d->model, SIGNAL(dataChanged(QModelIndex,QModelIndex,QList<int>)), this,
-                SLOT(dataChanged(QModelIndex,QModelIndex,QList<int>)));
-        connect(d->model, SIGNAL(headerDataChanged(Qt::Orientation,int,int)),
-                this, SLOT(_q_headerDataChanged()));
-        connect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                this, SLOT(rowsInserted(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(rowsInserted(QModelIndex,int,int)),
-                this, SLOT(_q_rowsInserted(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(rowsAboutToBeRemoved(QModelIndex,int,int)),
-                this, SLOT(rowsAboutToBeRemoved(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(rowsRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_rowsRemoved(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(rowsMoved(QModelIndex,int,int,QModelIndex,int)),
-                this, SLOT(_q_rowsMoved(QModelIndex,int,int,QModelIndex,int)));
-        connect(d->model, SIGNAL(columnsAboutToBeRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_columnsAboutToBeRemoved(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(columnsRemoved(QModelIndex,int,int)),
-                this, SLOT(_q_columnsRemoved(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(columnsInserted(QModelIndex,int,int)),
-                this, SLOT(_q_columnsInserted(QModelIndex,int,int)));
-        connect(d->model, SIGNAL(columnsMoved(QModelIndex,int,int,QModelIndex,int)),
-                this, SLOT(_q_columnsMoved(QModelIndex,int,int,QModelIndex,int)));
-
-        connect(d->model, SIGNAL(modelReset()), this, SLOT(reset()));
-        connect(d->model, SIGNAL(layoutChanged()), this, SLOT(_q_layoutChanged()));
+        d->modelConnections = {
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::destroyed,
+                                    d, &QAbstractItemViewPrivate::modelDestroyed),
+            QObject::connect(d->model, &QAbstractItemModel::dataChanged,
+                             this, &QAbstractItemView::dataChanged),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::headerDataChanged,
+                                    d, &QAbstractItemViewPrivate::headerDataChanged),
+            QObject::connect(d->model, &QAbstractItemModel::rowsInserted,
+                             this, &QAbstractItemView::rowsInserted),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsInserted,
+                                    d, &QAbstractItemViewPrivate::rowsInserted),
+            QObject::connect(d->model, &QAbstractItemModel::rowsAboutToBeRemoved,
+                             this, &QAbstractItemView::rowsAboutToBeRemoved),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsRemoved,
+                                    d, &QAbstractItemViewPrivate::rowsRemoved),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::rowsMoved,
+                                    d, &QAbstractItemViewPrivate::rowsMoved),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsAboutToBeRemoved,
+                                    d, &QAbstractItemViewPrivate::columnsAboutToBeRemoved),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsRemoved,
+                                    d, &QAbstractItemViewPrivate::columnsRemoved),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsInserted,
+                                    d, &QAbstractItemViewPrivate::columnsInserted),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::columnsMoved,
+                                    d, &QAbstractItemViewPrivate::columnsMoved),
+            QObject::connect(d->model, &QAbstractItemModel::modelReset,
+                             this, &QAbstractItemView::reset),
+            QObjectPrivate::connect(d->model, &QAbstractItemModel::layoutChanged,
+                                    d, &QAbstractItemViewPrivate::layoutChanged),
+        };
     }
 
     QItemSelectionModel *selection_model = new QItemSelectionModel(d->model, this);
-    connect(d->model, SIGNAL(destroyed()), selection_model, SLOT(deleteLater()));
+    connect(d->model, &QAbstractItemModel::destroyed,
+            selection_model, &QItemSelectionModel::deleteLater);
     setSelectionModel(selection_model);
 
     reset(); // kill editors, set new root and do layout
@@ -772,20 +808,19 @@ void QAbstractItemView::setSelectionModel(QItemSelectionModel *selectionModel)
             oldSelection = d->selectionModel->selection();
             oldCurrentIndex = d->selectionModel->currentIndex();
         }
-
-        disconnect(d->selectionModel, SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
-                   this, SLOT(selectionChanged(QItemSelection,QItemSelection)));
-        disconnect(d->selectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                   this, SLOT(currentChanged(QModelIndex,QModelIndex)));
+        disconnect(d->selectionModel, &QItemSelectionModel::selectionChanged,
+                   this, &QAbstractItemView::selectionChanged);
+        disconnect(d->selectionModel, &QItemSelectionModel::currentChanged,
+                   this, &QAbstractItemView::currentChanged);
     }
 
     d->selectionModel = selectionModel;
 
     if (d->selectionModel) {
-        connect(d->selectionModel, SIGNAL(selectionChanged(QItemSelection,QItemSelection)),
-                this, SLOT(selectionChanged(QItemSelection,QItemSelection)));
-        connect(d->selectionModel, SIGNAL(currentChanged(QModelIndex,QModelIndex)),
-                this, SLOT(currentChanged(QModelIndex,QModelIndex)));
+        connect(d->selectionModel, &QItemSelectionModel::selectionChanged,
+                this, &QAbstractItemView::selectionChanged);
+        connect(d->selectionModel, &QItemSelectionModel::currentChanged,
+                this, &QAbstractItemView::currentChanged);
 
         selectionChanged(d->selectionModel->selection(), oldSelection);
         currentChanged(d->selectionModel->currentIndex(), oldCurrentIndex);
@@ -825,21 +860,13 @@ void QAbstractItemView::setItemDelegate(QAbstractItemDelegate *delegate)
         return;
 
     if (d->itemDelegate) {
-        if (d->delegateRefCount(d->itemDelegate) == 1) {
-            disconnect(d->itemDelegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                       this, SLOT(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-            disconnect(d->itemDelegate, SIGNAL(commitData(QWidget*)), this, SLOT(commitData(QWidget*)));
-            disconnect(d->itemDelegate, SIGNAL(sizeHintChanged(QModelIndex)), this, SLOT(_q_delegateSizeHintChanged(QModelIndex)));
-        }
+        if (d->delegateRefCount(d->itemDelegate) == 1)
+            d->disconnectDelegate(d->itemDelegate);
     }
 
     if (delegate) {
-        if (d->delegateRefCount(delegate) == 0) {
-            connect(delegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                    this, SLOT(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-            connect(delegate, SIGNAL(commitData(QWidget*)), this, SLOT(commitData(QWidget*)));
-            connect(delegate, SIGNAL(sizeHintChanged(QModelIndex)), this, SLOT(_q_delegateSizeHintChanged(QModelIndex)));
-        }
+        if (d->delegateRefCount(delegate) == 0)
+            d->connectDelegate(delegate);
     }
     d->itemDelegate = delegate;
     viewport()->update();
@@ -885,8 +912,6 @@ QVariant QAbstractItemView::inputMethodQuery(Qt::InputMethodQuery query) const
 }
 
 /*!
-    \since 4.2
-
     Sets the given item \a delegate used by this view and model for the given
     \a row. All items on \a row will be drawn and managed by \a delegate
     instead of using the default delegate (i.e., itemDelegate()).
@@ -909,21 +934,13 @@ void QAbstractItemView::setItemDelegateForRow(int row, QAbstractItemDelegate *de
 {
     Q_D(QAbstractItemView);
     if (QAbstractItemDelegate *rowDelegate = d->rowDelegates.value(row, nullptr)) {
-        if (d->delegateRefCount(rowDelegate) == 1) {
-            disconnect(rowDelegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                       this, SLOT(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-            disconnect(rowDelegate, SIGNAL(commitData(QWidget*)), this, SLOT(commitData(QWidget*)));
-            disconnect(rowDelegate, SIGNAL(sizeHintChanged(QModelIndex)), this, SLOT(_q_delegateSizeHintChanged(QModelIndex)));
-        }
+        if (d->delegateRefCount(rowDelegate) == 1)
+            d->disconnectDelegate(rowDelegate);
         d->rowDelegates.remove(row);
     }
     if (delegate) {
-        if (d->delegateRefCount(delegate) == 0) {
-            connect(delegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                    this, SLOT(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-            connect(delegate, SIGNAL(commitData(QWidget*)), this, SLOT(commitData(QWidget*)));
-            connect(delegate, SIGNAL(sizeHintChanged(QModelIndex)), this, SLOT(_q_delegateSizeHintChanged(QModelIndex)));
-        }
+        if (d->delegateRefCount(delegate) == 0)
+            d->connectDelegate(delegate);
         d->rowDelegates.insert(row, delegate);
     }
     viewport()->update();
@@ -931,8 +948,6 @@ void QAbstractItemView::setItemDelegateForRow(int row, QAbstractItemDelegate *de
 }
 
 /*!
-   \since 4.2
-
    Returns the item delegate used by this view and model for the given \a row,
    or \nullptr if no delegate has been assigned. You can call itemDelegate()
    to get a pointer to the current delegate for a given index.
@@ -946,8 +961,6 @@ QAbstractItemDelegate *QAbstractItemView::itemDelegateForRow(int row) const
 }
 
 /*!
-    \since 4.2
-
     Sets the given item \a delegate used by this view and model for the given
     \a column. All items on \a column will be drawn and managed by \a delegate
     instead of using the default delegate (i.e., itemDelegate()).
@@ -969,21 +982,13 @@ void QAbstractItemView::setItemDelegateForColumn(int column, QAbstractItemDelega
 {
     Q_D(QAbstractItemView);
     if (QAbstractItemDelegate *columnDelegate = d->columnDelegates.value(column, nullptr)) {
-        if (d->delegateRefCount(columnDelegate) == 1) {
-            disconnect(columnDelegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                       this, SLOT(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-            disconnect(columnDelegate, SIGNAL(commitData(QWidget*)), this, SLOT(commitData(QWidget*)));
-            disconnect(columnDelegate, SIGNAL(sizeHintChanged(QModelIndex)), this, SLOT(_q_delegateSizeHintChanged(QModelIndex)));
-        }
+        if (d->delegateRefCount(columnDelegate) == 1)
+            d->disconnectDelegate(columnDelegate);
         d->columnDelegates.remove(column);
     }
     if (delegate) {
-        if (d->delegateRefCount(delegate) == 0) {
-            connect(delegate, SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
-                    this, SLOT(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)));
-            connect(delegate, SIGNAL(commitData(QWidget*)), this, SLOT(commitData(QWidget*)));
-            connect(delegate, SIGNAL(sizeHintChanged(QModelIndex)), this, SLOT(_q_delegateSizeHintChanged(QModelIndex)));
-        }
+        if (d->delegateRefCount(delegate) == 0)
+            d->connectDelegate(delegate);
         d->columnDelegates.insert(column, delegate);
     }
     viewport()->update();
@@ -991,8 +996,6 @@ void QAbstractItemView::setItemDelegateForColumn(int column, QAbstractItemDelega
 }
 
 /*!
-    \since 4.2
-
     Returns the item delegate used by this view and model for the given \a
     column.  You can call itemDelegate() to get a pointer to the current delegate
     for a given index.
@@ -1091,8 +1094,6 @@ void QAbstractItemView::setCurrentIndex(const QModelIndex &index)
         QItemSelectionModel::SelectionFlags command = selectionCommand(index, nullptr);
         d->selectionModel->setCurrentIndex(index, command);
         d->currentIndexSet = true;
-        if ((command & QItemSelectionModel::Current) == 0)
-            d->currentSelectionStartIndex = index;
     }
 }
 
@@ -1262,6 +1263,12 @@ void QAbstractItemView::doItemsLayout()
     \l{EditTrigger}, combined using the OR
     operator. The view will only initiate the editing of an item if the
     action performed is set in this property.
+
+    The default value is:
+    \list
+    \li for QTableView: DoubleClicked|AnyKeyPressed
+    \li for all other views: DoubleClicked|EditKeyPressed
+    \endlist
 */
 void QAbstractItemView::setEditTriggers(EditTriggers actions)
 {
@@ -1276,7 +1283,6 @@ QAbstractItemView::EditTriggers QAbstractItemView::editTriggers() const
 }
 
 /*!
-    \since 4.2
     \property QAbstractItemView::verticalScrollMode
     \brief how the view scrolls its contents in the vertical direction
 
@@ -1315,7 +1321,6 @@ void QAbstractItemView::resetVerticalScrollMode()
 }
 
 /*!
-    \since 4.2
     \property QAbstractItemView::horizontalScrollMode
     \brief how the view scrolls its contents in the horizontal direction
 
@@ -1353,7 +1358,6 @@ void QAbstractItemView::resetHorizontalScrollMode()
 
 #if QT_CONFIG(draganddrop)
 /*!
-    \since 4.2
     \property QAbstractItemView::dragDropOverwriteMode
     \brief the view's drag and drop behavior
 
@@ -1413,7 +1417,6 @@ bool QAbstractItemView::hasAutoScroll() const
 }
 
 /*!
-    \since 4.4
     \property QAbstractItemView::autoScrollMargin
     \brief the size of the area when auto scrolling is triggered
 
@@ -1498,7 +1501,6 @@ bool QAbstractItemView::dragEnabled() const
 }
 
 /*!
-    \since 4.2
     \enum QAbstractItemView::DragDropMode
 
     Describes the various drag and drop events the view can act upon.
@@ -1521,7 +1523,6 @@ bool QAbstractItemView::dragEnabled() const
     \property QAbstractItemView::dragDropMode
     \brief the drag and drop event the view will act upon
 
-    \since 4.2
     \sa showDropIndicator, dragDropOverwriteMode
 */
 void QAbstractItemView::setDragDropMode(DragDropMode behavior)
@@ -1557,12 +1558,11 @@ QAbstractItemView::DragDropMode QAbstractItemView::dragDropMode() const
 
 /*!
     \property QAbstractItemView::defaultDropAction
-    \brief the drop action that will be used by default in QAbstractItemView::drag()
+    \brief the drop action that will be used by default in QAbstractItemView::drag().
 
     If the property is not set, the drop action is CopyAction when the supported
     actions support CopyAction.
 
-    \since 4.6
     \sa showDropIndicator, dragDropOverwriteMode
 */
 void QAbstractItemView::setDefaultDropAction(Qt::DropAction dropAction)
@@ -1650,7 +1650,7 @@ Qt::TextElideMode QAbstractItemView::textElideMode() const
 bool QAbstractItemView::focusNextPrevChild(bool next)
 {
     Q_D(QAbstractItemView);
-    if (d->tabKeyNavigation && isEnabled() && d->viewport->isEnabled()) {
+    if (d->tabKeyNavigation && isVisible() && isEnabled() && d->viewport->isEnabled()) {
         QKeyEvent event(QEvent::KeyPress, next ? Qt::Key_Tab : Qt::Key_Backtab, Qt::NoModifier);
         keyPressEvent(&event);
         if (event.isAccepted())
@@ -1774,7 +1774,10 @@ bool QAbstractItemView::viewportEvent(QEvent *event)
     case QEvent::ScrollPrepare:
         executeDelayedItemsLayout();
 #if QT_CONFIG(gestures) && QT_CONFIG(scroller)
-        connect(QScroller::scroller(d->viewport), SIGNAL(stateChanged(QScroller::State)), this, SLOT(_q_scrollerStateChanged()), Qt::UniqueConnection);
+        d->scollerConnection = QObjectPrivate::connect(
+              QScroller::scroller(d->viewport), &QScroller::stateChanged,
+              d, &QAbstractItemViewPrivate::scrollerStateChanged,
+              Qt::UniqueConnection);
 #endif
         break;
 
@@ -1809,12 +1812,13 @@ void QAbstractItemView::mousePressEvent(QMouseEvent *event)
     QItemSelectionModel::SelectionFlags command = selectionCommand(index, event);
     d->noSelectionOnMousePress = command == QItemSelectionModel::NoUpdate || !index.isValid();
     QPoint offset = d->offset();
-    d->draggedPosition = pos + offset;
+    d->draggedPosition = pos;
+    d->draggedPositionOffset = offset;
 
 #if QT_CONFIG(draganddrop)
     // update the pressed position when drag was enable
     if (d->dragEnabled)
-        d->pressedPosition = d->draggedPosition;
+        d->pressedPosition = d->draggedPosition + d->draggedPositionOffset;
 #endif
 
     if (!(command & QItemSelectionModel::Current)) {
@@ -1871,7 +1875,8 @@ void QAbstractItemView::mouseMoveEvent(QMouseEvent *event)
     Q_D(QAbstractItemView);
     QPoint bottomRight = event->position().toPoint();
 
-    d->draggedPosition = bottomRight + d->offset();
+    d->draggedPosition = bottomRight;
+    d->draggedPositionOffset = d->offset();
 
     if (state() == ExpandingState || state() == CollapsingState)
         return;
@@ -2046,7 +2051,8 @@ void QAbstractItemView::dragEnterEvent(QDragEnterEvent *event)
 void QAbstractItemView::dragMoveEvent(QDragMoveEvent *event)
 {
     Q_D(QAbstractItemView);
-    d->draggedPosition = event->position().toPoint() + d->offset();
+    d->draggedPosition = event->position().toPoint();
+    d->draggedPositionOffset = d->offset();
     if (dragDropMode() == InternalMove
         && (event->source() != this || !(event->possibleActions() & Qt::MoveAction)))
         return;
@@ -2062,6 +2068,13 @@ void QAbstractItemView::dragMoveEvent(QDragMoveEvent *event)
         if (index.isValid() && d->showDropIndicator) {
             QRect rect = visualRect(index);
             d->dropIndicatorPosition = d->position(event->position().toPoint(), rect, index);
+            if (d->selectionBehavior == QAbstractItemView::SelectRows
+                && d->dropIndicatorPosition != OnViewport
+                && (d->dropIndicatorPosition != OnItem || event->source() == this)) {
+                if (index.column() > 0)
+                    rect = visualRect(index.siblingAtColumn(0));
+                rect.setWidth(viewport()->width() - 1 - rect.x());
+            }
             switch (d->dropIndicatorPosition) {
             case AboveItem:
                 if (d->isIndexDropEnabled(index.parent())) {
@@ -2203,7 +2216,7 @@ bool QAbstractItemViewPrivate::dropOn(QDropEvent *event, int *dropRow, int *drop
     // rootIndex() (i.e. the viewport) might be a valid index
     if (viewport->rect().contains(event->position().toPoint())) {
         index = q->indexAt(event->position().toPoint());
-        if (!index.isValid() || !q->visualRect(index).contains(event->position().toPoint()))
+        if (!index.isValid())
             index = root;
     }
 
@@ -2687,8 +2700,6 @@ void QAbstractItemView::inputMethodEvent(QInputMethodEvent *event)
 
 
 /*!
-    \since 4.1
-
     Returns the position of the drop indicator in relation to the closest item.
 */
 QAbstractItemView::DropIndicatorPosition QAbstractItemView::dropIndicatorPosition() const
@@ -2853,8 +2864,6 @@ void QAbstractItemView::updateEditorGeometries()
 }
 
 /*!
-    \since 4.4
-
     Updates the geometry of the child widgets of the view.
 */
 void QAbstractItemView::updateGeometries()
@@ -2922,41 +2931,50 @@ void QAbstractItemView::closeEditor(QWidget *editor, QAbstractItemDelegate::EndE
 
     // Close the editor
     if (editor) {
-        bool isPersistent = d->persistent.contains(editor);
-        bool hadFocus = editor->hasFocus();
-        QModelIndex index = d->indexForEditor(editor);
+        const bool isPersistent = d->persistent.contains(editor);
+        const QModelIndex index = d->indexForEditor(editor);
         if (!index.isValid()) {
-            qWarning("QAbstractItemView::closeEditor called with an editor that does not belong to this view");
-            return; // the editor was not registered
-        }
-
-        // start a timer that expires immediately when we return to the event loop
-        // to identify whether this close was triggered by a mousepress-initiated
-        // focus event
-        d->pressClosedEditorWatcher.start(0, this);
-        d->lastEditedIndex = index;
-
-        if (!isPersistent) {
-            setState(NoState);
-            QModelIndex index = d->indexForEditor(editor);
-            editor->removeEventFilter(itemDelegateForIndex(index));
-            d->removeEditor(editor);
-        }
-        if (hadFocus) {
-            if (focusPolicy() != Qt::NoFocus)
-                setFocus(); // this will send a focusLost event to the editor
-            else
-                editor->clearFocus();
+            if (!editor->isVisible()) {
+                // The commit might have removed the index (e.g. it might get filtered), in
+                // which case the editor is already hidden and scheduled for deletion. We
+                // don't have to do anything, except reset the state, and continue with
+                // EndEditHint processing.
+                if (!isPersistent)
+                    setState(NoState);
+            } else {
+                qWarning("QAbstractItemView::closeEditor called with an editor that does not belong to this view");
+                return;
+            }
         } else {
-            d->checkPersistentEditorFocus();
+            const bool hadFocus = editor->hasFocus();
+            // start a timer that expires immediately when we return to the event loop
+            // to identify whether this close was triggered by a mousepress-initiated
+            // focus event
+            d->pressClosedEditorWatcher.start(0, this);
+            d->lastEditedIndex = index;
+
+            if (!isPersistent) {
+                setState(NoState);
+                QModelIndex index = d->indexForEditor(editor);
+                editor->removeEventFilter(itemDelegateForIndex(index));
+                d->removeEditor(editor);
+            }
+            if (hadFocus) {
+                if (focusPolicy() != Qt::NoFocus)
+                    setFocus(); // this will send a focusLost event to the editor
+                else
+                    editor->clearFocus();
+            } else {
+                d->checkPersistentEditorFocus();
+            }
+
+            QPointer<QWidget> ed = editor;
+            QCoreApplication::sendPostedEvents(editor, 0);
+            editor = ed;
+
+            if (!isPersistent && editor)
+                d->releaseEditor(editor, index);
         }
-
-        QPointer<QWidget> ed = editor;
-        QCoreApplication::sendPostedEvents(editor, 0);
-        editor = ed;
-
-        if (!isPersistent && editor)
-            d->releaseEditor(editor, index);
     }
 
     // The EndEditHint part
@@ -3201,6 +3219,37 @@ int QAbstractItemView::sizeHintForColumn(int column) const
 }
 
 /*!
+    \property QAbstractItemView::updateThreshold
+    \since 6.9
+    This property holds the amount of changed indexes to directly trigger
+    a full update of the view inside dataChanged().
+
+    The algorithm inside dataChanged() tries to minimize a full update of the
+    view by calculating if the changed indexes are visible or not. For very
+    large models, with a lot of large changes, this might take longer than the
+    actual update so it's counter-productive. This property gives the ability
+    to control the algorithm to skip the check and directly trigger a full
+    update when the amount of changed indexes exceeds the given value.
+
+    The default value is 200.
+
+    \sa dataChanged()
+*/
+int QAbstractItemView::updateThreshold() const
+{
+    Q_D(const QAbstractItemView);
+    return d->updateThreshold;
+}
+
+void QAbstractItemView::setUpdateThreshold(int threshold)
+{
+    Q_D(QAbstractItemView);
+    if (d->updateThreshold == threshold)
+        return;
+    d->updateThreshold = threshold;
+}
+
+/*!
     Opens a persistent editor on the item at the given \a index.
     If no editor exists, the delegate will create a new editor.
 
@@ -3252,8 +3301,6 @@ bool QAbstractItemView::isPersistentEditorOpen(const QModelIndex &index) const
 }
 
 /*!
-    \since 4.1
-
     Sets the given \a widget on the item at the given \a index, passing the
     ownership of the widget to the viewport.
 
@@ -3264,7 +3311,8 @@ bool QAbstractItemView::isPersistentEditorOpen(const QModelIndex &index) const
     to true, otherwise the widget's background will be transparent, showing
     both the model data and the item at the given \a index.
 
-    If index widget A is replaced with index widget B, index widget A will be
+    \note The view takes ownership of the \a widget.
+    This means if index widget A is replaced with index widget B, index widget A will be
     deleted. For example, in the code snippet below, the QLineEdit object will
     be deleted.
 
@@ -3305,8 +3353,6 @@ void QAbstractItemView::setIndexWidget(const QModelIndex &index, QWidget *widget
 }
 
 /*!
-    \since 4.1
-
     Returns the widget for the item at the given \a index.
 */
 QWidget* QAbstractItemView::indexWidget(const QModelIndex &index) const
@@ -3320,8 +3366,6 @@ QWidget* QAbstractItemView::indexWidget(const QModelIndex &index) const
 }
 
 /*!
-    \since 4.1
-
     Scrolls the view to the top.
 
     \sa scrollTo(), scrollToBottom()
@@ -3332,8 +3376,6 @@ void QAbstractItemView::scrollToTop()
 }
 
 /*!
-    \since 4.1
-
     Scrolls the view to the bottom.
 
     \sa scrollTo(), scrollToTop()
@@ -3349,8 +3391,6 @@ void QAbstractItemView::scrollToBottom()
 }
 
 /*!
-    \since 4.3
-
     Updates the area occupied by the given \a index.
 
 */
@@ -3393,7 +3433,7 @@ void QAbstractItemView::dataChanged(const QModelIndex &topLeft, const QModelInde
             }
         }
         if (isVisible() && !d->delayedPendingLayout) {
-            // otherwise the items will be update later anyway
+            // otherwise the items will be updated later anyway
             update(topLeft);
         }
     } else {
@@ -3404,6 +3444,13 @@ void QAbstractItemView::dataChanged(const QModelIndex &topLeft, const QModelInde
                 topLeft.row() > bottomRight.row() ||
                 topLeft.column() > bottomRight.column()) {
                 // invalid parameter - call update() to redraw all
+                qWarning().nospace() << "dataChanged() called with an invalid index range:"
+                                     << "\n    topleft: " << topLeft
+                                     << "\n    bottomRight:" << bottomRight;
+                d->viewport->update();
+            } else if ((bottomRight.row() - topLeft.row() + 1LL) *
+                       (bottomRight.column() - topLeft.column() + 1LL) > d->updateThreshold) {
+                // too many indices to check - force full update
                 d->viewport->update();
             } else {
                 const QRect updateRect = d->intersectedRect(d->viewport->rect(), topLeft, bottomRight);
@@ -3509,10 +3556,21 @@ void QAbstractItemView::rowsAboutToBeRemoved(const QModelIndex &parent, int star
     }
 
     // Remove all affected editors; this is more efficient than waiting for updateGeometries() to clean out editors for invalid indexes
+    const auto findDirectChildOf = [](const QModelIndex &parent, QModelIndex child)
+    {
+        while (child.isValid()) {
+            const auto parentIndex = child.parent();
+            if (parentIndex == parent)
+                return child;
+            child = parentIndex;
+        }
+        return QModelIndex();
+    };
     QEditorIndexHash::iterator i = d->editorIndexHash.begin();
     while (i != d->editorIndexHash.end()) {
         const QModelIndex index = i.value();
-        if (index.row() >= start && index.row() <= end && d->model->parent(index) == parent) {
+        const QModelIndex directChild = findDirectChildOf(parent, index);
+        if (directChild.isValid() && directChild.row() >= start && directChild.row() <= end) {
             QWidget *editor = i.key();
             QEditorInfo info = d->indexEditorHash.take(index);
             i = d->editorIndexHash.erase(i);
@@ -3531,7 +3589,7 @@ void QAbstractItemView::rowsAboutToBeRemoved(const QModelIndex &parent, int star
     rows are those under the given \a parent from \a start to \a end
     inclusive.
 */
-void QAbstractItemViewPrivate::_q_rowsRemoved(const QModelIndex &index, int start, int end)
+void QAbstractItemViewPrivate::rowsRemoved(const QModelIndex &index, int start, int end)
 {
     Q_UNUSED(index);
     Q_UNUSED(start);
@@ -3559,7 +3617,7 @@ void QAbstractItemViewPrivate::_q_rowsRemoved(const QModelIndex &index, int star
     columns are those under the given \a parent from \a start to \a end
     inclusive.
 */
-void QAbstractItemViewPrivate::_q_columnsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
+void QAbstractItemViewPrivate::columnsAboutToBeRemoved(const QModelIndex &parent, int start, int end)
 {
     Q_Q(QAbstractItemView);
 
@@ -3622,7 +3680,7 @@ void QAbstractItemViewPrivate::_q_columnsAboutToBeRemoved(const QModelIndex &par
     rows are those under the given \a parent from \a start to \a end
     inclusive.
 */
-void QAbstractItemViewPrivate::_q_columnsRemoved(const QModelIndex &index, int start, int end)
+void QAbstractItemViewPrivate::columnsRemoved(const QModelIndex &index, int start, int end)
 {
     Q_UNUSED(index);
     Q_UNUSED(start);
@@ -3649,7 +3707,7 @@ void QAbstractItemViewPrivate::_q_columnsRemoved(const QModelIndex &index, int s
 
     This slot is called when rows have been inserted.
 */
-void QAbstractItemViewPrivate::_q_rowsInserted(const QModelIndex &index, int start, int end)
+void QAbstractItemViewPrivate::rowsInserted(const QModelIndex &index, int start, int end)
 {
     Q_UNUSED(index);
     Q_UNUSED(start);
@@ -3672,7 +3730,7 @@ void QAbstractItemViewPrivate::_q_rowsInserted(const QModelIndex &index, int sta
 
     This slot is called when columns have been inserted.
 */
-void QAbstractItemViewPrivate::_q_columnsInserted(const QModelIndex &index, int start, int end)
+void QAbstractItemViewPrivate::columnsInserted(const QModelIndex &index, int start, int end)
 {
     Q_UNUSED(index);
     Q_UNUSED(start);
@@ -3695,7 +3753,7 @@ void QAbstractItemViewPrivate::_q_columnsInserted(const QModelIndex &index, int 
 /*!
     \internal
 */
-void QAbstractItemViewPrivate::_q_modelDestroyed()
+void QAbstractItemViewPrivate::modelDestroyed()
 {
     model = QAbstractItemModelPrivate::staticEmptyModel();
     doDelayedReset();
@@ -3706,7 +3764,7 @@ void QAbstractItemViewPrivate::_q_modelDestroyed()
 
     This slot is called when the layout is changed.
 */
-void QAbstractItemViewPrivate::_q_layoutChanged()
+void QAbstractItemViewPrivate::layoutChanged()
 {
     doDelayedItemsLayout();
 #if QT_CONFIG(accessibility)
@@ -3718,14 +3776,14 @@ void QAbstractItemViewPrivate::_q_layoutChanged()
 #endif
 }
 
-void QAbstractItemViewPrivate::_q_rowsMoved(const QModelIndex &, int, int, const QModelIndex &, int)
+void QAbstractItemViewPrivate::rowsMoved(const QModelIndex &, int, int, const QModelIndex &, int)
 {
-  _q_layoutChanged();
+    layoutChanged();
 }
 
-void QAbstractItemViewPrivate::_q_columnsMoved(const QModelIndex &, int, int, const QModelIndex &, int)
+void QAbstractItemViewPrivate::columnsMoved(const QModelIndex &, int, int, const QModelIndex &, int)
 {
-  _q_layoutChanged();
+    layoutChanged();
 }
 
 QRect QAbstractItemViewPrivate::intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const
@@ -3770,34 +3828,43 @@ void QAbstractItemView::currentChanged(const QModelIndex &current, const QModelI
     Q_D(QAbstractItemView);
     Q_ASSERT(d->model);
 
+    QPersistentModelIndex persistentCurrent(current); // in case commitData() moves things around (QTBUG-127852)
+
     if (previous.isValid()) {
         QModelIndex buddy = d->model->buddy(previous);
         QWidget *editor = d->editorForIndex(buddy).widget.data();
+        if (isVisible()) {
+            update(previous);
+        }
         if (editor && !d->persistent.contains(editor)) {
-            commitData(editor);
-            if (current.row() != previous.row())
+            const bool rowChanged = current.row() != previous.row();
+            commitData(editor); // might invalidate previous, don't use after this line (QTBUG-127852)
+            if (rowChanged)
                 closeEditor(editor, QAbstractItemDelegate::SubmitModelCache);
             else
                 closeEditor(editor, QAbstractItemDelegate::NoHint);
         }
-        if (isVisible()) {
-            update(previous);
-        }
     }
 
-    if (current.isValid() && !d->autoScrollTimer.isActive()) {
+    const QModelIndex newCurrent = persistentCurrent;
+
+    QItemSelectionModel::SelectionFlags command = selectionCommand(newCurrent, nullptr);
+    if ((command & QItemSelectionModel::Current) == 0)
+        d->currentSelectionStartIndex = newCurrent;
+
+    if (newCurrent.isValid() && !d->autoScrollTimer.isActive()) {
         if (isVisible()) {
             if (d->autoScroll)
-                scrollTo(current);
-            update(current);
-            edit(current, CurrentChanged, nullptr);
-            if (current.row() == (d->model->rowCount(d->root) - 1))
+                scrollTo(newCurrent);
+            update(newCurrent);
+            edit(newCurrent, CurrentChanged, nullptr);
+            if (newCurrent.row() == (d->model->rowCount(d->root) - 1))
                 d->fetchMore();
         } else {
             d->shouldScrollToCurrentOnShow = d->autoScroll;
         }
     }
-    setAttribute(Qt::WA_InputMethodEnabled, (current.isValid() && (current.flags() & Qt::ItemIsEditable)));
+    setAttribute(Qt::WA_InputMethodEnabled, (newCurrent.isValid() && (newCurrent.flags() & Qt::ItemIsEditable)));
 }
 
 #if QT_CONFIG(draganddrop)
@@ -3931,8 +3998,6 @@ void QAbstractItemView::executeDelayedItemsLayout()
 }
 
 /*!
-    \since 4.1
-
     Marks the given \a region as dirty and schedules it to be updated.
     You only need to call this function if you are implementing
     your own view subclass.
@@ -4028,7 +4093,8 @@ void QAbstractItemView::doAutoScroll()
     const int verticalValue = verticalScroll->value();
     const int horizontalValue = horizontalScroll->value();
 
-    const QPoint pos = d->draggedPosition - d->offset();
+    const QPoint pos = d->draggedPosition;
+
     const QRect area = QWidgetPrivate::get(d->viewport)->clipRect();
 
     // do the scrolling if we are in the scroll margins
@@ -4068,7 +4134,8 @@ void QAbstractItemView::doAutoScroll()
             // update our dragged position manually after the scroll. "pos" is the old
             // draggedPosition - d->offset(), and d->offset() is now updated after scrolling, so
             // pos + d->offset() gives us the new position.
-            d->draggedPosition = pos + d->offset();
+            d->draggedPosition = pos;
+            d->draggedPositionOffset = d->offset();
             break;
         }
         default:
@@ -4267,6 +4334,7 @@ QItemSelectionModel::SelectionFlags QAbstractItemViewPrivate::extendedSelectionC
             default:
                 break;
             }
+            break;
         }
         default:
             break;
@@ -4371,7 +4439,7 @@ bool QAbstractItemViewPrivate::shouldAutoScroll(const QPoint &pos) const
 {
     if (!autoScroll)
         return false;
-    QRect area = static_cast<QAbstractItemView*>(viewport)->d_func()->clipRect(); // access QWidget private by bending C++ rules
+    const QRect area = QWidgetPrivate::get(viewport)->clipRect();
     return (pos.y() - area.top() < autoScrollMargin)
         || (area.bottom() - pos.y() < autoScrollMargin)
         || (pos.x() - area.left() < autoScrollMargin)
@@ -4435,7 +4503,7 @@ QWidget *QAbstractItemViewPrivate::editor(const QModelIndex &index,
         w = delegate->createEditor(viewport, options, index);
         if (w) {
             w->installEventFilter(delegate);
-            QObject::connect(w, SIGNAL(destroyed(QObject*)), q, SLOT(editorDestroyed(QObject*)));
+            QObject::connect(w, &QWidget::destroyed, q, &QAbstractItemView::editorDestroyed);
             delegate->updateEditorGeometry(w, options, index);
             delegate->setEditorData(w, index);
             addEditor(index, w, false);
@@ -4572,6 +4640,9 @@ QModelIndex QAbstractItemViewPrivate::indexForEditor(QWidget *editor) const
 
 void QAbstractItemViewPrivate::removeEditor(QWidget *editor)
 {
+    Q_Q(QAbstractItemView);
+    if (editor)
+        QObject::disconnect(editor, &QWidget::destroyed, q, &QAbstractItemView::editorDestroyed);
     const auto it = editorIndexHash.constFind(editor);
     if (it != editorIndexHash.cend()) {
         indexEditorHash.remove(it.value());

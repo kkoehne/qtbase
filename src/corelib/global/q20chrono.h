@@ -38,7 +38,8 @@ using IntRep = int64_t;
 using IntRep = int;
 #endif
 
-#if __cpp_lib_chrono >= 201907L
+// INTEGRITY incident-85878 (timezone and clock_cast are not supported)
+#if __cpp_lib_chrono >= 201907L && !defined(Q_OS_INTEGRITY)
 using std::chrono::days;
 using std::chrono::weeks;
 using std::chrono::years;
@@ -48,7 +49,7 @@ static_assert(std::is_same_v<days::rep, IntRep>);
 static_assert(std::is_same_v<weeks::rep, IntRep>);
 static_assert(std::is_same_v<years::rep, IntRep>);
 static_assert(std::is_same_v<months::rep, IntRep>);
-#else // __cpp_lib_chrono >= 201907L
+#else
 using days = std::chrono::duration<IntRep, std::ratio<86400>>;
 using weeks = std::chrono::duration<IntRep, std::ratio_multiply<std::ratio<7>, days::period>>;
 using years = std::chrono::duration<IntRep, std::ratio_multiply<std::ratio<146097, 400>, days::period>>;

@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -107,7 +107,7 @@ public:
 
         horizontalLayout_5->addWidget(itemIconSelector);
 
-        horizontalSpacer = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_5->addItem(horizontalSpacer);
 
@@ -119,14 +119,14 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__TableWidgetEditor);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         gridLayout_4->addWidget(buttonBox, 1, 0, 1, 2);
 
         widget = new QWidget(qdesigner_internal__TableWidgetEditor);
         widget->setObjectName("widget");
-        QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Preferred);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(widget->sizePolicy().hasHeightForWidth());
@@ -140,12 +140,12 @@ public:
         gridLayout_2->setObjectName("gridLayout_2");
         columnsListWidget = new QListWidget(columnsBox);
         columnsListWidget->setObjectName("columnsListWidget");
-        QSizePolicy sizePolicy1(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Expanding);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(columnsListWidget->sizePolicy().hasHeightForWidth());
         columnsListWidget->setSizePolicy(sizePolicy1);
-        columnsListWidget->setFocusPolicy(Qt::TabFocus);
+        columnsListWidget->setFocusPolicy(Qt::FocusPolicy::TabFocus);
 
         gridLayout_2->addWidget(columnsListWidget, 0, 0, 1, 1);
 
@@ -161,7 +161,7 @@ public:
 
         horizontalLayout_3->addWidget(deleteColumnButton);
 
-        spacerItem = new QSpacerItem(0, 23, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(0, 23, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_3->addItem(spacerItem);
 
@@ -190,7 +190,7 @@ public:
 
         horizontalLayout_2->addWidget(columnIconSelector);
 
-        spacerItem1 = new QSpacerItem(0, 21, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(0, 21, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_2->addItem(spacerItem1);
 
@@ -208,7 +208,7 @@ public:
         rowsListWidget->setObjectName("rowsListWidget");
         sizePolicy1.setHeightForWidth(rowsListWidget->sizePolicy().hasHeightForWidth());
         rowsListWidget->setSizePolicy(sizePolicy1);
-        rowsListWidget->setFocusPolicy(Qt::TabFocus);
+        rowsListWidget->setFocusPolicy(Qt::FocusPolicy::TabFocus);
 
         gridLayout_3->addWidget(rowsListWidget, 0, 0, 1, 1);
 
@@ -224,7 +224,7 @@ public:
 
         horizontalLayout_4->addWidget(deleteRowButton);
 
-        spacerItem2 = new QSpacerItem(0, 23, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem2 = new QSpacerItem(0, 23, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_4->addItem(spacerItem2);
 
@@ -253,7 +253,7 @@ public:
 
         horizontalLayout->addWidget(rowIconSelector);
 
-        spacerItem3 = new QSpacerItem(0, 21, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem3 = new QSpacerItem(0, 21, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(spacerItem3);
 
@@ -266,9 +266,6 @@ public:
 
         gridLayout_4->addWidget(widget, 0, 1, 1, 1);
 
-        itemsBox->raise();
-        buttonBox->raise();
-        widget->raise();
         QWidget::setTabOrder(tableWidget, columnsListWidget);
         QWidget::setTabOrder(columnsListWidget, newColumnButton);
         QWidget::setTabOrder(newColumnButton, deleteColumnButton);

@@ -7,7 +7,6 @@
 
 #include "qmacstyle_mac_p.h"
 
-#include <QtCore/qdebug.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qmap.h>
@@ -238,6 +237,7 @@ public:
     void drawNSViewInRect(NSView *view, const QRectF &rect, QPainter *p, __attribute__((noescape)) DrawRectBlock drawRectBlock = nil) const;
     void resolveCurrentNSView(QWindow *window) const;
 
+    void drawProgressBar(QPainter *p, const QStyleOptionProgressBar *pb) const;
     void drawFocusRing(QPainter *p, const QRectF &targetRect, int hMargin, int vMargin, const CocoaControl &cw) const;
 
     void drawToolbarButtonArrow(const QStyleOption *opt, QPainter *p) const;
@@ -263,7 +263,6 @@ public:
 
     std::optional<QFont> smallSystemFont;
 
-    QMacKeyValueObserver appearanceObserver;
 };
 
 QT_END_NAMESPACE

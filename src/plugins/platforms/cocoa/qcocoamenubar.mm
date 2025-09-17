@@ -1,6 +1,7 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2012 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author James Turner <james.turner@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -25,18 +26,13 @@ QCocoaMenuBar::QCocoaMenuBar()
 {
     static_menubars.append(this);
 
-    // clicks into the menu bar should close all popup windows
-    static QMacNotificationObserver menuBarClickObserver(nil, NSMenuDidBeginTrackingNotification, ^{
-        QGuiApplicationPrivate::instance()->closeAllPopups();
-    });
-
     m_nativeMenu = [[NSMenu alloc] init];
     qCDebug(lcQpaMenus) << "Constructed" << this << "with" << m_nativeMenu;
 }
 
 QCocoaMenuBar::~QCocoaMenuBar()
 {
-    qCDebug(lcQpaMenus) << "Destructing" << this << "with" << m_nativeMenu;;
+    qCDebug(lcQpaMenus) << "Destructing" << this << "with" << m_nativeMenu;
     for (auto menu : std::as_const(m_menus)) {
         if (!menu)
             continue;
@@ -204,8 +200,7 @@ void QCocoaMenuBar::syncMenu_helper(QPlatformMenu *menu, bool menubarUpdate)
         // and document that the user needs to ensure their application matches
         // this translation.
         if ([menuTitle isEqual:@"Edit"] || [menuTitle isEqual:tr("Edit").toNSString()]) {
-            static const NSBundle *appKit = [NSBundle bundleForClass:NSApplication.class];
-            menuItem.title = [appKit localizedStringForKey:@"Edit" value:menuTitle table:@"InputManager"];
+            menuItem.title = qt_mac_AppKitString(@"InputManager", @"Edit");
         } else {
             // The Edit menu is the only case we know of so far, but to be on
             // the safe side we always sync the menu title.
@@ -362,6 +357,15 @@ void QCocoaMenuBar::insertWindowMenu()
     winMenuItem.hidden = YES;
 
     winMenuItem.submenu = [[[NSMenu alloc] initWithTitle:@"QtWindowMenu"] autorelease];
+
+    // AppKit has a bug in [NSApplication setWindowsMenu:] where it will resolve
+    // the last item of the window menu's itemArray, but not account for the array
+    // being empty, resulting in a lookup of itemAtIndex:-1. To work around this,
+    // we insert a hidden dummy item into the menu. See FB13369198.
+    auto *dummyItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    dummyItem.hidden = YES;
+    [winMenuItem.submenu addItem:[dummyItem autorelease]];
+
     [mainMenu insertItem:winMenuItem atIndex:mainMenu.itemArray.count];
     app.windowsMenu = winMenuItem.submenu;
 

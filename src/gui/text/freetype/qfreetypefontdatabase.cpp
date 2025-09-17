@@ -11,6 +11,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QtEndian>
 #include <QtCore/QLoggingCategory>
+#include <QtCore/QUuid>
 
 #undef QT_NO_FREETYPE
 #include "qfontengine_ft_p.h"
@@ -24,8 +25,6 @@
 #include FT_TRUETYPE_IDS_H
 
 QT_BEGIN_NAMESPACE
-
-Q_DECLARE_LOGGING_CATEGORY(lcFontDb)
 
 using namespace Qt::StringLiterals;
 
@@ -62,6 +61,15 @@ QFontEngine *QFreeTypeFontDatabase::fontEngine(const QFontDef &fontDef, void *us
     faceId.filename = QFile::encodeName(fontfile->fileName);
     faceId.index = fontfile->indexValue;
     faceId.instanceIndex = fontfile->instanceIndex;
+    faceId.variableAxes = fontDef.variableAxisValues;
+
+    // Make sure the FaceId compares uniquely in cases where a
+    // file name is not provided.
+    if (faceId.filename.isEmpty()) {
+        QUuid::Id128Bytes id{};
+        memcpy(&id, &usrPtr, sizeof(usrPtr));
+        faceId.uuid = QUuid(id).toByteArray();
+    }
 
     return QFontEngineFT::create(fontDef, faceId, fontfile->data);
 }
@@ -69,7 +77,7 @@ QFontEngine *QFreeTypeFontDatabase::fontEngine(const QFontDef &fontDef, void *us
 QFontEngine *QFreeTypeFontDatabase::fontEngine(const QByteArray &fontData, qreal pixelSize,
                                                 QFont::HintingPreference hintingPreference)
 {
-    return QFontEngineFT::create(fontData, pixelSize, hintingPreference);
+    return QFontEngineFT::create(fontData, pixelSize, hintingPreference, {});
 }
 
 QStringList QFreeTypeFontDatabase::addApplicationFont(const QByteArray &fontData, const QString &fileName, QFontDatabasePrivate::ApplicationFont *applicationFont)
@@ -93,6 +101,7 @@ void QFreeTypeFontDatabase::addNamedInstancesForFace(void *face_,
                                                      QFont::Stretch stretch,
                                                      QFont::Style style,
                                                      bool fixedPitch,
+                                                     bool isColor,
                                                      const QSupportedWritingSystems &writingSystems,
                                                      const QByteArray &fileName,
                                                      const QByteArray &fontData)
@@ -107,6 +116,10 @@ void QFreeTypeFontDatabase::addNamedInstancesForFace(void *face_,
     FT_MM_Var *var = nullptr;
     FT_Get_MM_Var(face, &var);
     if (var != nullptr) {
+        std::unique_ptr<FT_MM_Var, void(*)(FT_MM_Var*)> varGuard(var, [](FT_MM_Var *res) {
+            FT_Done_MM_Var(qt_getFreetype(), res);
+        });
+
         for (FT_UInt i = 0; i < var->num_namedstyles; ++i) {
            FT_UInt id = var->namedstyle[i].strid;
 
@@ -114,11 +127,11 @@ void QFreeTypeFontDatabase::addNamedInstancesForFace(void *face_,
            QFont::Stretch instanceStretch = stretch;
            QFont::Style instanceStyle = style;
            for (FT_UInt axis = 0; axis < var->num_axis; ++axis) {
-               if (var->axis[axis].tag == MAKE_TAG('w', 'g', 'h', 't')) {
+               if (var->axis[axis].tag == QFont::Tag("wght").value()) {
                    instanceWeight = QFont::Weight(var->namedstyle[i].coords[axis] >> 16);
-               } else if (var->axis[axis].tag == MAKE_TAG('w', 'd', 't', 'h')) {
+               } else if (var->axis[axis].tag == QFont::Tag("wdth").value()) {
                    instanceStretch = QFont::Stretch(var->namedstyle[i].coords[axis] >> 16);
-               }  else if (var->axis[axis].tag == MAKE_TAG('i', 't', 'a', 'l')) {
+               }  else if (var->axis[axis].tag == QFont::Tag("ital").value()) {
                    FT_UInt ital = var->namedstyle[i].coords[axis] >> 16;
                    if (ital == 1)
                        instanceStyle = QFont::StyleItalic;
@@ -169,6 +182,7 @@ void QFreeTypeFontDatabase::addNamedInstancesForFace(void *face_,
                                 true,
                                 0,
                                 fixedPitch,
+                                isColor,
                                 writingSystems,
                                 variantFontFile);
                }
@@ -209,6 +223,12 @@ QStringList QFreeTypeFontDatabase::addTTFile(const QByteArray &fontData, const Q
             break;
         }
         numFaces = face->num_faces;
+
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20501
+        bool isColor = FT_HAS_COLOR(face);
+#else
+        bool isColor = false;
+#endif
 
         QFont::Weight weight = QFont::Normal;
 
@@ -323,9 +343,9 @@ QStringList QFreeTypeFontDatabase::addTTFile(const QByteArray &fontData, const Q
             applicationFont->properties.append(properties);
         }
 
-        registerFont(family, styleName, QString(), weight, style, stretch, true, true, 0, fixedPitch, writingSystems, fontFile);
+        registerFont(family, styleName, QString(), weight, style, stretch, true, true, 0, fixedPitch, isColor, writingSystems, fontFile);
 
-        addNamedInstancesForFace(face, index, family, styleName, weight, stretch, style, fixedPitch, writingSystems, file, fontData);
+        addNamedInstancesForFace(face, index, family, styleName, weight, stretch, style, fixedPitch, isColor, writingSystems, file, fontData);
 
         families.append(family);
 
@@ -333,6 +353,24 @@ QStringList QFreeTypeFontDatabase::addTTFile(const QByteArray &fontData, const Q
         ++index;
     } while (index < numFaces);
     return families;
+}
+
+bool QFreeTypeFontDatabase::supportsColrv0Fonts() const
+{
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 21000
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool QFreeTypeFontDatabase::supportsVariableApplicationFonts() const
+{
+#if (FREETYPE_MAJOR*10000 + FREETYPE_MINOR*100 + FREETYPE_PATCH) >= 20900
+    return true;
+#else
+    return false;
+#endif
 }
 
 QT_END_NAMESPACE

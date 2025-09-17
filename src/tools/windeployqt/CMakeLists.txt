@@ -14,15 +14,20 @@ qt_internal_add_tool(${target_name}
     SOURCES
         qmlutils.cpp qmlutils.h
         qtmoduleinfo.cpp qtmoduleinfo.h
+        qtplugininfo.cpp qtplugininfo.h
         utils.cpp utils.h
+        peheaderinfo.cpp peheaderinfo.h
         main.cpp
     DEFINES
         QT_NO_CAST_FROM_ASCII
         QT_NO_CAST_TO_ASCII
         QT_NO_FOREACH
+        QT_NO_QPAIR
     LIBRARIES
         Qt::CorePrivate
+        Qt::Network
 )
+
 qt_internal_return_unless_building_tools()
 
 qt_internal_extend_target(${target_name} CONDITION WIN32

@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtTest/qtesttouch.h>
@@ -210,7 +208,7 @@ protected:
             QGestureEvent *e = static_cast<QGestureEvent*>(event);
             ++gestureEventsReceived;
             eventsPtr = &events;
-            foreach(Qt::GestureType type, ignoredGestures)
+            for (Qt::GestureType type : std::as_const(ignoredGestures))
                 e->ignore(e->gesture(type));
         } else if (event->type() == QEvent::GestureOverride) {
             ++gestureOverrideEventsReceived;
@@ -220,8 +218,8 @@ protected:
         }
         if (eventsPtr) {
             QGestureEvent *e = static_cast<QGestureEvent*>(event);
-            QList<QGesture*> gestures = e->gestures();
-            foreach(QGesture *g, gestures) {
+            const QList<QGesture*> gestures = e->gestures();
+            for (QGesture *g : gestures) {
                 eventsPtr->all << g->gestureType();
                 switch(g->state()) {
                 case Qt::GestureStarted:
@@ -324,6 +322,7 @@ private slots:
     void testReuseCanceledGestures();
     void bug_13501_gesture_not_accepted();
 private:
+    bool waitForWindowPainted(QWidget *wid) const;
     QPoint m_availableTopLeft;
 };
 
@@ -349,30 +348,34 @@ void tst_Gestures::cleanup()
     QGestureRecognizer::unregisterRecognizer(CustomGesture::GestureType);
 }
 
-static QtMessageHandler originalMessageHandler = nullptr;
-static bool skipCustomGesture = false;
-static void messageHandler(QtMsgType type, const QMessageLogContext &context, const QString &text)
+bool tst_Gestures::waitForWindowPainted(QWidget *wid) const
 {
-    if (type == QtMsgType::QtWarningMsg && text == "QGestureManager::deliverEvent: could not find the target for gesture")
-        skipCustomGesture = true;
-    originalMessageHandler(type, context, text);
+#ifdef Q_OS_LINUX
+    if (!QTest::qWaitForWindowExposed(wid))
+        return false;
+
+    if (!QGuiApplication::platformName().contains("xcb"))
+        return true;
+
+    return QTest::qWaitFor([wid]{ return QApplication::topLevelAt(wid->geometry().center()) == wid; });
+#else
+    return QTest::qWaitForWindowExposed(wid);
+#endif
 }
+
+#define CHECK_EXPOSED(widget) QVERIFY(waitForWindowPainted(widget))
 
 void tst_Gestures::customGesture()
 {
-    originalMessageHandler = qInstallMessageHandler(messageHandler);
-    auto guard = qScopeGuard([](){ qInstallMessageHandler(originalMessageHandler); });
     GestureWidget widget;
     widget.grabGesture(CustomGesture::GestureType, Qt::DontStartGestureOnChildren);
     widget.show();
-    QVERIFY(QTest::qWaitForWindowActive(&widget));
+    CHECK_EXPOSED(&widget);
 
     CustomEvent event;
     event.hotSpot = widget.mapToGlobal(QPoint(5,5));
     event.hasHotSpot = true;
     sendCustomGesture(&event, &widget);
-    if (skipCustomGesture)
-        QSKIP("QApplication unable to access test widget.");
 
     static const int TotalGestureEventsCount = CustomGesture::SerialFinishedThreshold - CustomGesture::SerialStartedThreshold + 1;
     static const int TotalCustomEventsCount = CustomGesture::SerialFinishedThreshold - CustomGesture::SerialMaybeThreshold + 1;
@@ -414,11 +417,10 @@ void tst_Gestures::autoCancelingGestures()
         QApplication::sendEvent(&widget, &ev);
     }
     // wait long enough so the gesture manager will cancel the gesture
-    QTest::qWait(5000);
-    QCOMPARE(widget.customEventsReceived, CustomGesture::SerialStartedThreshold - CustomGesture::SerialMaybeThreshold);
-    QCOMPARE(widget.gestureEventsReceived, 0);
-    QCOMPARE(widget.gestureOverrideEventsReceived, 0);
-    QCOMPARE(widget.events.all.size(), 0);
+    QTRY_COMPARE(widget.customEventsReceived, CustomGesture::SerialStartedThreshold - CustomGesture::SerialMaybeThreshold);
+    QTRY_COMPARE(widget.gestureEventsReceived, 0);
+    QTRY_COMPARE(widget.gestureOverrideEventsReceived, 0);
+    QTRY_COMPARE(widget.events.all.size(), 0);
 }
 
 void tst_Gestures::gestureOverChild()
@@ -744,9 +746,10 @@ public:
             ++gestureEventsReceived;
             eventsPtr = &events;
             QGestureEvent *e = static_cast<QGestureEvent *>(event);
-            foreach(Qt::GestureType type, ignoredGestures)
+            for (Qt::GestureType type : std::as_const(ignoredGestures))
                 e->ignore(e->gesture(type));
-            foreach(QGesture *g, e->gestures()) {
+            const auto gestures = e->gestures();
+            for (QGesture *g : gestures) {
                 switch (g->state()) {
                 case Qt::GestureStarted:
                     if (ignoredStartedGestures.contains(g->gestureType()))
@@ -772,8 +775,8 @@ public:
         }
         if (eventsPtr) {
             QGestureEvent *e = static_cast<QGestureEvent*>(event);
-            QList<QGesture*> gestures = e->gestures();
-            foreach(QGesture *g, gestures) {
+            const QList<QGesture*> gestures = e->gestures();
+            for (QGesture *g : gestures) {
                 eventsPtr->all << g->gestureType();
                 switch(g->state()) {
                 case Qt::GestureStarted:
@@ -838,7 +841,7 @@ void tst_Gestures::graphicsItemGesture()
     item->setPos(100, 100);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item->grabGesture(CustomGesture::GestureType);
@@ -848,10 +851,10 @@ void tst_Gestures::graphicsItemGesture()
 
     CustomEvent event;
     // gesture without hotspot should not be delivered to items in the view
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
-    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvent: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
+    QTest::ignoreMessage(QtWarningMsg, "QGestureManager::deliverEvents: could not find the target for gesture");
     sendCustomGesture(&event, item, &scene);
 
     QTRY_COMPARE(item->customEventsReceived, TotalCustomEventsCount);
@@ -901,7 +904,7 @@ void tst_Gestures::graphicsView()
     item->setPos(100, 100);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item->grabGesture(CustomGesture::GestureType);
@@ -978,7 +981,7 @@ void tst_Gestures::graphicsItemTreeGesture()
     item1_child2->setParentItem(item1);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item1->grabGesture(CustomGesture::GestureType);
@@ -1036,7 +1039,7 @@ void tst_Gestures::explicitGraphicsObjectTarget()
     item2_child1->setPos(10, 10);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item1->grabGesture(CustomGesture::GestureType, Qt::DontStartGestureOnChildren);
@@ -1095,7 +1098,7 @@ void tst_Gestures::gestureOverChildGraphicsItem()
     item2_child1->setPos(0, 0);
 
     view.show();
-    QTRY_VERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item1->grabGesture(CustomGesture::GestureType);
@@ -1396,7 +1399,7 @@ void tst_Gestures::testMapToScene()
     item0->setPos(14, 16);
 
     view.show(); // need to show to give it a global coordinate
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     QPoint origin = view.mapToGlobal(QPoint());
@@ -1525,7 +1528,7 @@ void tst_Gestures::autoCancelGestures()
     parent.grabGesture(CustomGesture::GestureType);
     child->grabGesture(secondGesture);
     parent.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&parent));
+    CHECK_EXPOSED(&parent);
 
     /*
       An event is sent to both the child and the parent, when the child gets it a gesture is triggered
@@ -1589,7 +1592,7 @@ void tst_Gestures::autoCancelGestures2()
     child->grabGesture(secondGesture);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     CustomEvent event;
@@ -1636,7 +1639,7 @@ void tst_Gestures::graphicsViewParentPropagation()
     item1_c1_c1->setPos(0, 0);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item0->grabGesture(CustomGesture::GestureType, Qt::ReceivePartialGestures | Qt::IgnoredGesturesPropagateToParent);
@@ -1707,8 +1710,8 @@ void tst_Gestures::panelPropagation()
     item1_child1_child1->setZValue(10);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
     view.ensureVisible(scene.sceneRect());
+    CHECK_EXPOSED(&view);
 
     static const int TotalGestureEventsCount = CustomGesture::SerialFinishedThreshold - CustomGesture::SerialStartedThreshold + 1;
     static const int TotalCustomEventsCount = CustomGesture::SerialFinishedThreshold - CustomGesture::SerialMaybeThreshold + 1;
@@ -1819,8 +1822,8 @@ void tst_Gestures::panelStacksBehindParent()
     panel->setZValue(5);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
     view.ensureVisible(scene.sceneRect());
+    CHECK_EXPOSED(&view);
 
     static const int TotalGestureEventsCount = CustomGesture::SerialFinishedThreshold - CustomGesture::SerialStartedThreshold + 1;
 
@@ -1928,7 +1931,7 @@ void tst_Gestures::deleteGestureTargetItem()
     items.insert(item2->objectName(), item2);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     if (propagateUpdateGesture)
@@ -1973,7 +1976,7 @@ void tst_Gestures::viewportCoordinates()
     scene.addItem(item1);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     CustomEvent event;
@@ -2011,7 +2014,7 @@ void tst_Gestures::partialGesturePropagation()
     scene.addItem(item4);
 
     view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    CHECK_EXPOSED(&view);
     view.ensureVisible(scene.sceneRect());
 
     item1->ignoredUpdatedGestures << CustomGesture::GestureType;
@@ -2234,7 +2237,7 @@ void tst_Gestures::testReuseCanceledGestures()
     gv->viewport()->grabGesture(tapGestureTypeId);
 
     mw.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&mw));
+    CHECK_EXPOSED(&mw);
 
     QPoint targetPos(gv->mapFromScene(target->mapToScene(target->rect().center())));
     targetPos = gv->viewport()->mapFromParent(targetPos);
@@ -2287,21 +2290,22 @@ void tst_Gestures::conflictingGesturesInGraphicsView()
     GraphicsView view(&scene);
     view.setWindowFlags(Qt::X11BypassWindowManagerHint);
 
+    view.show();
+    CHECK_EXPOSED(&view);
+    view.ensureVisible(scene.sceneRect());
+    const QRectF gestureRect(0, 0, view.width() * 0.9, view.height() * 0.9);
+
     GestureItem *item1 = new GestureItem("item1");
     item1->grabGesture(CustomGesture::GestureType);
-    item1->size = QRectF(0, 0, 100, 100);
+    item1->size = gestureRect;
     item1->setZValue(2);
     scene.addItem(item1);
 
     GestureItem *item2 = new GestureItem("item2");
     item2->grabGesture(CustomGesture::GestureType);
-    item2->size = QRectF(0, 0, 100, 100);
+    item2->size = gestureRect;
     item2->setZValue(5);
     scene.addItem(item2);
-
-    view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
-    view.ensureVisible(scene.sceneRect());
 
     static const int TotalGestureEventsCount = CustomGesture::SerialFinishedThreshold - CustomGesture::SerialStartedThreshold + 1;
 
@@ -2366,11 +2370,12 @@ void tst_Gestures::bug_13501_gesture_not_accepted()
     NoConsumeWidgetBug13501 w;
     w.grabGesture(Qt::TapGesture);
     w.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&w));
+    CHECK_EXPOSED(&w);
     //QTest::mousePress(&ignoreEvent, Qt::LeftButton);
     QPointingDevice *device = QTest::createTouchDevice();
     QTest::touchEvent(&w, device).press(0, QPoint(10, 10), &w);
 }
 
+#undef CHECK_EXPOSED
 QTEST_MAIN(tst_Gestures)
 #include "tst_gestures.moc"

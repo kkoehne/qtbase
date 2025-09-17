@@ -25,3 +25,8 @@ if(ANDROID)
         ${CMAKE_CURRENT_SOURCE_DIR}/testdata
     )
 endif()
+
+qt_internal_extend_target(tst_android CONDITION TARGET Qt::Widgets
+    LIBRARIES
+        Qt::Widgets
+)

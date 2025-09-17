@@ -1,11 +1,11 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #if 0
 // keep existing syncqt header working after the move of the class
 // into qstringconverter_base
 #pragma qt_class(QStringConverter)
-#pragma qt_class(QStringConverterBase)
 #endif
 
 #ifndef QSTRINGCONVERTER_H
@@ -30,16 +30,10 @@ public:
     constexpr explicit QStringEncoder(Encoding encoding, Flags flags = Flag::Default)
         : QStringConverter(encoding, flags)
     {}
-    explicit QStringEncoder(const char *name, Flags flags = Flag::Default)
+    explicit QStringEncoder(QAnyStringView name, Flags flags = Flag::Default)
         : QStringConverter(name, flags)
     {}
 
-#if defined(Q_QDOC)
-    QByteArray operator()(const QString &in);
-    QByteArray operator()(QStringView in);
-    QByteArray encode(const QString &in);
-    QByteArray encode(QStringView in);
-#else
     template<typename T>
     struct DecodedData
     {
@@ -57,7 +51,6 @@ public:
     { return DecodedData<const QString &>{this, str}; }
     DecodedData<QStringView> encode(QStringView in)
     { return DecodedData<QStringView>{this, in}; }
-#endif
 
     qsizetype requiredSpace(qsizetype inputLength) const
     { return iface ? iface->fromUtf16Len(inputLength) : 0; }
@@ -69,21 +62,32 @@ public:
         }
         return iface->fromUtf16(out, in, &state);
     }
+
+    using FinalizeResult = FinalizeResultChar<char>;
+    Q_REQUIRED_RESULT
+    Q_CORE_EXPORT FinalizeResult finalize(char *out, qsizetype maxlen);
+    Q_REQUIRED_RESULT
+    FinalizeResult finalize() { return finalize(nullptr, 0); }
+
 private:
-    QByteArray encodeAsByteArray(QStringView in)
+    QByteArray invalidateAndReturnNull()
     {
-        if (!iface) {
-            // ensure that hasError returns true
-            state.invalidChars = 1;
-            return {};
-        }
+        // ensure that hasError returns true
+        state.invalidChars = 1;
+        return QByteArray();
+    }
+    QByteArray encodeAsByteArrayImpl(QStringView in)
+    {
         QByteArray result(iface->fromUtf16Len(in.size()), Qt::Uninitialized);
         char *out = result.data();
         out = iface->fromUtf16(out, in, &state);
         result.truncate(out - result.constData());
         return result;
     }
-
+    QByteArray encodeAsByteArray(QStringView in)
+    {
+        return iface ? encodeAsByteArrayImpl(in) : invalidateAndReturnNull();
+    }
 };
 
 class QStringDecoder : public QStringConverter
@@ -99,16 +103,10 @@ public:
     constexpr QStringDecoder() noexcept
         : QStringConverter()
     {}
-    explicit QStringDecoder(const char *name, Flags f = Flag::Default)
+    explicit QStringDecoder(QAnyStringView name, Flags f = Flag::Default)
         : QStringConverter(name, f)
     {}
 
-#if defined(Q_QDOC)
-    QString operator()(const QByteArray &ba);
-    QString operator()(QByteArrayView ba);
-    QString decode(const QByteArray &ba);
-    QString decode(QByteArrayView ba);
-#else
     template<typename T>
     struct EncodedData
     {
@@ -126,7 +124,6 @@ public:
     { return EncodedData<const QByteArray &>{this, ba}; }
     EncodedData<QByteArrayView> decode(QByteArrayView ba)
     { return EncodedData<QByteArrayView>{this, ba}; }
-#endif
 
     qsizetype requiredSpace(qsizetype inputLength) const
     { return iface ? iface->toUtf16Len(inputLength) : 0; }
@@ -141,20 +138,41 @@ public:
     char16_t *appendToBuffer(char16_t *out, QByteArrayView ba)
     { return reinterpret_cast<char16_t *>(appendToBuffer(reinterpret_cast<QChar *>(out), ba)); }
 
+
+    using FinalizeResult = FinalizeResultChar<char16_t>;
+    using FinalizeResultQChar = FinalizeResultChar<QChar>;
+    FinalizeResultQChar finalize(QChar *out, qsizetype maxlen)
+    {
+        auto r = finalize(reinterpret_cast<char16_t *>(out), maxlen);
+        return { {}, reinterpret_cast<QChar *>(r.next), r.invalidChars, r.error };
+    }
+    Q_REQUIRED_RESULT
+    Q_CORE_EXPORT FinalizeResult finalize(char16_t *out, qsizetype maxlen);
+    Q_REQUIRED_RESULT
+    FinalizeResult finalize()
+    {
+        return finalize(static_cast<char16_t *>(nullptr), 0);
+    }
+
     Q_CORE_EXPORT static QStringDecoder decoderForHtml(QByteArrayView data);
 
 private:
-    QString decodeAsString(QByteArrayView in)
+    QString invalidateAndReturnNull()
     {
-        if (!iface) {
-            // ensure that hasError returns true
-            state.invalidChars = 1;
-            return {};
-        }
+        // ensure that hasError returns true
+        state.invalidChars = 1;
+        return QString();
+    }
+    QString decodeAsStringImpl(QByteArrayView in)
+    {
         QString result(iface->toUtf16Len(in.size()), Qt::Uninitialized);
         const QChar *out = iface->toUtf16(result.data(), in, &state);
         result.truncate(out - result.constData());
         return result;
+    }
+    QString decodeAsString(QByteArrayView in)
+    {
+        return iface ? decodeAsStringImpl(in) : invalidateAndReturnNull();
     }
 };
 
@@ -210,6 +228,66 @@ QByteArray &operator+=(QByteArray &a, const QStringEncoder::DecodedData<T> &b)
     return a;
 }
 #endif
+
+template <typename InputIterator>
+void QString::assign_helper_char8(InputIterator first, InputIterator last)
+{
+    static_assert(!QString::is_contiguous_iterator_v<InputIterator>,
+        "Internal error: Should have been handed over to the QAnyStringView overload."
+    );
+
+    using ValueType = typename std::iterator_traits<InputIterator>::value_type;
+    constexpr bool IsFwdIt = std::is_convertible_v<
+        typename std::iterator_traits<InputIterator>::iterator_category,
+        std::forward_iterator_tag
+    >;
+
+    resize(0);
+    // In case of not being shared, there is the possibility of having free space at begin
+    // even after the resize to zero.
+    if (const auto offset = d.freeSpaceAtBegin())
+        d.setBegin(d.begin() - offset);
+
+    if constexpr (IsFwdIt)
+        reserve(static_cast<qsizetype>(std::distance(first, last)));
+
+    auto toUtf16 = QStringDecoder(QStringDecoder::Utf8);
+    auto availableCapacity = d.constAllocatedCapacity();
+    auto *dst = d.data();
+    auto *dend = d.data() + availableCapacity;
+
+    while (true) {
+        if (first == last) {                                    // ran out of input elements
+            Q_ASSERT(!std::less<>{}(dend, dst));
+            d.size = dst - d.begin();
+            return;
+        }
+        const ValueType next = *first; // decays proxies, if any
+        const auto chunk = QUtf8StringView(&next, 1);
+        // UTF-8 characters can have a maximum size of 4 bytes and may result in a surrogate
+        // pair of UTF-16 code units. In the input-iterator case, we don't know the size
+        // and would need to always reserve space for 2 code units. To keep our promise
+        // of 'not allocating if it fits', we have to pre-check this condition.
+        //          We know that it fits in the forward-iterator case.
+        if constexpr (!IsFwdIt) {
+            constexpr qsizetype Pair = 2;
+            char16_t buf[Pair];
+            const qptrdiff n = toUtf16.appendToBuffer(buf, chunk) - buf;
+            if (dend - dst < n) {                               // ran out of allocated memory
+                const auto offset = dst - d.begin();
+                reallocData(d.constAllocatedCapacity() + Pair, QArrayData::Grow);
+                // update the pointers since we've re-allocated
+                availableCapacity = d.constAllocatedCapacity();
+                dst = d.data() + offset;
+                dend = d.data() + availableCapacity;
+            }
+            dst = std::copy_n(buf, n, dst);
+        } else {                                                // take the fast path
+            dst = toUtf16.appendToBuffer(dst, chunk);
+        }
+        ++first;
+    }
+}
 
 QT_END_NAMESPACE
 

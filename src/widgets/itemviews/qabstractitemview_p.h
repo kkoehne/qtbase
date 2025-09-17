@@ -24,9 +24,13 @@
 #include "QtCore/qmimedata.h"
 #include "QtGui/qpainter.h"
 #include "QtGui/qregion.h"
-#include "QtCore/qdebug.h"
+
 #include "QtCore/qbasictimer.h"
 #include "QtCore/qelapsedtimer.h"
+#include <QtCore/qpointer.h>
+
+
+#include <array>
 
 QT_REQUIRE_CONFIG(itemviews);
 
@@ -63,20 +67,20 @@ public:
 
     void init();
 
-    virtual void _q_rowsRemoved(const QModelIndex &parent, int start, int end);
-    virtual void _q_rowsInserted(const QModelIndex &parent, int start, int end);
-    virtual void _q_columnsAboutToBeRemoved(const QModelIndex &parent, int start, int end);
-    virtual void _q_columnsRemoved(const QModelIndex &parent, int start, int end);
-    virtual void _q_columnsInserted(const QModelIndex &parent, int start, int end);
-    virtual void _q_modelDestroyed();
-    virtual void _q_layoutChanged();
-    virtual void _q_rowsMoved(const QModelIndex &source, int sourceStart, int sourceEnd, const QModelIndex &destination, int destinationStart);
-    virtual void _q_columnsMoved(const QModelIndex &source, int sourceStart, int sourceEnd, const QModelIndex &destination, int destinationStart);
+    virtual void rowsRemoved(const QModelIndex &parent, int start, int end);
+    virtual void rowsInserted(const QModelIndex &parent, int start, int end);
+    virtual void columnsAboutToBeRemoved(const QModelIndex &parent, int start, int end);
+    virtual void columnsRemoved(const QModelIndex &parent, int start, int end);
+    virtual void columnsInserted(const QModelIndex &parent, int start, int end);
+    virtual void modelDestroyed();
+    virtual void layoutChanged();
+    virtual void rowsMoved(const QModelIndex &source, int sourceStart, int sourceEnd, const QModelIndex &destination, int destinationStart);
+    virtual void columnsMoved(const QModelIndex &source, int sourceStart, int sourceEnd, const QModelIndex &destination, int destinationStart);
     virtual QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const;
 
-    void _q_headerDataChanged() { doDelayedItemsLayout(); }
-    void _q_scrollerStateChanged();
-    void _q_delegateSizeHintChanged(const QModelIndex &index);
+    void headerDataChanged() { doDelayedItemsLayout(); }
+    void scrollerStateChanged();
+    void delegateSizeHintChanged(const QModelIndex &index);
 
     void fetchMore();
 
@@ -159,10 +163,11 @@ public:
     inline void paintDropIndicator(QPainter *painter)
     {
         if (showDropIndicator && state == QAbstractItemView::DraggingState
+            && !dropIndicatorRect.isNull()
 #ifndef QT_NO_CURSOR
             && viewport->cursor().shape() != Qt::ForbiddenCursor
 #endif
-            ) {
+        ) {
             QStyleOption opt;
             opt.initFrom(q_func());
             opt.rect = dropIndicatorRect;
@@ -178,8 +183,8 @@ public:
     inline void releaseEditor(QWidget *editor, const QModelIndex &index = QModelIndex()) const {
         if (editor) {
             Q_Q(const QAbstractItemView);
-            QObject::disconnect(editor, SIGNAL(destroyed(QObject*)),
-                                q_func(), SLOT(editorDestroyed(QObject*)));
+            QObject::disconnect(editor, &QWidget::destroyed,
+                                q, &QAbstractItemView::editorDestroyed);
             editor->removeEventFilter(itemDelegate);
             editor->hide();
             QAbstractItemDelegate *delegate = q->itemDelegateForIndex(index);
@@ -315,7 +320,7 @@ public:
     {
         //we delay the reset of the timer because some views (QTableView)
         //with headers can't handle the fact that the model has been destroyed
-        //all _q_modelDestroyed slots must have been called
+        //all modelDestroyed() slots must have been called
         if (!delayedReset.isActive())
             delayedReset.start(0, q_func());
     }
@@ -346,6 +351,7 @@ public:
     Qt::KeyboardModifiers pressedModifiers;
     QPoint pressedPosition;
     QPoint draggedPosition;
+    QPoint draggedPositionOffset;
     bool pressedAlreadySelected;
     bool releaseFromDoubleClick;
 
@@ -416,9 +422,20 @@ public:
     bool verticalScrollModeSet;
     bool horizontalScrollModeSet;
 
+    int updateThreshold;
+
     virtual QRect visualRect(const QModelIndex &index) const { return q_func()->visualRect(index); }
 
+    std::array<QMetaObject::Connection, 14> modelConnections;
+    std::array<QMetaObject::Connection, 4> scrollbarConnections;
+#if QT_CONFIG(gestures) && QT_CONFIG(scroller)
+    QMetaObject::Connection scollerConnection;
+#endif
+
 private:
+    void connectDelegate(QAbstractItemDelegate *delegate);
+    void disconnectDelegate(QAbstractItemDelegate *delegate);
+    void disconnectAll();
     inline QAbstractItemDelegate *delegateForIndex(const QModelIndex &index) const {
         QMap<int, QPointer<QAbstractItemDelegate> >::ConstIterator it;
 

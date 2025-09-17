@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTSOCKET_P_H
 #define QABSTRACTSOCKET_P_H
@@ -32,7 +33,7 @@ class QAbstractSocketPrivate : public QIODevicePrivate, public QAbstractSocketEn
 {
     Q_DECLARE_PUBLIC(QAbstractSocket)
 public:
-    QAbstractSocketPrivate();
+    QAbstractSocketPrivate(decltype(QObjectPrivateVersion) version = QObjectPrivateVersion);
     virtual ~QAbstractSocketPrivate();
 
     // from QAbstractSocketEngineReceiver
@@ -110,6 +111,7 @@ public:
     qint64 readBufferMaxSize = 0;
     bool isBuffered = false;
     bool hasPendingData = false;
+    bool hasPendingDatagram = false;
 
     QTimer *connectTimer = nullptr;
 

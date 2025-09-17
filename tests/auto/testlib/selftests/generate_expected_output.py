@@ -37,10 +37,17 @@ TESTS = ['assert', 'badxml', 'benchlibcallgrind', 'benchlibcounting',
          'fetchbogus', 'findtestdata', 'float', 'globaldata', 'longstring',
          'maxwarnings', 'mouse', 'multiexec', 'pairdiagnostics', 'pass',
          'printdatatags', 'printdatatagswithglobaltags', 'qexecstringlist',
-         'signaldumper', 'silent', 'silent_fatal', 'singleskip', 'skip', 'skipcleanup',
-         'skipcleanuptestcase', 'skipinit', 'skipinitdata', 'sleep', 'strcmp',
-         'subtest', 'testlib', 'tuplediagnostics', 'verbose1', 'verbose2',
-         'verifyexceptionthrown', 'warnings', 'watchdog', 'junit', 'keyboard']
+         'signaldumper', 'silent', 'silent_fatal', 'singleskip', 'skip',
+         'skipblacklisted', 'skipcleanup', 'skipcleanuptestcase', 'skipinit',
+         'skipinitdata',
+         'sleep',
+         'strcmp',
+         'subtest',
+         'testlib',
+         'threewaycompare',
+         'tuplediagnostics',
+         'verbose1', 'verbose2', 'verifyexceptionthrown', 'warnings', 'watchdog',
+         'junit', 'keyboard']
 
 
 class Fail (Exception): pass
@@ -201,9 +208,9 @@ class Scanner (object):
 
 del re
 
-# Keep in sync with tst_selftests.cpp's processEnvironment():
+# Keep in sync with tst_selftests.cpp's testEnvironment():
 def baseEnv(platname=None,
-            keep=('PATH', 'QT_QPA_PLATFORM'),
+            keep=('PATH', 'QT_QPA_PLATFORM', 'QTEST_THROW_ON_FAIL', 'QTEST_THROW_ON_SKIP', 'ASAN_OPTIONS'),
             posix=('HOME', 'USER', 'QEMU_SET_ENV', 'QEMU_LD_PREFIX'),
             nonapple=('DISPLAY', 'XAUTHORITY', 'XAUTHLOCALHOSTNAME'), # and XDG_*
             # Don't actually know how to test for QNX, so this is ignored:
@@ -232,7 +239,7 @@ def baseEnv(platname=None,
             keep += preserveLib
 
         cached = dict(
-            LC_ALL = 'en-US.UTF-8', # Use standard locale
+            LC_ALL = 'C.UTF-8', # Use standard locale
             # Avoid interference from any qtlogging.ini files, e.g. in
             # /etc/xdg/QtProject/, (must match tst_selftests.cpp's
             # processEnvironment()'s value):

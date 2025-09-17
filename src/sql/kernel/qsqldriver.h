@@ -9,6 +9,7 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 
+// clazy:excludeall=qproperty-without-notify
 QT_BEGIN_NAMESPACE
 
 
@@ -24,8 +25,10 @@ class QVariant;
 class Q_SQL_EXPORT QSqlDriver : public QObject
 {
     friend class QSqlDatabase;
+    friend class QSqlDatabasePrivate;
     friend class QSqlResultPrivate;
     Q_OBJECT
+    Q_PROPERTY(QSql::NumericalPrecisionPolicy numericalPrecisionPolicy READ numericalPrecisionPolicy WRITE setNumericalPrecisionPolicy)
     Q_DECLARE_PRIVATE(QSqlDriver)
 
 public:
@@ -96,6 +99,9 @@ public:
 
     DbmsType dbmsType() const;
     virtual int maximumIdentifierLength(IdentifierType type) const;
+
+    QString connectionName() const;
+
 public Q_SLOTS:
     virtual bool cancelQuery();
 

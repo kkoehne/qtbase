@@ -1,29 +1,26 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 /* possible connection parameters */
 
 #ifndef TST_DATABASES_H
 #define TST_DATABASES_H
 
-#include <QSqlDatabase>
-#include <QSqlDriver>
-#include <QSqlError>
-#include <QSqlQuery>
-#include <QSqlRecord>
-#include <QRegularExpression>
-#include <QRegularExpressionMatch>
-#include <QDir>
-#include <QScopedPointer>
-#include <QVariant>
-#include <QDebug>
-#include <QSqlTableModel>
-#include <QJsonArray>
-#include <QJsonObject>
-#include <QJsonDocument>
-#include <QSysInfo>
-#include <QVersionNumber>
-#include <QtSql/private/qsqldriver_p.h>
-#include <QTest>
+#include <QtTest/qtest.h>
+
+#include <QtSql/qsqldatabase.h>
+#include <QtSql/qsqldriver.h>
+#include <QtSql/qsqlerror.h>
+#include <QtSql/qsqlquery.h>
+#include <QtSql/qsqlrecord.h>
+#include <QtSql/qsqltablemodel.h>
+
+#include <QtCore/qjsonarray.h>
+#include <QtCore/qjsondocument.h>
+#include <QtCore/qjsonobject.h>
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qscopedpointer.h>
+#include <QtCore/qtemporarydir.h>
+#include <QtCore/qversionnumber.h>
 
 using namespace Qt::StringLiterals;
 
@@ -359,6 +356,8 @@ public:
             return QLatin1String("timestamp(0)");
         if (dbType == QSqlDriver::Interbase || dbType == QSqlDriver::MimerSQL)
             return QLatin1String("timestamp");
+        if (dbType == QSqlDriver::MSSqlServer)
+            return QLatin1String("Datetime2");
         return QLatin1String("datetime");
     }
 
@@ -518,7 +517,10 @@ protected:
     void cleanup()
     {
         QSqlQuery q(m_db);
-        q.exec("DROP PROCEDURE IF EXISTS " + m_procName);
+        if (m_db.driverName() == "QIBASE")
+            q.exec("DROP PROCEDURE " + m_procName);
+        else
+            q.exec("DROP PROCEDURE IF EXISTS " + m_procName);
     }
 private:
     QSqlDatabase m_db;

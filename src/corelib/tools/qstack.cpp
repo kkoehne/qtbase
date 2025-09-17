@@ -43,13 +43,22 @@
 /*!
     \fn template<class T> void QStack<T>::swap(QStack<T> &other)
     \since 4.8
-
-    Swaps stack \a other with this stack. This operation is very fast and
-    never fails.
+    \memberswap{stack}
 */
 
 /*!
     \fn template<class T> void QStack<T>::push(const T& t)
+
+    Adds element \a t to the top of the stack.
+
+    This is the same as QList::append().
+
+    \sa pop(), top()
+*/
+
+/*!
+    \fn template<class T> void QStack<T>::push(T&& t)
+    \since 6.11
 
     Adds element \a t to the top of the stack.
 

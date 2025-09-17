@@ -11,6 +11,7 @@
 #include "qtexttable.h"
 #include "qtextlist.h"
 #include <qdebug.h>
+#include <qloggingcategory.h>
 #if QT_CONFIG(regularexpression)
 #include <qregularexpression.h>
 #endif
@@ -50,7 +51,12 @@ namespace {
     QTextDocument::ResourceProvider qt_defaultResourceProvider;
 };
 
+QAbstractUndoItem::~QAbstractUndoItem()
+    = default;
+
 /*!
+    \fn bool Qt::mightBeRichText(QAnyStringView text)
+
     Returns \c true if the string \a text is likely to be rich text;
     otherwise returns \c false.
 
@@ -60,18 +66,21 @@ namespace {
     for common cases, there is no guarantee.
 
     This function is defined in the \c <QTextDocument> header file.
-*/
-bool Qt::mightBeRichText(const QString& text)
+
+    \note In Qt versions prior to 6.7, this function took QString only.
+ */
+template <typename T>
+static bool mightBeRichTextImpl(T text)
 {
     if (text.isEmpty())
         return false;
-    int start = 0;
+    qsizetype start = 0;
 
-    while (start < text.size() && text.at(start).isSpace())
+    while (start < text.size() && QChar(text.at(start)).isSpace())
         ++start;
 
     // skip a leading <?xml ... ?> as for example with xhtml
-    if (QStringView{text}.mid(start, 5).compare("<?xml"_L1) == 0) {
+    if (text.mid(start, 5).compare("<?xml"_L1) == 0) {
         while (start < text.size()) {
             if (text.at(start) == u'?'
                 && start + 2 < text.size()
@@ -82,31 +91,32 @@ bool Qt::mightBeRichText(const QString& text)
             ++start;
         }
 
-        while (start < text.size() && text.at(start).isSpace())
+        while (start < text.size() && QChar(text.at(start)).isSpace())
             ++start;
     }
 
-    if (QStringView{text}.mid(start, 5).compare("<!doc"_L1, Qt::CaseInsensitive) == 0)
+    if (text.mid(start, 5).compare("<!doc"_L1, Qt::CaseInsensitive) == 0)
         return true;
-    int open = start;
+    qsizetype open = start;
     while (open < text.size() && text.at(open) != u'<'
             && text.at(open) != u'\n') {
-        if (text.at(open) == u'&' &&  QStringView{text}.mid(open + 1, 3) == "lt;"_L1)
+        if (text.at(open) == u'&' && text.mid(open + 1, 3) == "lt;"_L1)
             return true; // support desperate attempt of user to see <...>
         ++open;
     }
     if (open < text.size() && text.at(open) == u'<') {
-        const int close = text.indexOf(u'>', open);
+        const qsizetype close = text.indexOf(u'>', open);
         if (close > -1) {
             QVarLengthArray<char16_t> tag;
             for (qsizetype i = open + 1; i < close; ++i) {
-                if (text[i].isDigit() || text[i].isLetter())
-                    tag.append(text[i].toLower().unicode());
-                else if (!tag.isEmpty() && text[i].isSpace())
+                const auto current = QChar(text[i]);
+                if (current.isDigit() || current.isLetter())
+                    tag.append(current.toLower().unicode());
+                else if (!tag.isEmpty() && current.isSpace())
                     break;
-                else if (!tag.isEmpty() && text[i] == u'/' && i + 1 == close)
+                else if (!tag.isEmpty() && current == u'/' && i + 1 == close)
                     break;
-                else if (!text[i].isSpace() && (!tag.isEmpty() || text[i] != u'!'))
+                else if (!current.isSpace() && (!tag.isEmpty() || current != u'!'))
                     return false; // that's not a tag
             }
 #ifndef QT_NO_TEXTHTMLPARSER
@@ -117,6 +127,16 @@ bool Qt::mightBeRichText(const QString& text)
         }
     }
     return false;
+}
+
+static bool mightBeRichTextImpl(QUtf8StringView text)
+{
+    return mightBeRichTextImpl(QLatin1StringView(QByteArrayView(text)));
+}
+
+bool Qt::mightBeRichText(QAnyStringView text)
+{
+    return text.visit([](auto text) { return mightBeRichTextImpl(text); });
 }
 
 /*!
@@ -131,12 +151,12 @@ bool Qt::mightBeRichText(const QString& text)
 */
 QString Qt::convertFromPlainText(const QString &plain, Qt::WhiteSpaceMode mode)
 {
-    int col = 0;
+    qsizetype col = 0;
     QString rich;
     rich += "<p>"_L1;
-    for (int i = 0; i < plain.size(); ++i) {
+    for (qsizetype i = 0; i < plain.size(); ++i) {
         if (plain[i] == u'\n'){
-            int c = 1;
+            qsizetype c = 1;
             while (i+1 < plain.size() && plain[i+1] == u'\n') {
                 i++;
                 c++;
@@ -711,6 +731,8 @@ void QTextDocument::setTextWidth(qreal width)
 {
     Q_D(QTextDocument);
     QSizeF sz = d->pageSize;
+
+    qCDebug(lcLayout) << "page size" << sz << "-> width" << width;
     sz.setWidth(width);
     sz.setHeight(-1);
     setPageSize(sz);
@@ -1138,6 +1160,8 @@ QString QTextDocument::metaInformation(MetaInformation info) const
         return d->url;
     case CssMedia:
         return d->cssMedia;
+    case FrontMatter:
+        return d->frontMatter;
     }
     return QString();
 }
@@ -1160,6 +1184,9 @@ void QTextDocument::setMetaInformation(MetaInformation info, const QString &stri
         break;
     case CssMedia:
         d->cssMedia = string;
+        break;
+    case FrontMatter:
+        d->frontMatter = string;
         break;
     }
 }
@@ -1275,6 +1302,8 @@ void QTextDocument::setHtml(const QString &html)
     d->enableUndoRedo(false);
     d->beginEditBlock();
     d->clear();
+    // ctor calls parse() to build up QTextHtmlParser::nodes list
+    // then import() populates the QTextDocument from those
     QTextHtmlImporter(this, html, QTextHtmlImporter::ImportToDocument).import();
     d->endEditBlock();
     d->enableUndoRedo(previousState);
@@ -1306,6 +1335,10 @@ void QTextDocument::setHtml(const QString &html)
     \value CssMedia         This value is used to select the corresponding '@media'
                             rule, if any, from a specified CSS stylesheet when setHtml()
                             is called. This enum value has been introduced in Qt 6.3.
+    \value FrontMatter      This value is used to select header material, if any was
+                            extracted during parsing of the source file (currently
+                            only from Markdown format). This enum value has been
+                            introduced in Qt 6.8.
 
     \sa metaInformation(), setMetaInformation(), setHtml()
 */
@@ -1479,6 +1512,10 @@ static bool findInBlock(const QTextBlock &block, const QRegularExpression &expr,
 
     If the \a from position is 0 (the default) the search begins from the beginning
     of the document; otherwise it begins at the specified position.
+
+    \warning For historical reasons, the case sensitivity option set on
+    \a expr is ignored. Instead, the \a options are used to determine
+    if the search is case sensitive or not.
 */
 QTextCursor QTextDocument::find(const QRegularExpression &expr, int from, FindFlags options) const
 {
@@ -2294,7 +2331,7 @@ QVariant QTextDocument::loadResource(int type, const QUrl &name)
 
     if (!r.isNull()) {
         if (type == ImageResource && r.userType() == QMetaType::QByteArray) {
-            if (qApp->thread() != QThread::currentThread()) {
+            if (!QThread::isMainThread()) {
                 // must use images in non-GUI threads
                 QImage image;
                 image.loadFromData(r.toByteArray());
@@ -2374,11 +2411,14 @@ QString QTextHtmlExporter::toHtml(ExportMode mode)
 
     fragmentMarkers = (mode == ExportFragment);
 
-    html += QString::fromLatin1("<meta charset=\"utf-8\" />");
+    html += "<meta charset=\"utf-8\" />"_L1;
 
     QString title  = doc->metaInformation(QTextDocument::DocumentTitle);
-    if (!title.isEmpty())
-        html += QString::fromLatin1("<title>") + title + QString::fromLatin1("</title>");
+    if (!title.isEmpty()) {
+        html += "<title>"_L1;
+        html += title;
+        html += "</title>"_L1;
+    }
     html += "<style type=\"text/css\">\n"_L1;
     html += "p, li { white-space: pre-wrap; }\n"_L1;
     html += "hr { height: 1px; border-width: 0; }\n"_L1;
@@ -2526,7 +2566,9 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
             html += u';';
             attributesEmitted = true;
         }
-    } else if (format.hasProperty(QTextFormat::FontPixelSize)) {
+    } else if (format.hasProperty(QTextFormat::FontPixelSize)
+               && format.property(QTextFormat::FontPixelSize)
+                       != defaultCharFormat.property(QTextFormat::FontPixelSize)) {
         html += " font-size:"_L1;
         html += QString::number(format.intProperty(QTextFormat::FontPixelSize));
         html += "px;"_L1;
@@ -2605,6 +2647,53 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
             html += " -qt-fg-texture-cachekey:"_L1;
             html += QString::number(cacheKey);
             html += ";"_L1;
+        } else if (brush.style() == Qt::LinearGradientPattern
+                   || brush.style() == Qt::RadialGradientPattern
+                   || brush.style() == Qt::ConicalGradientPattern) {
+            const QGradient *gradient = brush.gradient();
+            if (gradient->type() == QGradient::LinearGradient) {
+                const QLinearGradient *linearGradient = static_cast<const QLinearGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qlineargradient("_L1;
+                html += "x1:"_L1 + QString::number(linearGradient->start().x()) + u',';
+                html += "y1:"_L1 + QString::number(linearGradient->start().y()) + u',';
+                html += "x2:"_L1 + QString::number(linearGradient->finalStop().x()) + u',';
+                html += "y2:"_L1 + QString::number(linearGradient->finalStop().y()) + u',';
+            } else if (gradient->type() == QGradient::RadialGradient) {
+                const QRadialGradient *radialGradient = static_cast<const QRadialGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qradialgradient("_L1;
+                html += "cx:"_L1 + QString::number(radialGradient->center().x()) + u',';
+                html += "cy:"_L1 + QString::number(radialGradient->center().y()) + u',';
+                html += "fx:"_L1 + QString::number(radialGradient->focalPoint().x()) + u',';
+                html += "fy:"_L1 + QString::number(radialGradient->focalPoint().y()) + u',';
+                html += "radius:"_L1 + QString::number(radialGradient->radius()) + u',';
+            } else {
+                const QConicalGradient *conicalGradient = static_cast<const QConicalGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qconicalgradient("_L1;
+                html += "cx:"_L1 + QString::number(conicalGradient->center().x()) + u',';
+                html += "cy:"_L1 + QString::number(conicalGradient->center().y()) + u',';
+                html += "angle:"_L1 + QString::number(conicalGradient->angle()) + u',';
+            }
+
+            const QStringList coordinateModes = { "logical"_L1, "stretchtodevice"_L1, "objectbounding"_L1, "object"_L1 };
+            html += "coordinatemode:"_L1;
+            html += coordinateModes.at(int(gradient->coordinateMode()));
+            html += u',';
+
+            const QStringList spreads = { "pad"_L1, "reflect"_L1, "repeat"_L1 };
+            html += "spread:"_L1;
+            html += spreads.at(int(gradient->spread()));
+
+            for (const QGradientStop &stop : gradient->stops()) {
+                html += ",stop:"_L1;
+                html += QString::number(stop.first);
+                html += u' ';
+                html += colorValue(stop.second);
+            }
+
+            html += ");"_L1;
         } else {
             html += " color:"_L1;
             html += colorValue(brush.color());
@@ -2657,6 +2746,63 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
         html += " word-spacing:"_L1;
         html += QString::number(format.fontWordSpacing());
         html += "px;"_L1;
+        attributesEmitted = true;
+    }
+
+    if (format.hasProperty(QTextFormat::TextOutline)) {
+        QPen outlinePen = format.textOutline();
+        html += " -qt-stroke-color:"_L1;
+        html += colorValue(outlinePen.color());
+        html += u';';
+
+        html += " -qt-stroke-width:"_L1;
+        html += QString::number(outlinePen.widthF());
+        html += "px;"_L1;
+
+        html += " -qt-stroke-linecap:"_L1;
+        if (outlinePen.capStyle() == Qt::SquareCap)
+            html += "squarecap;"_L1;
+        else if (outlinePen.capStyle() == Qt::FlatCap)
+            html += "flatcap;"_L1;
+        else if (outlinePen.capStyle() == Qt::RoundCap)
+            html += "roundcap;"_L1;
+
+        html += " -qt-stroke-linejoin:"_L1;
+        if (outlinePen.joinStyle() == Qt::MiterJoin)
+            html += "miterjoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::SvgMiterJoin)
+            html += "svgmiterjoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::BevelJoin)
+            html += "beveljoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::RoundJoin)
+            html += "roundjoin;"_L1;
+
+        if (outlinePen.joinStyle() == Qt::MiterJoin ||
+            outlinePen.joinStyle() == Qt::SvgMiterJoin) {
+            html += " -qt-stroke-miterlimit:"_L1;
+            html += QString::number(outlinePen.miterLimit());
+            html += u';';
+        }
+
+        if (outlinePen.style() == Qt::CustomDashLine && !outlinePen.dashPattern().empty()) {
+            html += " -qt-stroke-dasharray:"_L1;
+            QString dashArrayString;
+            QList<qreal> dashes = outlinePen.dashPattern();
+
+            for (int i = 0; i < dashes.length() - 1; i++) {
+                qreal dash = dashes[i];
+                dashArrayString += QString::number(dash) + u',';
+            }
+
+            dashArrayString += QString::number(dashes.last());
+            html += dashArrayString;
+            html += u';';
+
+            html += " -qt-stroke-dashoffset:"_L1;
+            html += QString::number(outlinePen.dashOffset());
+            html += u';';
+        }
+
         attributesEmitted = true;
     }
 
@@ -2844,6 +2990,17 @@ void QTextHtmlExporter::emitFragment(const QTextFragment &fragment)
 
             html += "<img"_L1;
 
+            QString maxWidthCss;
+
+            if (imgFmt.hasProperty(QTextFormat::ImageMaxWidth)) {
+                auto length = imgFmt.lengthProperty(QTextFormat::ImageMaxWidth);
+                maxWidthCss += "max-width:"_L1;
+                if (length.type() == QTextLength::PercentageLength)
+                    maxWidthCss += QString::number(length.rawValue()) + "%;"_L1;
+                else if (length.type() == QTextLength::FixedLength)
+                    maxWidthCss += QString::number(length.rawValue()) + "px;"_L1;
+            }
+
             if (imgFmt.hasProperty(QTextFormat::ImageName))
                 emitAttribute("src", imgFmt.name());
 
@@ -2860,9 +3017,11 @@ void QTextHtmlExporter::emitFragment(const QTextFragment &fragment)
                 emitAttribute("height", QString::number(imgFmt.height()));
 
             if (imgFmt.verticalAlignment() == QTextCharFormat::AlignMiddle)
-                html += " style=\"vertical-align: middle;\""_L1;
+                html += " style=\"vertical-align: middle;"_L1 + maxWidthCss + u'\"';
             else if (imgFmt.verticalAlignment() == QTextCharFormat::AlignTop)
-                html += " style=\"vertical-align: top;\""_L1;
+                html += " style=\"vertical-align: top;"_L1 + maxWidthCss + u'\"';
+            else if (!maxWidthCss.isEmpty())
+                html += " style=\""_L1 + maxWidthCss + u'\"';
 
             if (QTextFrame *imageFrame = qobject_cast<QTextFrame *>(doc->objectForFormat(imgFmt)))
                 emitFloatStyle(imageFrame->frameFormat().position());
@@ -3023,7 +3182,8 @@ void QTextHtmlExporter::emitBlock(const QTextBlock &block)
                 html += u'"';
             }
 
-            QString styleString = QString::fromLatin1("margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px;");
+            QString styleString;
+            styleString += "margin-top: 0px; margin-bottom: 0px; margin-left: 0px; margin-right: 0px;"_L1;
 
             if (format.hasProperty(QTextFormat::ListIndent)) {
                 styleString += " -qt-list-indent: "_L1;
@@ -3453,7 +3613,7 @@ void QTextHtmlExporter::emitFrameStyle(const QTextFrameFormat &format, FrameType
 {
     const auto styleAttribute = " style=\""_L1;
     html += styleAttribute;
-    const int originalHtmlLength = html.size();
+    const qsizetype originalHtmlLength = html.size();
 
     if (frameType == TextFrame)
         html += "-qt-table-type: frame;"_L1;
@@ -3531,6 +3691,45 @@ QString QTextDocument::toMarkdown(QTextDocument::MarkdownFeatures features) cons
 
 /*!
     \since 5.14
+    \enum QTextDocument::MarkdownFeature
+
+    This enum selects the supported feature set when reading or writing Markdown.
+
+    \value MarkdownNoHTML
+        Any HTML tags in the Markdown text will be discarded
+    \value MarkdownDialectCommonMark
+        Only the features standardized by \l {https://spec.commonmark.org/0.31.2/}{CommonMark}
+    \value MarkdownDialectGitHub
+        Most features from the
+        \l {https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax}
+        {GitHub dialect}
+
+    Specifically, the supported subset of the GitHub dialect includes
+    everything from CommonMark, plus:
+
+    \list
+    \li recognizing URLs, www and email addresses and turning them into links
+    \li strikethrough
+    \li underline (distinct from italics; in CommonMark it's the same)
+    \li tables
+    \li task lists
+    \li \l {QTextDocument::metaInformation()}{front matter}
+    \endlist
+
+    "Front matter" is often metadata in YAML format. Qt does not currently
+    include a parser for that; but you may choose a third-party parser, call
+    QTextDocument::metaInformation() to get the whole block, and invoke your
+    own parser after Qt has parsed the Markdown file.
+
+    \note The Markdown output from toMarkdown() currently may include GitHub
+    features even if you attempt to disable them by specifying another enum
+    value. This may be fixed in a future version of Qt.
+
+    \sa toMarkdown(), setMarkdown()
+*/
+
+/*!
+    \since 5.14
     Replaces the entire contents of the document with the given
     Markdown-formatted text in the \a markdown string, with the given
     \a features supported.  By default, all supported GitHub-style
@@ -3546,16 +3745,7 @@ QString QTextDocument::toMarkdown(QTextDocument::MarkdownFeatures features) cons
     not supported.
 
     Some features of the parser can be enabled or disabled via the \a features
-    argument:
-
-    \value MarkdownNoHTML
-           Any HTML tags in the Markdown text will be discarded
-    \value MarkdownDialectCommonMark
-           The parser supports only the features standardized by CommonMark
-    \value MarkdownDialectGitHub
-           The parser supports the GitHub dialect
-
-    The default is \c MarkdownDialectGitHub.
+    argument. The default is \c MarkdownDialectGitHub.
 
     The undo/redo history is reset when this function is called.
 */

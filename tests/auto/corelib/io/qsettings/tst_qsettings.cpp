@@ -1,18 +1,27 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
 
 #include <QtCore/QSettings>
 #include <private/qsettings_p.h>
 
 #include "tst_qmetatype_common.h"
 
+#include <QtCore/QByteArray>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QEventLoop>
+#if QT_CONFIG(process)
+#include <QtCore/QProcess>
+#endif
 #include <QtCore/QtGlobal>
 #include <QtCore/QThread>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QSysInfo>
 #if QT_CONFIG(shortcut)
 #  include <QtGui/QKeySequence>
@@ -56,6 +65,8 @@ Q_DECLARE_METATYPE(QSettings::Format)
 #endif
 
 QT_FORWARD_DECLARE_CLASS(QSettings)
+
+using namespace Qt::StringLiterals;
 
 static inline bool canWriteNativeSystemSettings()
 {
@@ -196,6 +207,8 @@ private slots:
 
     void testReadKeys_data();
     void testReadKeys();
+
+    void testIncorrectSection();
 
 private:
     void cleanupTestFiles();
@@ -541,9 +554,9 @@ void tst_QSettings::ctor()
 #if defined(Q_OS_DARWIN)
         if (format == QSettings::NativeFormat) {
             // more details in QMacSettingsPrivate::QMacSettingsPrivate(), organization was comify()-ed
-            caseSensitive = settings5.fileName().contains("SoftWare.ORG");;
+            caseSensitive = settings5.fileName().contains("SoftWare.ORG");
         } else {
-            caseSensitive = pathconf(settings5.fileName().toLatin1().constData(), _PC_CASE_SENSITIVE);
+            caseSensitive = pathconf(settings5.fileName().toLatin1().constData(), _PC_CASE_SENSITIVE) == 1;
         }
 #elif defined(Q_OS_WIN32)
         caseSensitive = false;
@@ -846,6 +859,13 @@ void tst_QSettings::floatAsQVariant()
 
 void tst_QSettings::testErrorHandling_data()
 {
+#ifdef Q_OS_WIN
+    QSKIP("Windows doesn't support most file modes, including read-only directories, so this test is moot.");
+#elif defined(Q_OS_VXWORKS)
+    QSKIP("VxWorks doesn't have users/groups, so this test is moot.");
+#elif !QT_CONFIG(process)
+    QSKIP("No QProcess available. Skipping the test.");
+#else
     QTest::addColumn<int>("filePerms"); // -1 means file should not exist
     QTest::addColumn<int>("dirPerms");
     QTest::addColumn<int>("statusAfterCtor");
@@ -853,7 +873,7 @@ void tst_QSettings::testErrorHandling_data()
     QTest::addColumn<int>("statusAfterGet");
     QTest::addColumn<int>("statusAfterSetAndSync");
 
-    //                         file    dir     afterCtor                      empty     afterGet                      afterSetAndSync
+    //                            file    dir     afterCtor                      empty     afterGet                      afterSetAndSync
     QTest::newRow("0600 0700") << 0600 << 0700 << (int)QSettings::NoError     << false << (int)QSettings::NoError     << (int)QSettings::NoError;
 
     QTest::newRow("0400 0700") << 0400 << 0700 << (int)QSettings::NoError
@@ -865,23 +885,20 @@ void tst_QSettings::testErrorHandling_data()
 
     QTest::newRow("  -1 0000") <<   -1 << 0000 << (int)QSettings::NoError     << true  << (int)QSettings::NoError     << (int)QSettings::AccessError;
     QTest::newRow("  -1 0100") <<   -1 << 0100 << (int)QSettings::NoError     << true  << (int)QSettings::NoError     << (int)QSettings::AccessError;
-    QTest::newRow("0600 0100") << 0600 << 0100 << (int)QSettings::NoError     << false << (int)QSettings::NoError     << (int)QSettings::NoError;
+    QTest::newRow("0600 0100") << 0600 << 0100 << (int)QSettings::NoError     << false << (int)QSettings::NoError     << (int)QSettings::AccessError;
     QTest::newRow("  -1 0300") <<   -1 << 0300 << (int)QSettings::NoError     << true  << (int)QSettings::NoError     << (int)QSettings::NoError;
     QTest::newRow("0600 0300") << 0600 << 0300 << (int)QSettings::NoError     << false << (int)QSettings::NoError     << (int)QSettings::NoError;
     QTest::newRow("  -1 0500") <<   -1 << 0500 << (int)QSettings::NoError     << true  << (int)QSettings::NoError     << (int)QSettings::AccessError;
-    QTest::newRow("0600 0500") << 0600 << 0500 << (int)QSettings::NoError     << false << (int)QSettings::NoError     << (int)QSettings::NoError;
+    QTest::newRow("0600 0500") << 0600 << 0500 << (int)QSettings::NoError     << false << (int)QSettings::NoError     << (int)QSettings::AccessError;
+#endif // !QT_CONFIG(process)
 }
 
 void tst_QSettings::testErrorHandling()
 {
-#ifdef Q_OS_WIN
-    QSKIP("Windows doesn't support most file modes, including read-only directories, so this test is moot.");
-#elif defined(Q_OS_UNIX)
-#if !defined(Q_OS_VXWORKS)  // VxWorks does not have users/groups
+#if !defined(Q_OS_WIN) && !defined(Q_OS_VXWORKS) && QT_CONFIG(process)
     if (::getuid() == 0)
-#endif
         QSKIP("Running this test as root doesn't work, since file perms do not bother him");
-#else
+
     QFETCH(int, filePerms);
     QFETCH(int, dirPerms);
     QFETCH(int, statusAfterCtor);
@@ -889,10 +906,11 @@ void tst_QSettings::testErrorHandling()
     QFETCH(int, statusAfterGet);
     QFETCH(int, statusAfterSetAndSync);
 
-    system(QString("chmod 700 %1 2>/dev/null").arg(settingsPath("someDir")).toLatin1());
-    system(QString("chmod -R u+rwx %1 2>/dev/null").arg(settingsPath("someDir")).toLatin1());
-    system(QString("rm -fr %1").arg(settingsPath("someDir")).toLatin1());
-
+    auto freer = qScopeGuard([&] {
+        QProcess::execute("chmod", QStringList{u"-R"_s, u"u+rwx"_s, settingsPath("someDir")});
+        QProcess::execute("rm", QStringList{u"-fr"_s, settingsPath("someDir")});
+    });
+    Q_UNUSED(freer)
     // prepare a file with some settings
     if (filePerms != -1) {
         QSettings settings(settingsPath("someDir/someSettings.ini"), QSettings::IniFormat);
@@ -907,22 +925,17 @@ void tst_QSettings::testErrorHandling()
         settings.endGroup();
         settings.setValue("alpha/gamma/splitter", 5);
     } else {
-        system(QString("mkdir -p %1").arg(settingsPath("someDir")).toLatin1());
+        QProcess::execute("mkdir", QStringList{u"-p"_s, settingsPath("someDir")});
     }
 
     if (filePerms != -1) {
-        system(QString("chmod %1 %2")
-                    .arg(QString::number(filePerms, 8))
-                    .arg(settingsPath("someDir/someSettings.ini"))
-                    .toLatin1());
+        QProcess::execute("chmod", QStringList{QString::number(filePerms, 8),
+                                                settingsPath("someDir/someSettings.ini")});
     }
-    system(QString("chmod %1 %2")
-                .arg(QString::number(dirPerms, 8))
-                .arg(settingsPath("someDir"))
-                .toLatin1());
-
+    QProcess::execute("chmod", QStringList{QString::number(dirPerms, 8), settingsPath("someDir")});
     // the test
     {
+#ifdef QT_BUILD_INTERNAL
         QConfFile::clearCache();
         QSettings settings(settingsPath("someDir/someSettings.ini"), QSettings::IniFormat);
         QCOMPARE((int)settings.status(), statusAfterCtor);
@@ -939,10 +952,10 @@ void tst_QSettings::testErrorHandling()
         settings.sync();
         QCOMPARE(settings.value("alpha/beta/geometry").toInt(), 100);
         QCOMPARE((int)settings.status(), statusAfterSetAndSync);
+#endif // QT_BUILD_INTERNAL
     }
-#endif // !Q_OS_WIN
+#endif // !defined(Q_OS_WIN) && !defined(Q_OS_VXWORKS) && QT_CONFIG(process)
 }
-
 Q_DECLARE_METATYPE(QSettings::Status)
 
 #ifdef QT_BUILD_INTERNAL
@@ -1360,7 +1373,7 @@ void tst_QSettings::testVariantTypes()
         QCOMPARE(settings.value("empty"), QVariant());
     }
 
-    auto checker = [format](const char *key, auto value, QMetaType::Type expected) {
+    auto check = [format](const char *key, auto value, QMetaType::Type expected) {
         {
             QSettings settings(format, QSettings::UserScope, "software.org", "KillerAPP");
             settings.setValue(key, QVariant::fromValue(value));
@@ -1373,11 +1386,6 @@ void tst_QSettings::testVariantTypes()
             QCOMPARE(qvariant_cast<decltype(value)>(actual), value);
         }
     };
-#define testValue(key, supplied, expected) do { \
-        checker(key, supplied, QMetaType::expected); \
-        if (QTest::currentTestFailed()) \
-            return; \
-    } while (0)
 
     typedef QMap<QString, QVariant> TestVariantMap;
 
@@ -1385,48 +1393,46 @@ void tst_QSettings::testVariantTypes()
     m2.insert("ene", "due");
     m2.insert("rike", "fake");
     m2.insert("borba", "dorba");
-    testValue("customMap", m2, QVariantMap);
+    check("customMap", m2, QMetaType::QVariantMap);
 
     QStringList l2 { "ene", "due", "@Point(1 2)", "@fake" };
-    testValue("stringsAt", l2, QStringList);
+    check("stringsAt", l2, QMetaType::QStringList);
 
     l2 = { "ene", "due", "rike", "fake" };
-    testValue("strings", l2, QStringList);
+    check("strings", l2, QMetaType::QStringList);
 
     QDate date = QDate::currentDate();
     QTime time = QTime::currentTime();
     QList<QVariant> l3 { QString("ene"), 10, QVariant::fromValue(QColor(1, 2, 3)),
             QVariant(QRect(1, 2, 3, 4)), QVariant(QSize(4, 56)), QVariant(QPoint(4, 2)),
             true, false, date, time };
-    testValue("mixedList", l3, QVariantList);
+    check("mixedList", l3, QMetaType::QVariantList);
 
-    testValue("string", QString("hello"), QString);
-    testValue("color", QColor(1, 2, 3), QColor);
-    testValue("rect", QRect(1, 2, 3, 4), QRect);
-    testValue("size", QSize(4, 56), QSize);
-    testValue("point", QPoint(4, 2), QPoint);
-    testValue("date", date, QDate);
-    testValue("time", time, QTime);
-    testValue("byteArray", QByteArray("foo bar"), QByteArray);
+    check("string", QString("hello"), QMetaType::QString);
+    check("color", QColor(1, 2, 3), QMetaType::QColor);
+    check("rect", QRect(1, 2, 3, 4), QMetaType::QRect);
+    check("size", QSize(4, 56), QMetaType::QSize);
+    check("point", QPoint(4, 2), QMetaType::QPoint);
+    check("date", date, QMetaType::QDate);
+    check("time", time, QMetaType::QTime);
+    check("byteArray", QByteArray("foo bar"), QMetaType::QByteArray);
 
     QList<QVariant> l4 { QVariant(m2), QVariant(l2), QVariant(l3) };
-    testValue("collectList", l4, QVariantList);
+    check("collectList", l4, QMetaType::QVariantList);
 
     QDateTime dt = QDateTime::currentDateTime();
     dt.setTimeZone(QTimeZone::fromSecondsAheadOfUtc(3600));
-    testValue("dateTime", dt, QDateTime);
+    check("dateTime", dt, QMetaType::QDateTime);
 
 #if QT_CONFIG(shortcut)
     // We store key sequences as strings instead of binary variant blob, for improved
     // readability in the resulting format.
     QKeySequence seq(Qt::ControlModifier | Qt::Key_F1);
     if (format >= QSettings::InvalidFormat)
-        testValue("keySequence", seq, QKeySequence);
+        check("keySequence", seq, QMetaType::QKeySequence);
     else
-        testValue("keySequence", seq.toString(QKeySequence::NativeText), QString);
+        check("keySequence", seq.toString(QKeySequence::NativeText), QMetaType::QString);
 #endif // QT_CONFIG(shortcut)
-
-#undef testValue
 }
 #endif
 
@@ -2058,6 +2064,14 @@ void tst_QSettings::testChildKeysAndGroups()
         l.sort();
         QCOMPARE(l, QStringList() << "bar" << "foo");
     }
+
+#if defined(Q_OS_WASM)
+    // WebIndexedDBFormat does not use the cached settings file on creation, but instead always uses
+    // the file from the indexed DB anew.
+    if (format == QSettings::Format::WebIndexedDBFormat)
+        settings1.sync();
+#endif
+
     {
         QSettings settings3(format, QSettings::UserScope, "software.org", "application");
         settings3.setFallbacksEnabled(false);
@@ -2343,6 +2357,8 @@ void tst_QSettings::testRegistryShortRootNames()
 {
 #ifndef Q_OS_WIN
     QSKIP("This test is specific to the Windows registry only.");
+#elif defined(Q_PROCESSOR_ARM)
+    QSKIP("This test fails on Windows for ARM. See QTBUG-135470.");
 #else
     QVERIFY(QSettings("HKEY_CURRENT_USER", QSettings::NativeFormat).childGroups() == QSettings("HKCU", QSettings::NativeFormat).childGroups());
     QVERIFY(QSettings("HKEY_LOCAL_MACHINE", QSettings::NativeFormat).childGroups() == QSettings("HKLM", QSettings::NativeFormat).childGroups());
@@ -2354,7 +2370,7 @@ void tst_QSettings::testRegistryShortRootNames()
 void tst_QSettings::testRegistry32And64Bit()
 {
 #if !defined (Q_OS_WIN)
-    QSKIP("This test is specific to the Windows registry.", SkipAll);
+    QSKIP("This test is specific to the Windows registry.");
 #else
 
     const QString key("HKEY_LOCAL_MACHINE\\Software");
@@ -3542,6 +3558,8 @@ void tst_QSettings::rainersSyncBugOnMac()
 #if defined(Q_OS_WASM)
     if (format == QSettings::NativeFormat)
         QSKIP("WASM's localStorage backend recognizes no concept of file");
+    if (format == QSettings::WebIndexedDBFormat)
+        QSKIP("WASM's indexedDB backend uses the virtual FS file only as a backing store");
 #endif  // Q_OS_WASM
 
     QString fileName;
@@ -3717,6 +3735,14 @@ void tst_QSettings::testReadKeys()
         readValues.insert(key, settings.value(key));
 
     QCOMPARE(readValues, expectedValues);
+}
+
+void tst_QSettings::testIncorrectSection()
+{
+    QVERIFY(QFile::exists(":/incorrectsection.ini"));
+    QSettings s(":/incorrectsection.ini", QSettings::IniFormat);
+
+    QCOMPARE(s.status(), QSettings::FormatError);
 }
 
 QTEST_MAIN(tst_QSettings)

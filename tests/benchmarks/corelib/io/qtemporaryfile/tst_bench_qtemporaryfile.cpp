@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QDebug>
 #include <QIODevice>
 #include <QFile>
@@ -34,7 +34,7 @@ void tst_QTemporaryFile::openclose()
     QBENCHMARK {
         for (qint64 i = 0; i < amount; ++i) {
             QTemporaryFile file;
-            file.open();
+            Q_UNUSED(file.open());
             file.close();
         }
     }
@@ -50,7 +50,7 @@ void tst_QTemporaryFile::readwrite()
     QBENCHMARK {
         for (qint64 i = 0; i < amount; ++i) {
             QTemporaryFile file;
-            file.open();
+            Q_UNUSED(file.open());
             file.write(data);
             file.seek(0);
             file.read(dataSize);

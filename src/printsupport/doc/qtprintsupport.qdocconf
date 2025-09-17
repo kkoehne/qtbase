@@ -7,6 +7,9 @@ version                 = $QT_VERSION
 
 examplesinstallpath     = printsupport
 
+# Path to the root of qtbase (for automatic linking to source code)
+url.sources.rootdir     = ../../..
+
 qhp.projects            = QtPrintSupport
 
 qhp.QtPrintSupport.file         = qtprintsupport.qhp
@@ -40,3 +43,6 @@ imagedirs   += images \
 
 navigation.landingpage = "Qt Print Support"
 navigation.cppclassespage = "Qt Print Support C++ Classes"
+
+# Enforce zero documentation warnings
+warninglimit = 0

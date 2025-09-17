@@ -72,6 +72,8 @@ template <typename T, typename N>
 void q_uninitialized_relocate_n(T* first, N n, T* out)
 {
     if constexpr (QTypeInfo<T>::isRelocatable) {
+        static_assert(std::is_copy_constructible_v<T> || std::is_move_constructible_v<T>,
+                      "Refusing to relocate this non-copy/non-move-constructible type.");
         if (n != N(0)) { // even if N == 0, out == nullptr or first == nullptr are UB for memcpy()
             std::memcpy(static_cast<void *>(out),
                         static_cast<const void *>(first),
@@ -252,6 +254,13 @@ void q_relocate_overlap_n(T *first, N n, T *d_first)
     }
 }
 
+template <typename T>
+struct ArrowProxy
+{
+    T t;
+    T *operator->() noexcept { return &t; }
+};
+
 template <typename Iterator>
 using IfIsInputIterator = typename std::enable_if<
     std::is_convertible<typename std::iterator_traits<Iterator>::iterator_category, std::input_iterator_tag>::value,
@@ -290,8 +299,8 @@ using KeyAndValueTest = decltype(
 
 template <typename Iterator>
 using FirstAndSecondTest = decltype(
-    std::declval<Iterator &>()->first,
-    std::declval<Iterator &>()->second
+    (*std::declval<Iterator &>()).first,
+    (*std::declval<Iterator &>()).second
 );
 
 template <typename Iterator>
@@ -300,7 +309,11 @@ using IfAssociativeIteratorHasKeyAndValue =
 
 template <typename Iterator>
 using IfAssociativeIteratorHasFirstAndSecond =
-    std::enable_if_t<qxp::is_detected_v<FirstAndSecondTest, Iterator>, bool>;
+    std::enable_if_t<
+        std::conjunction_v<
+            std::negation<qxp::is_detected<KeyAndValueTest, Iterator>>,
+            qxp::is_detected<FirstAndSecondTest, Iterator>
+        >, bool>;
 
 template <typename Iterator>
 using MoveBackwardsTest = decltype(
@@ -359,7 +372,7 @@ template <typename Container, typename T>
 auto sequential_erase(Container &c, const T &t)
 {
     // use the equivalence relation from http://eel.is/c++draft/list.erasure#1
-    auto cmp = [&](auto &e) { return e == t; };
+    auto cmp = [&](const auto &e) -> bool { return e == t; };
     return sequential_erase_if(c, cmp); // can't pass rvalues!
 }
 
@@ -367,8 +380,7 @@ template <typename Container, typename T>
 auto sequential_erase_with_copy(Container &c, const T &t)
 {
     using CopyProxy = std::conditional_t<std::is_copy_constructible_v<T>, T, const T &>;
-    const T &tCopy = CopyProxy(t);
-    return sequential_erase(c, tCopy);
+    return sequential_erase(c, CopyProxy(t));
 }
 
 template <typename Container, typename T>
@@ -386,12 +398,13 @@ template <typename T, typename Predicate>
 qsizetype qset_erase_if(QSet<T> &set, Predicate &pred)
 {
     qsizetype result = 0;
-    auto it = set.begin();
-    const auto e = set.end();
+    auto it = set.cbegin();
+    auto e = set.cend(); // stable across detach (QHash::end() is a stateless sentinel)...
     while (it != e) {
         if (pred(*it)) {
             ++result;
             it = set.erase(it);
+            e = set.cend(); // ...but re-set nonetheless, in case at some point it won't be
         } else {
             ++it;
         }
@@ -444,7 +457,7 @@ auto associative_erase_if(Container &c, Predicate &pred)
                 ++it;
             }
         } else {
-            static_assert(sizeof(Container) == 0, "Predicate has an incompatible signature");
+            static_assert(type_dependent_false<Container>(), "Predicate has an incompatible signature");
         }
     }
 

@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNATIVESOCKETENGINE_P_P_H
 #define QNATIVESOCKETENGINE_P_P_H
@@ -146,8 +147,8 @@ public:
     qint64 nativeSendDatagram(const char *data, qint64 length, const QIpPacketHeader &header);
     qint64 nativeRead(char *data, qint64 maxLength);
     qint64 nativeWrite(const char *data, qint64 length);
-    int nativeSelect(int timeout, bool selectForRead) const;
-    int nativeSelect(int timeout, bool checkRead, bool checkWrite,
+    int nativeSelect(QDeadlineTimer deadline, bool selectForRead) const;
+    int nativeSelect(QDeadlineTimer deadline, bool checkRead, bool checkWrite,
                      bool *selectForRead, bool *selectForWrite) const;
 
     void nativeClose();

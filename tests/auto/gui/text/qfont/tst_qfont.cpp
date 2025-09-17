@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QBuffer>
@@ -21,12 +19,19 @@
 #endif
 #include <qlist.h>
 #include <QtTest/private/qemulationdetector_p.h>
+#include <private/qcomparisontesthelper_p.h>
+#include <qpa/qplatformfontdatabase.h>
+#include <qpa/qplatformintegration.h>
+#include <QtGui/private/qguiapplication_p.h>
+
+using namespace Qt::StringLiterals;
 
 class tst_QFont : public QObject
 {
 Q_OBJECT
 
 private slots:
+    void initTestCase();
     void getSetCheck();
     void exactMatch();
     void compare();
@@ -57,7 +62,19 @@ private slots:
     void setFamiliesAndFamily_data();
     void setFamiliesAndFamily();
     void featureAccessors();
+    void tagCompares_data();
+    void tagCompares();
+
+    void variableAxes();
+
+private:
+    QString m_testFontVariable;
 };
+
+void tst_QFont::initTestCase()
+{
+    m_testFontVariable = QFINDTESTDATA("testfont_variable.ttf");
+}
 
 // Testing get/set functions
 void tst_QFont::getSetCheck()
@@ -145,6 +162,9 @@ void tst_QFont::italicOblique()
             QString style = *s_it;
 
             if (QFontDatabase::isSmoothlyScalable(family, style)) {
+                QFont f = QFontDatabase::font(family, style, 12);
+                bool wasItalic = f.italic();
+
                 if (style.contains("Oblique")) {
                     style.replace("Oblique", "Italic");
                 } else if (style.contains("Italic")) {
@@ -152,8 +172,8 @@ void tst_QFont::italicOblique()
                 } else {
                     continue;
                 }
-                QFont f = QFontDatabase::font(family, style, 12);
-                QVERIFY2(f.italic(), qPrintable(QString::asprintf("Failed for font \"%ls\"", qUtf16Printable(f.family()))));
+                f = QFontDatabase::font(family, style, 12);
+                QVERIFY2(f.italic() == wasItalic, qPrintable(QString::asprintf("Failed for font \"%ls\"", qUtf16Printable(f.family()))));
             }
         }
     }
@@ -555,7 +575,7 @@ QString getPlatformGenericFont(const char* genericName)
 static inline QByteArray msgNotAcceptableFont(const QString &defaultFamily, const QStringList &acceptableFamilies)
 {
     QString res = QString::fromLatin1("Font family '%1' is not one of the following acceptable results: ").arg(defaultFamily);
-    Q_FOREACH (const QString &family, acceptableFamilies)
+    for (const QString &family : acceptableFamilies)
         res += QLatin1String("\n ") + family;
     return res.toLocal8Bit();
 }
@@ -576,7 +596,7 @@ void tst_QFont::defaultFamily_data()
 void tst_QFont::defaultFamily()
 {
     QFETCH(QFont::StyleHint, styleHint);
-    QFETCH(QStringList, acceptableFamilies);
+    QFETCH(const QStringList, acceptableFamilies);
 
     QFont f;
     f.setStyleHint(styleHint);
@@ -586,7 +606,7 @@ void tst_QFont::defaultFamily()
     QVERIFY(QFontDatabase::hasFamily(familyForHint));
 
     bool isAcceptable = false;
-    Q_FOREACH (const QString& family, acceptableFamilies) {
+    for (const QString &family : acceptableFamilies) {
         if (!familyForHint.compare(family, Qt::CaseInsensitive)) {
             isAcceptable = true;
             break;
@@ -846,34 +866,109 @@ void tst_QFont::setFamiliesAndFamily()
 
 void tst_QFont::featureAccessors()
 {
+    const QFont::Tag abcdTag("abcd");
+    QCOMPARE(abcdTag.toString(), "abcd");
+    QVERIFY(abcdTag.isValid());
+
     QFont font;
     QVERIFY(font.featureTags().isEmpty());
     font.setFeature("abcd", 0xc0ffee);
 
-    quint32 abcdTag = QFont::stringToTag("abcd");
-    quint32 bcdeTag = QFont::stringToTag("bcde");
     QVERIFY(font.isFeatureSet(abcdTag));
-    QVERIFY(!font.isFeatureSet(bcdeTag));
+    QVERIFY(!font.isFeatureSet("bcde"));
     QCOMPARE(font.featureTags().size(), 1);
     QCOMPARE(font.featureTags().first(), abcdTag);
-    QCOMPARE(QFont::tagToString(font.featureTags().first()), QByteArray("abcd"));
+    QCOMPARE(font.featureTags().first(), "abcd");
     QCOMPARE(font.featureValue(abcdTag), 0xc0ffeeU);
-    QCOMPARE(font.featureValue(bcdeTag), 0U);
+    QCOMPARE(font.featureValue("bcde"), 0U);
     font.setFeature(abcdTag, 0xf00d);
     QCOMPARE(font.featureTags().size(), 1);
     QCOMPARE(font.featureValue(abcdTag), 0xf00dU);
-    font.setFeature("abcde", 0xcaca0);
-    QVERIFY(!font.isFeatureSet(QFont::stringToTag("abcde")));
+
+    QFont::Tag invalidTag;
+    QVERIFY(!invalidTag.isValid());
+    font.setFeature(invalidTag, 0xcaca0);
+    QVERIFY(!font.isFeatureSet(invalidTag));
     QCOMPARE(font.featureTags().size(), 1);
     QFont font2 = font;
 
     font.unsetFeature("abcd");
-    QVERIFY(!font.isFeatureSet(QFont::stringToTag("abcd")));
+    QVERIFY(!font.isFeatureSet("abcd"));
     QVERIFY(font.featureTags().isEmpty());
 
-    QVERIFY(font2.isFeatureSet(QFont::stringToTag("abcd")));
+    QVERIFY(font2.isFeatureSet("abcd"));
     font2.clearFeatures();
     QVERIFY(font.featureTags().isEmpty());
+
+    // various constructor compile tests
+    QFont::Tag tag;
+    tag = QFont::Tag("1234");
+    QVERIFY(QFont::Tag::fromString(QByteArray("abcd")));
+    QVERIFY(QFont::Tag::fromString(u"frac"_s));
+
+    // named constructors with invalid input
+    QTest::ignoreMessage(QtWarningMsg, "The tag name must be exactly 4 characters long!");
+    QVERIFY(!QFont::Tag::fromString(u"fraction"_s));
+    QVERIFY(!QFont::Tag::fromValue(0));
+    QVERIFY(QFont::Tag::fromValue(abcdTag.value()));
+
+    enum Features {
+        Frac = QFont::Tag("frac").value()
+    };
+}
+
+void tst_QFont::tagCompares_data()
+{
+    QTestPrivate::testAllComparisonOperatorsCompile<QFont::Tag>();
+
+    QTest::addColumn<QFont::Tag>("lhs");
+    QTest::addColumn<QFont::Tag>("rhs");
+    QTest::addColumn<Qt::strong_ordering>("expectedOrder");
+
+    auto row = [](QFont::Tag left, QFont::Tag right) {
+        QTest::addRow("%s<=>%s", left.toString().constData(), right.toString().constData())
+            << left << right << Qt::compareThreeWay(left.value(), right.value());
+    };
+    row("frac", "wght");
+}
+
+void tst_QFont::tagCompares()
+{
+    QFETCH(QFont::Tag, lhs);
+    QFETCH(QFont::Tag, rhs);
+    QFETCH(Qt::strong_ordering, expectedOrder);
+
+    QVERIFY(comparesEqual(lhs, lhs));
+    QCOMPARE(compareThreeWay(lhs, rhs), expectedOrder);
+}
+
+void tst_QFont::variableAxes()
+{
+    {
+        QPlatformFontDatabase *pfdb = QGuiApplicationPrivate::platformIntegration()->fontDatabase();
+        if (!pfdb->supportsVariableApplicationFonts())
+            QSKIP("Variable application fonts not supported on this platform");
+    }
+
+    int id = QFontDatabase::addApplicationFont(m_testFontVariable);
+    if (id == -1)
+        QSKIP("Application fonts are not supported on this system");
+    auto cleanup = qScopeGuard([&id] {
+        QFontDatabase::removeApplicationFont(id);
+    });
+
+    QString family = QFontDatabase::applicationFontFamilies(id).first();
+    QFontInfo fontInfo(QFont(family, 12));
+
+    QList<QFontVariableAxis> variableAxes = fontInfo.variableAxes();
+    QCOMPARE(variableAxes.size(), 1);
+
+    const QFontVariableAxis &variableAxis = variableAxes.first();
+    QCOMPARE(variableAxis.name(), QStringLiteral("Weight"));
+    QCOMPARE(variableAxis.tag(), QFont::Tag::fromString("wght"));
+    QCOMPARE(variableAxis.defaultValue(), 400.0);
+    QCOMPARE(variableAxis.minimumValue(), 400.0);
+    QCOMPARE(variableAxis.maximumValue(), 900.0);
 }
 
 QTEST_MAIN(tst_QFont)

@@ -3,18 +3,18 @@
 
 /*!
 \page android-manifest-file-configuration.html
-\title Qt Android Manifest File Configuration
+\title \Q4A Manifest File Configuration
 \ingroup androidplatform
 \brief Provides details on the AndroidManifest.xml configuration.
 \previouspage android-openssl-support.html
 \nextpage android-services.html
 
 The Android Manifest is an XML file necessary for any Android app. It contains
-app configuration for different settings and features that the app use, as well
+app configuration for different settings and features that the app uses, as well
 as details on the app itself, such as, package name, app name, version, etc.
 Permissions and hardware features can also be set from the manifest.
 
-Qt for Android maintains a version of \c {AndroidManifest.xml} with default
+\Q4A maintains a version of \c {AndroidManifest.xml} with default
 configuration that include features, permissions and other configuration
 used by the build system which are needed for building and running Qt apps
 on Android.
@@ -50,8 +50,10 @@ Qt sets the following manifest configuration by default:
     \li {1, 5} \l {Android: App Manifest <manifest>}{<manifest>}
     \li package
     \li Sets the package name. The default value is \c {org.qtproject.example.app_name}.
+        \warning This field is deprecated and moved to \c build.gradle. It will be removed
+        in an upcoming release.
 \row
-    \li \c {android:installLocation}
+    \li android:installLocation
     \li Sets the app's installation location, whether internal or external storage.
         The default value is \c auto.
 \row
@@ -63,7 +65,7 @@ Qt sets the following manifest configuration by default:
     \li Sets the public version name. Populated from \c ANDROID_VERSION_NAME (qmake)
         and \c QT_ANDROID_VERSION_NAME (CMake). The default value is \c {1.0}.
 \row
-    \li \c {<supports-screens>}
+    \li <supports-screens>
     \li Sets the screen sizes that the app supports,
         default values are \c anyDensity, \c largeScreens,
         \c normalScreens, and \c smallScreens.
@@ -75,19 +77,18 @@ Qt sets the following manifest configuration by default:
 \row
     \li android:label
     \li The application name label. Default value is the Qt project's target name.
+        This can be set using \l {QT_ANDROID_APP_NAME}.
+\row
+    \li android:icon
+    \li The application icon as a reference to a drawable or mipmap resource. This
+        tag is not used unless set using \l {QT_ANDROID_APP_ICON} or set manually
+        in the \c {AndroidManifest.xml}.
 \row
     \li android:hardwareAccelerated
     \li Sets hardware acceleration preference. The default value is \c true.
 \row
     \li android:requestLegacyExternalStorage
     \li Whether to use Android scoped storage. The default value is \c true.
-\row
-    \li android:allowNativeHeapPointerTagging
-    \li Whether or not the app has the Heap pointer tagging feature enabled.
-        This has to be set to \c false when targeting Arm64 hardware with Android 11+
-        because it can break QML's NaN-tagging scheme.
-        For more information, see \l {Android: Tagged Pointers}{Tagged Pointers}.
-        The default value is \c false.
 \row
     \li android:allowBackup
     \li Whether to allow the application to participate in the backup and restore
@@ -98,12 +99,9 @@ Qt sets the following manifest configuration by default:
     \li Whether or not to use Auto Backup on devices where it is available.
         The default value is \c false.
 \row
-    \li {1, 7} \l {Android: App Manifest <activity>}{<activity>}
+    \li {1, 6} \l {Android: App Manifest <activity>}{<activity>}
     \li android:name
     \li The activity class name. The default value is \c {org.qtproject.qt.android.bindings.QtActivity}.
-\row
-    \li android:label
-    \li The activity name label. Default value is the Qt project's target name.
 \row
     \li android:configChanges
     \li Lists configuration changes that the activity handles. Default value is
@@ -129,6 +127,7 @@ Qt sets the following manifest configuration by default:
         The default value is \c true.
 \endtable
 
+\target android-manifest-qt-specific-metadata
 \section1 Qt Specific Meta-data
 
 In addition to the default manifest configuration that Qt sets, Qt defines
@@ -237,7 +236,7 @@ The main ones are:
 
 Different Qt modules might require some Android permissions or features to
 function properly, for example, Camera permission in \l {QtMultimedia}.
-l{The androiddeployqt Tool} takes care of including such requirements into the
+\l{The androiddeployqt Tool} takes care of including such requirements into the
 Android manifest during the build. Qt defines the following lines into the
 manifest, which they get replaced by
 the actual values:
@@ -254,17 +253,31 @@ the actual values:
 able to include the correct permissions. So some functionalities
 might not work properly.
 
+\section3 Customizing Permissions
+
+Since Qt 6.8.1, it is possible to override the default permissions set
+by Qt modules. This is useful if you need to define the same permissions
+as used by a Qt module, but with additional or different attributes.
+
+There are two ways to achieve this. First way is to use
+\l {qt_add_android_permission} CMake function in the application's
+\c {CMakeLists.txt}. Permissions defined this way take precedence over
+the same permissions defined by Qt modules, avoiding duplication.
+
+Second way is to manually define these permissions in the Android
+manifest file. Permissions defined this way take precedence over permissions
+set by Qt modules, or set with \l {qt_add_android_permission}.
+
 \section2 Style Extraction
 
 Qt uses different methods to determine how Qt Widgets and Qt Quick Controls
 should be styled:
 
 \list
-    \li \c default or \c full: when using Qt Widgets or Qt Quick Controls 1.
-        \note This method uses some Android non-SDK interfaces, that are being
-        restricted and removed by Google starting from Android 9.0 (API 28).
-        For that reason, this is not recommended for Android 9.0 or greater.
-    \li \c minimal: when using Qt Quick Controls 2 and no Qt Widgets or Qt Quick
+    \li \c full: when using Qt Widgets or Qt Quick Controls 1.
+        \note This method is obsolete as it uses some Android non-SDK interfaces, that were
+        restricted by Google starting from Android 9.0 (API 28). You should use one of the other methods.
+    \li \c default or  \c minimal: when using Qt Quick Controls 2 and no Qt Widgets or Qt Quick
         Controls 1. This is faster than using the default or full options.
     \li \c none: no style extraction.
 \endlist

@@ -19,6 +19,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include "shared.h"
 
 #ifdef Q_OS_DARWIN
@@ -134,13 +135,22 @@ void patch_debugInInfoPlist(const QString &infoPlistPath)
 {
     // Older versions of qmake may have the "_debug" binary as
     // the value for CFBundleExecutable. Remove it.
-    QFile infoPlist(infoPlistPath);
-    infoPlist.open(QIODevice::ReadOnly);
-    QByteArray contents = infoPlist.readAll();
-    infoPlist.close();
-    infoPlist.open(QIODevice::WriteOnly | QIODevice::Truncate);
-    contents.replace("_debug", ""); // surely there are no legit uses of "_debug" in an Info.plist
-    infoPlist.write(contents);
+    if (QFile infoPlist(infoPlistPath); infoPlist.open(QIODevice::ReadOnly)) {
+        QByteArray contents = infoPlist.readAll();
+        infoPlist.close();
+        QSaveFile writableInfoPlist(infoPlistPath);
+        bool success = writableInfoPlist.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        if (success) {
+            contents.replace("_debug", ""); // surely there are no legit uses of "_debug" in an Info.plist
+            writableInfoPlist.write(contents);
+            success = writableInfoPlist.commit();
+        }
+        if (!success) {
+            LogError() << "Failed to write Info.plist file" << infoPlistPath;
+        }
+    } else {
+        LogError() << "Failed to read Info.plist file" << infoPlistPath;
+    }
 }
 
 OtoolInfo findDependencyInfo(const QString &binaryPath)
@@ -152,7 +162,7 @@ OtoolInfo findDependencyInfo(const QString &binaryPath)
     LogDebug() << " inspecting" << binaryPath;
     QProcess otool;
     otool.start("otool", QStringList() << "-L" << binaryPath);
-    otool.waitForFinished();
+    otool.waitForFinished(-1);
 
     if (otool.exitStatus() != QProcess::NormalExit || otool.exitCode() != 0) {
         LogError() << otool.readAllStandardError();
@@ -435,7 +445,7 @@ QStringList findAppLibraries(const QString &appBundlePath)
 {
     QStringList result;
     // dylibs
-    QDirIterator iter(appBundlePath, QStringList() << QString::fromLatin1("*.dylib"),
+    QDirIterator iter(appBundlePath, QStringList() << QString::fromLatin1("*.dylib") << QString::fromLatin1("*.so"),
             QDir::Files | QDir::NoSymLinks, QDirIterator::Subdirectories);
     while (iter.hasNext()) {
         iter.next();
@@ -598,6 +608,10 @@ QStringList getBinaryDependencies(const QString executablePath,
             QString binary = QDir::cleanPath(executablePath + trimmedLine.mid(QStringLiteral("@executable_path/").length()));
             if (binary != path)
                 binaries.append(binary);
+        } else if (trimmedLine.startsWith("@loader_path/")) {
+            QString binary = QDir::cleanPath(QFileInfo(path).path() + "/" + trimmedLine.mid(QStringLiteral("@loader_path/").length()));
+            if (binary != path)
+                binaries.append(binary);
         } else if (trimmedLine.startsWith("@rpath/")) {
             if (!rpathsLoaded) {
                 rpaths = getBinaryRPaths(path, true, executablePath);
@@ -659,17 +673,20 @@ void recursiveCopyAndDeploy(const QString &appBundlePath, const QList<QString> &
     QDir().mkpath(destinationPath);
 
     LogNormal() << "copy:" << sourcePath << destinationPath;
-    const bool isDwarfPath = sourcePath.endsWith("DWARF");
 
     const QDir sourceDir(sourcePath);
 
     const QStringList files = sourceDir.entryList(QStringList() << QStringLiteral("*"), QDir::Files | QDir::NoDotAndDotDot);
     for (const QString &file : files) {
+        if (file.endsWith("_debug.dylib"))
+            continue; // Skip debug versions
+
+        if (file.endsWith(".qrc"))
+            continue;
+
         const QString fileSourcePath = sourcePath + u'/' + file;
 
-        if (file.endsWith("_debug.dylib")) {
-            continue; // Skip debug versions
-        } else if (!isDwarfPath && file.endsWith(QStringLiteral(".dylib"))) {
+        if (file.endsWith(QStringLiteral(".dylib"))) {
             // App store code signing rules forbids code binaries in Contents/Resources/,
             // which poses a problem for deploying mixed .qml/.dylib Qt Quick imports.
             // Solve this by placing the dylibs in Contents/PlugIns/quick, and then
@@ -711,6 +728,9 @@ void recursiveCopyAndDeploy(const QString &appBundlePath, const QList<QString> &
 
     const QStringList subdirs = sourceDir.entryList(QStringList() << QStringLiteral("*"), QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString &dir : subdirs) {
+        if (dir.endsWith(".dSYM"))
+            continue;
+
         recursiveCopyAndDeploy(appBundlePath, rpaths, sourcePath + u'/' + dir, destinationPath + u'/' + dir);
     }
 }
@@ -1166,13 +1186,15 @@ void deployPlugins(const ApplicationBundleInfo &appBundleInfo, const QString &pl
         });
     }
 
+    // FIXME: Parse modules/Foo.json's plugin_types instead
     static const std::map<QString, std::vector<QString>> map {
         {QStringLiteral("Multimedia"), {QStringLiteral("multimedia")}},
         {QStringLiteral("3DRender"), {QStringLiteral("sceneparsers"), QStringLiteral("geometryloaders"), QStringLiteral("renderers")}},
         {QStringLiteral("3DQuickRender"), {QStringLiteral("renderplugins")}},
         {QStringLiteral("Positioning"), {QStringLiteral("position")}},
         {QStringLiteral("Location"), {QStringLiteral("geoservices")}},
-        {QStringLiteral("TextToSpeech"), {QStringLiteral("texttospeech")}}
+        {QStringLiteral("TextToSpeech"), {QStringLiteral("texttospeech")}},
+        {QStringLiteral("SerialBus"), {QStringLiteral("canbus")}},
     };
 
     for (const auto &it : map) {
@@ -1210,8 +1232,7 @@ void createQtConf(const QString &appBundlePath)
 
     QDir().mkpath(filePath);
 
-    QFile qtconf(fileName);
-    if (qtconf.exists() && !alwaysOwerwriteEnabled) {
+    if (QFile::exists(fileName) && !alwaysOwerwriteEnabled) {
         LogWarning();
         LogWarning() << fileName << "already exists, will not overwrite.";
         LogWarning() << "To make sure the plugins are loaded from the correct location,";
@@ -1221,8 +1242,8 @@ void createQtConf(const QString &appBundlePath)
         return;
     }
 
-    qtconf.open(QIODevice::WriteOnly);
-    if (qtconf.write(contents) != -1) {
+    if (QSaveFile qtconf(fileName); qtconf.open(QIODevice::WriteOnly)
+        && qtconf.write(contents) != -1 && qtconf.commit()) {
         LogNormal() << "Created configuration file:" << fileName;
         LogNormal() << "This file sets the plugin search path to" << appBundlePath + "/Contents/PlugIns";
     }

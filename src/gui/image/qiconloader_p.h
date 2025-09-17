@@ -20,16 +20,15 @@
 
 #include <QtGui/QIcon>
 #include <QtGui/QIconEngine>
-#include <QtGui/QPixmapCache>
-#include <private/qicon_p.h>
-#include <private/qiconengine_p.h>
-#include <private/qfactoryloader_p.h>
-#include <QtCore/QHash>
 #include <QtCore/QList>
-#include <QtCore/QTypeInfo>
+#include <QtCore/QSharedPointer>
+#include <QtCore/QVarLengthArray>
+#include <private/qflatmap_p.h>
+#include <private/qiconengine_p.h>
 
 #include <vector>
 #include <memory>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -37,7 +36,8 @@ class QIconLoader;
 
 struct QIconDirInfo
 {
-    enum Type { Fixed, Scalable, Threshold, Fallback };
+    enum Type : uint8_t { Fixed, Scalable, Threshold, Fallback };
+    enum Context : uint8_t { UnknownContext, Applications, MimeTypes };
     QIconDirInfo(const QString &_path = QString()) :
             path(_path),
             size(0),
@@ -45,7 +45,8 @@ struct QIconDirInfo
             minSize(0),
             threshold(0),
             scale(1),
-            type(Threshold) {}
+            type(Threshold),
+            context(UnknownContext) {}
     QString path;
     short size;
     short maxSize;
@@ -53,29 +54,31 @@ struct QIconDirInfo
     short threshold;
     short scale;
     Type type;
+    Context context;
 };
 Q_DECLARE_TYPEINFO(QIconDirInfo, Q_RELOCATABLE_TYPE);
 
 class QIconLoaderEngineEntry
- {
+{
 public:
-    virtual ~QIconLoaderEngineEntry() {}
+    virtual ~QIconLoaderEngineEntry() = default;
     virtual QPixmap pixmap(const QSize &size,
                            QIcon::Mode mode,
-                           QIcon::State state) = 0;
+                           QIcon::State state,
+                           qreal scale) = 0;
     QString filename;
     QIconDirInfo dir;
 };
 
-struct ScalableEntry : public QIconLoaderEngineEntry
+struct ScalableEntry final : public QIconLoaderEngineEntry
 {
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QIcon svgIcon;
 };
 
-struct PixmapEntry : public QIconLoaderEngineEntry
+struct PixmapEntry final : public QIconLoaderEngineEntry
 {
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QPixmap basePixmap;
 };
 
@@ -143,20 +146,22 @@ class QIconCacheGtkReader;
 class QIconTheme
 {
 public:
+    QIconTheme() = default;
     QIconTheme(const QString &name);
-    QIconTheme() : m_valid(false) {}
     QStringList parents() const;
-    QList<QIconDirInfo> keyList() { return m_keyList; }
-    QStringList contentDirs() { return m_contentDirs; }
-    bool isValid() { return m_valid; }
+    QList<QIconDirInfo> keyList() const { return m_keyList; }
+    QStringList contentDirs() const { return m_contentDirs; }
+    bool isValid() const { return m_valid; }
 private:
     QStringList m_contentDirs;
     QList<QIconDirInfo> m_keyList;
     QStringList m_parents;
-    bool m_valid;
+    bool m_valid = false;
 public:
     QList<QSharedPointer<QIconCacheGtkReader>> m_gtkCaches;
 };
+
+class QIconEnginePlugin;
 
 class Q_GUI_EXPORT QIconLoader
 {
@@ -184,12 +189,15 @@ public:
     QIconEngine *iconEngine(const QString &iconName) const;
 
 private:
+    enum DashRule { FallBack, NoFallBack };
     QThemeIconInfo findIconHelper(const QString &themeName,
                                   const QString &iconName,
-                                  QStringList &visited) const;
+                                  QStringList &visited,
+                                  DashRule rule) const;
     QThemeIconInfo lookupFallbackIcon(const QString &iconName) const;
 
     uint m_themeKey;
+    mutable std::optional<QIconEnginePlugin *> m_factory;
     bool m_supportsSvg;
     bool m_initialized;
 
@@ -197,8 +205,9 @@ private:
     mutable QString m_userFallbackTheme;
     mutable QString m_systemTheme;
     mutable QStringList m_iconDirs;
-    mutable QHash <QString, QIconTheme> themeList;
+    mutable QVarLengthFlatMap <QString, QIconTheme, 5> themeList;
     mutable QStringList m_fallbackDirs;
+    mutable QString m_iconName;
 };
 
 QT_END_NAMESPACE

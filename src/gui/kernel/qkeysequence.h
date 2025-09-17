@@ -136,7 +136,7 @@ public:
         PartialMatch,
         ExactMatch
     };
-    Q_ENUM(SequenceMatch);
+    Q_ENUM(SequenceMatch)
 
     QString toString(SequenceFormat format = PortableText) const;
     static QKeySequence fromString(const QString &str, SequenceFormat format = PortableText);
@@ -167,8 +167,6 @@ public:
 
     bool isDetached() const;
 private:
-    static int decodeString(const QString &ks);
-    static QString encodeString(int key);
     int assign(const QString &str);
     int assign(const QString &str, SequenceFormat format);
     void setKey(QKeyCombination key, int index);

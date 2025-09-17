@@ -1,10 +1,12 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2013 Laszlo Papp <lpapp@kde.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qmath.h>
 #include <qfloat16.h>
+
+#include <q20bit.h>
 
 class tst_QMath : public QObject
 {
@@ -294,6 +296,12 @@ void tst_QMath::qNextPowerOfTwo32U_data()
 
 void tst_QMath::qNextPowerOfTwo32U()
 {
+    // confirm constexprness
+    static_assert(q20::bit_ceil(0U) == 1);
+    static_assert(q20::bit_ceil(1U) == 1);
+    static_assert(q20::bit_ceil(2U) == 2);
+    static_assert(q20::bit_ceil(3U) == 4);
+    static_assert(q20::bit_ceil(0x7fff'ffffU) == 0x8000'0000U);
     QFETCH(quint32, input);
     QFETCH(quint32, output);
 
@@ -343,6 +351,13 @@ void tst_QMath::qNextPowerOfTwo64U_data()
 
 void tst_QMath::qNextPowerOfTwo64U()
 {
+    static_assert(q20::bit_ceil(Q_UINT64_C(0)) == 1);
+    static_assert(q20::bit_ceil(Q_UINT64_C(1)) == 1);
+    static_assert(q20::bit_ceil(Q_UINT64_C(2)) == 2);
+    static_assert(q20::bit_ceil(Q_UINT64_C(3)) == 4);
+    static_assert(q20::bit_ceil(quint64(~0U)) == Q_UINT64_C(0x1'0000'0000));
+    static_assert(q20::bit_ceil(Q_UINT64_C(0x7FFFFFFFFFFFFFFF))
+                  == Q_UINT64_C(0x8000000000000000));
     QFETCH(quint64, input);
     QFETCH(quint64, output);
 

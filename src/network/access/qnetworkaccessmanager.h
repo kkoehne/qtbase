@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKACCESSMANAGER_H
 #define QNETWORKACCESSMANAGER_H
@@ -80,10 +81,22 @@ public:
 
     QNetworkReply *head(const QNetworkRequest &request);
     QNetworkReply *get(const QNetworkRequest &request);
+    QNetworkReply *get(const QNetworkRequest &request, QIODevice *data);
+    QNetworkReply *get(const QNetworkRequest &request, const QByteArray &data);
     QNetworkReply *post(const QNetworkRequest &request, QIODevice *data);
     QNetworkReply *post(const QNetworkRequest &request, const QByteArray &data);
+    QNetworkReply *post(const QNetworkRequest &request, std::nullptr_t)
+    {
+        return post(request, static_cast<QIODevice*>(nullptr));
+    }
+
     QNetworkReply *put(const QNetworkRequest &request, QIODevice *data);
     QNetworkReply *put(const QNetworkRequest &request, const QByteArray &data);
+    QNetworkReply *put(const QNetworkRequest &request, std::nullptr_t)
+    {
+        return put(request, static_cast<QIODevice*>(nullptr));
+    }
+
     QNetworkReply *deleteResource(const QNetworkRequest &request);
     QNetworkReply *sendCustomRequest(const QNetworkRequest &request, const QByteArray &verb, QIODevice *data = nullptr);
     QNetworkReply *sendCustomRequest(const QNetworkRequest &request, const QByteArray &verb, const QByteArray &data);
@@ -109,8 +122,14 @@ public:
     bool autoDeleteReplies() const;
     void setAutoDeleteReplies(bool autoDelete);
 
+    QT_NETWORK_INLINE_SINCE(6, 8)
     int transferTimeout() const;
-    void setTransferTimeout(int timeout = QNetworkRequest::DefaultTransferTimeoutConstant);
+    QT_NETWORK_INLINE_SINCE(6, 8)
+    void setTransferTimeout(int timeout);
+
+    std::chrono::milliseconds transferTimeoutAsDuration() const;
+    void setTransferTimeout(std::chrono::milliseconds duration =
+                            QNetworkRequest::DefaultTransferTimeout);
 
 Q_SIGNALS:
 #ifndef QT_NO_NETWORKPROXY
@@ -146,6 +165,18 @@ private:
     Q_PRIVATE_SLOT(d_func(), void _q_replyPreSharedKeyAuthenticationRequired(QSslPreSharedKeyAuthenticator*))
 #endif
 };
+
+#if QT_NETWORK_INLINE_IMPL_SINCE(6, 8)
+int QNetworkAccessManager::transferTimeout() const
+{
+    return int(transferTimeoutAsDuration().count());
+}
+
+void QNetworkAccessManager::setTransferTimeout(int timeout)
+{
+    setTransferTimeout(std::chrono::milliseconds(timeout));
+}
+#endif // INLINE_SINCE 6.8
 
 QT_END_NAMESPACE
 

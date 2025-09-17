@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QLoggingCategory>
@@ -193,6 +193,7 @@ private slots:
         QCOMPARE(qtDisabledByDefault.isDebugEnabled(), false);
 
         QLoggingRegistry &registry = *QLoggingRegistry::instance();
+        registry.initializeRules();
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ApiRules].size(), 0);
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 0);
         QCOMPARE(registry.ruleSets[QLoggingRegistry::EnvironmentRules].size(), 1);
@@ -232,12 +233,14 @@ private slots:
         out << "Digia.*=false\n";
         file.close();
 
-        QLoggingRegistry registry;
+        QLoggingRegistry &registry = *QLoggingRegistry::instance();
+        auto cleanup = qScopeGuard([&] {
+            file.remove();
+            registry.initializeRules(); // reset rules
+        });
+
         registry.initializeRules();
         QCOMPARE(registry.ruleSets[QLoggingRegistry::ConfigRules].size(), 1);
-
-        // remove file again
-        QVERIFY(file.remove());
     }
 
     void QLoggingRegistry_rulePriorities()

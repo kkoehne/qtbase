@@ -15,15 +15,20 @@
 // We mean it.
 //
 
+#include <QtGui/qbrush.h>
+
 #include <QtCore/private/qglobal_p.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qnamespace.h>
+#include <QtCore/qshareddata.h>
 
 QT_BEGIN_NAMESPACE
 
-class QPenPrivate {
+class QPenPrivate : public QSharedData
+{
 public:
     QPenPrivate(const QBrush &brush, qreal width, Qt::PenStyle, Qt::PenCapStyle,
                 Qt::PenJoinStyle _joinStyle);
-    QAtomicInt ref;
     qreal width;
     QBrush brush;
     Qt::PenStyle style;

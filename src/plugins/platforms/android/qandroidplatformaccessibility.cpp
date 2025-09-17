@@ -7,12 +7,10 @@
 
 QT_BEGIN_NAMESPACE
 QAndroidPlatformAccessibility::QAndroidPlatformAccessibility()
-{
-    QtAndroidAccessibility::initialize();
-}
+{ }
 
 QAndroidPlatformAccessibility::~QAndroidPlatformAccessibility()
-{}
+{ }
 
 void QAndroidPlatformAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *event)
 {
@@ -28,12 +26,21 @@ void QAndroidPlatformAccessibility::notifyAccessibilityUpdate(QAccessibleEvent *
         QtAndroidAccessibility::notifyLocationChange(event->uniqueId());
     } else if (event->type() == QAccessible::ObjectHide) {
         QtAndroidAccessibility::notifyObjectHide(event->uniqueId());
+    } else if (event->type() == QAccessible::ObjectShow) {
+        QtAndroidAccessibility::notifyObjectShow(event->uniqueId());
     } else if (event->type() == QAccessible::Focus) {
         QtAndroidAccessibility::notifyObjectFocus(event->uniqueId());
     } else if (event->type() == QAccessible::ValueChanged) {
         QtAndroidAccessibility::notifyValueChanged(event->uniqueId());
     } else if (event->type() == QAccessible::ScrollingEnd) {
         QtAndroidAccessibility::notifyScrolledEvent(event->uniqueId());
+    } else if (event->type() == QAccessible::NameChanged
+               || event->type() == QAccessible::DescriptionChanged) {
+        QtAndroidAccessibility::notifyDescriptionOrNameChanged(event->uniqueId());
+    } else if (event->type() == QAccessible::Announcement) {
+        auto *announcementEvent = static_cast<QAccessibleAnnouncementEvent *>(event);
+        QtAndroidAccessibility::notifyAnnouncementEvent(announcementEvent->uniqueId(),
+                                                        announcementEvent->message());
     }
 }
 

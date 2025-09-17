@@ -25,9 +25,20 @@
 #include "QtWidgets/qlabel.h"
 #endif
 
+#include <array>
+
 QT_REQUIRE_CONFIG(itemviews);
 
 QT_BEGIN_NAMESPACE
+
+// Currently we support huge models with no memory per section if people are not resizing sections and not ordering sections.
+// This enum is unlikely to be public later on. (Either we go for a huge model bool or another ("subset") enum not containing the initial mode).
+
+enum HeaderMode
+{
+    InitialNoSectionMemoryUsage,         // Initial state - we don't use any memory per section until needed (needed on resize, swap, move, hide etc)
+    FlexibleWithSectionMemoryUsage,      // user can hide, resize and reorder sections at the cost of memory usage.
+};
 
 class QHeaderViewPrivate: public QAbstractItemViewPrivate
 {
@@ -38,7 +49,7 @@ public:
 
     QHeaderViewPrivate()
         : state(NoState),
-          offset(0),
+          headerOffset(0),
           sortIndicatorOrder(Qt::DescendingOrder),
           sortIndicatorSection(0),
           sortIndicatorShown(false),
@@ -86,13 +97,17 @@ public:
     void updateSectionIndicator(int section, int position);
     void updateHiddenSections(int logicalFirst, int logicalLast);
     void resizeSections(QHeaderView::ResizeMode globalMode, bool useGlobalMode = false);
-    void _q_sectionsRemoved(const QModelIndex &,int,int);
-    void _q_sectionsAboutToBeMoved(const QModelIndex &sourceParent, int logicalStart, int logicalEnd, const QModelIndex &destinationParent, int logicalDestination);
-    void _q_sectionsMoved(const QModelIndex &sourceParent, int logicalStart, int logicalEnd, const QModelIndex &destinationParent, int logicalDestination);
-    void _q_sectionsAboutToBeChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
-                                     QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
-    void _q_sectionsChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
-                            QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
+    void sectionsRemoved(const QModelIndex &,int,int);
+    void sectionsAboutToBeMoved(const QModelIndex &sourceParent, int logicalStart,
+                                int logicalEnd, const QModelIndex &destinationParent,
+                                int logicalDestination);
+    void sectionsMoved(const QModelIndex &sourceParent, int logicalStart,
+                       int logicalEnd, const QModelIndex &destinationParent,
+                       int logicalDestination);
+    void sectionsAboutToBeChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
+                                  QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
+    void sectionsChanged(const QList<QPersistentModelIndex> &parents = QList<QPersistentModelIndex>(),
+                         QAbstractItemModel::LayoutChangeHint hint = QAbstractItemModel::NoLayoutChangeHint);
 
     bool isSectionSelected(int section) const;
     bool isFirstVisibleSection(int section) const;
@@ -126,7 +141,9 @@ public:
         else sectionSelected.fill(false);
     }
 
-    inline int sectionCount() const {return sectionItems.size();}
+    inline int sectionCount() const {
+        return noSectionMemoryUsage() ? countInNoSectionItemsMode : sectionItems.size();
+    }
 
     inline bool reverse() const {
         return orientation == Qt::Horizontal && q_func()->isRightToLeft();
@@ -149,7 +166,7 @@ public:
     }
 
     inline bool isVisualIndexHidden(int visual) const {
-        return sectionItems.at(visual).isHidden;
+        return !noSectionMemoryUsage() && sectionItems.at(visual).isHidden;
     }
 
     inline void setVisualIndexHidden(int visual, bool hidden) {
@@ -213,6 +230,12 @@ public:
         }
     }
 
+    inline void disconnectModel()
+    {
+        for (const QMetaObject::Connection &connection : modelConnections)
+            QObject::disconnect(connection);
+    }
+
     void clear();
     void flipSortIndicator(int section);
     Qt::SortOrder defaultSortOrderForSection(int section) const;
@@ -220,7 +243,7 @@ public:
 
     enum State { NoState, ResizeSection, MoveSection, SelectSections, NoClear } state;
 
-    int offset;
+    int headerOffset;
     Qt::Orientation orientation;
     Qt::SortOrder sortIndicatorOrder;
     int sortIndicatorSection;
@@ -260,6 +283,7 @@ public:
     int stretchSections;
     int contentsSections;
     int defaultSectionSize;
+    int oldDefaultSectionSize = -1;
     int minimumSectionSize;
     int maximumSectionSize;
     int lastSectionSize;
@@ -300,11 +324,28 @@ public:
     };
 
     QList<SectionItem> sectionItems;
+
+    HeaderMode headerMode = HeaderMode::InitialNoSectionMemoryUsage;
+    qsizetype countInNoSectionItemsMode = 0;
+    inline bool noSectionMemoryUsage() const
+    {
+        return (headerMode == HeaderMode::InitialNoSectionMemoryUsage);
+    }
+
+    inline void switchToFlexibleModeWithSectionMemoryUsage()
+    {
+        setHeaderMode(HeaderMode::FlexibleWithSectionMemoryUsage);
+    }
+
+    void updateCountInNoSectionItemsMode(int newCount);
+    void setHeaderMode(HeaderMode mode);
+
     struct LayoutChangeItem {
         QPersistentModelIndex index;
         SectionItem section;
     };
     QList<LayoutChangeItem> layoutChangePersistentSections;
+    std::array<QMetaObject::Connection, 8> modelConnections;
 
     void createSectionItems(int start, int end, int sectionSize, QHeaderView::ResizeMode mode);
     void removeSectionsFromSectionItems(int start, int end);

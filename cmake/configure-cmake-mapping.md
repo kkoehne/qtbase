@@ -8,6 +8,7 @@ The following table describes the mapping of configure options to CMake argument
 | -extprefix /opt/qt6                   | -DCMAKE_STAGING_PREFIX=/opt/qt6                   |                                                                 |
 | -bindir <dir>                         | -DINSTALL_BINDIR=<dir>                            | similar for -headerdir -libdir and so on                        |
 | -hostdatadir <dir>                    | -DINSTALL_MKSPECSDIR=<dir>                        |                                                                 |
+| -qt-host-path <dir>                   | -DQT_HOST_PATH=<dir>                              |                                                                 |
 | -help                                 | n/a                                               | Handled by configure[.bat].                                     |
 | -verbose                              | --log-level=STATUS                                | Sets the CMake log level to STATUS. The default one is NOTICE.  |
 | -continue                             |                                                   |                                                                 |
@@ -44,14 +45,23 @@ The following table describes the mapping of configure options to CMake argument
 | -device-option <key=value>            | -DQT_QMAKE_DEVICE_OPTIONS=key1=value1;key2=value2 | Only used for generation qmake-compatibility files.             |
 |                                       |                                                   | The device options are written into mkspecs/qdevice.pri.        |
 | -appstore-compliant                   | -DFEATURE_appstore_compliant=ON                   |                                                                 |
+| -sbom                                 | -DQT_GENERATE_SBOM=ON                             | Enables generation and installation of a SPDX SBOM documents    |
+| -sbom-json                            | -DQT_SBOM_GENERATE_JSON=ON                        | Enables generation of SPDX SBOM in JSON format                  |
+| -sbom-json-required                   | -DQT_SBOM_REQUIRE_GENERATE_JSON=ON                | Fails the build if Python deps are not found                    |
+| -sbom-verify                          | -DQT_SBOM_VERIFY=ON                               | Enables verification of generated SBOMs                         |
+| -sbom-verify-required                 | -DQT_SBOM_REQUIRE_VERIFY=ON                       | Fails the build if Python deps are not found                    |
+| -sbomdir <dir>                        | -DINSTALL_SBOMDIR=<dir>                           | Installation location of SBOM files.                            |
+| -qtinlinenamespace                    | -DQT_INLINE_NAMESPACE=ON                          | Make the namespace specified by -qtnamespace an inline one.     |
 | -qtnamespace <name>                   | -DQT_NAMESPACE=<name>                             |                                                                 |
 | -qtlibinfix <infix>                   | -DQT_LIBINFIX=<infix>                             |                                                                 |
 | -coverage <tool>                      | -DINPUT_coverage=<tool>                           | Enables code coverage using the specified tool.                 |
 | -gcov                                 | -DINPUT_coverage=gcov                             | Enables code coverage using the gcov tool.                      |
 | -trace [backend]                      | -DINPUT_trace=yes or -DINPUT_trace=<backend>      |                                                                 |
 |                                       | or -DFEATURE_<backend>                            |                                                                 |
-| -sanitize address -sanitize undefined | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
-|                                       | -DFEATURE_sanitize_undefined=ON                   |                                                                 |
+| -sanitize address                     | -DFEATURE_sanitize_address=ON                     | Directly setting -DECM_ENABLE_SANITIZERS=foo is not supported   |
+| -sanitize undefined                   | -DFEATURE_sanitize_undefined=ON                   | See above.                                                      |
+| -sanitize thread                      | -DFEATURE_sanitize_thread=ON                      | See above.                                                      |
+| -sanitize memory                      | -DFEATURE_sanitize_memory=ON                      | See above.                                                      |
 | -c++std c++20                         | -DFEATURE_cxx20=ON                                |                                                                 |
 | -sse2/-sse3/-ssse3/-sse4.1            | -DFEATURE_sse4=ON                                 |                                                                 |
 | -mips_dsp/-mips_dspr2                 | -DFEATURE_mips_dsp=ON                             |                                                                 |
@@ -82,18 +92,20 @@ The following table describes the mapping of configure options to CMake argument
 | -I <string>                           | -DQT_EXTRA_INCLUDEPATHS=<string1>;<string2>       |                                                                 |
 | -L <string>                           | -DQT_EXTRA_LIBDIRS=<string1>;<string2>            |                                                                 |
 | -F <string>                           | -DQT_EXTRA_FRAMEWORKPATHS=<string1>;<string2>     |                                                                 |
-| -sdk <sdk>                            | -DQT_UIKIT_SDK=<value>                            | Should be provided a value like 'iphoneos' or 'iphonesimulator' |
+| -sdk <sdk>                            | -DQT_APPLE_SDK=<value>                            | Should be provided a value like 'iphoneos' or 'iphonesimulator' |
 |                                       |                                                   | If no value is provided, a simulator_and_device build is        |
 |                                       |                                                   | assumed.                                                        |
 | -android-sdk <path>                   | -DANDROID_SDK_ROOT=<path>                         |                                                                 |
 | -android-ndk <path>                   | -DCMAKE_TOOLCHAIN_FILE=<toolchain file in NDK>    |                                                                 |
-| -android-ndk-platform android-23      | -DANDROID_PLATFORM=android-23                     |                                                                 |
+| -android-ndk-platform android-28      | -DANDROID_PLATFORM=android-28                     |                                                                 |
 | -android-abis <abi_1>,...,<abi_n>     | -DANDROID_ABI=<abi_1>                             | only one ABI can be specified                                   |
 | -android-style-assets                 | -DFEATURE_android_style_assets=ON                 |                                                                 |
 | -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=7                       | Set the javac build source version.                             |
 | -android-javac-target                 | -DQT_ANDROID_JAVAC_TARGET=7                       | Set the javac build target version.                             |
 | -skip <repo>,...,<repo_n>             | -DBUILD_<repo>=OFF                                |                                                                 |
-| -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>            |                                                                 |
+| -skip-tests <repo>,...,<repo_n>       | -DQT_BUILD_TESTS_PROJECT_<repo>=OFF               |                                                                 |
+| -skip-examples <repo>,...,<repo_n>    | -DQT_BUILD_EXAMPLES_PROJECT_<repo>=OFF            |                                                                 |
+| -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>           |                                                                 |
 | -make <part>                          | -DQT_BUILD_TESTS=ON                               | A way to turn on tools explicitly is missing. If tests/examples |
 |                                       | -DQT_BUILD_EXAMPLES=ON                            | are enabled, you can disable their building as part of the      |
 |                                       |                                                   | 'all' target by also passing -DQT_BUILD_TESTS_BY_DEFAULT=OFF or |
@@ -141,7 +153,8 @@ The following table describes the mapping of configure options to CMake argument
 | -opengl <api>                         | -DINPUT_opengl=<api>                              |                                                                 |
 | -opengles3                            | -DFEATURE_opengles3=ON                            |                                                                 |
 | -egl                                  | -DFEATURE_egl=ON                                  |                                                                 |
-| -qpa <name>                           | -DQT_QPA_DEFAULT_PLATFORM=<name>                  |                                                                 |
+| -qpa <name>;...;<name_n>              | -DQT_QPA_PLATFORMS=<name>;...;<name_n>            |                                                                 |
+| -default-qpa <name>                   | -DQT_QPA_DEFAULT_PLATFORM=<name>                  |                                                                 |
 | -xcb-xlib                             | -DFEATURE_xcb_xlib=ON                             |                                                                 |
 | -direct2d                             | -DFEATURE_direct2d=ON                             |                                                                 |
 | -directfb                             | -DFEATURE_directfb=ON                             |                                                                 |
@@ -160,10 +173,14 @@ The following table describes the mapping of configure options to CMake argument
 | -xkbcommon                            | -DFEATURE_xkbcommon=ON                            |                                                                 |
 | -gif                                  | -DFEATURE_gif=ON                                  |                                                                 |
 | -ico                                  | -DFEATURE_ico=ON                                  |                                                                 |
-| -libpng                               | -DFEATURE_libpng=ON                               |                                                                 |
-| -libjpeg                              | -DFEATURE_libjpeg=ON                              |                                                                 |
+| -libpng                               | -DFEATURE_png=ON                                  |                                                                 |
+| -libjpeg                              | -DFEATURE_jpeg=ON                                 |                                                                 |
 | -sql-<driver>                         | -DFEATURE_sql_<driver>=ON                         |                                                                 |
 | -sqlite [qt/system]                   | -DFEATURE_system_sqlite=OFF/ON                    |                                                                 |
 | -disable-deprecated-up-to <hex_version> | -DQT_DISABLE_DEPRECATED_UP_TO=<hex_version>     |                                                                 |
 | -mimetype-database-compression <type> | -DINPUT_mimetype_database_compression=<type>      | Sets the compression type for mime type database. Supported     |
 |                                       |                                                   | types: gzip, zstd, none.                                        |
+| -force-bundled-libs                   | -DFEATURE_force_bundled_libs=ON                   |                                                                 |
+| -force-system-libs                    | -DFEATURE_force_system_libs=ON                    |                                                                 |
+| -ffmpeg-dir                           | -DFFMPEG_DIR=<dir>                                | FFmpeg development libraries directory                          |
+| -ffmpeg-deploy                        | -DQT_DEPLOY_FFMPEG=ON                             | FFmpeg binaries will be copied to Qt's install directory        |

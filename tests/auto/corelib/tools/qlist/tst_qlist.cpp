@@ -1,15 +1,24 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#ifdef QT_NO_STRICT_QLIST_ITERATORS
+#  ifdef QT_STRICT_QLIST_ITERATORS
+#    undef QT_STRICT_QLIST_ITERATORS
+#  endif
+#endif
+#include <qlist.h>
 
 #include <QTest>
 #include <QAtomicInt>
+#include <QAtomicScopedValueRollback>
 #include <QThread>
 #include <QSemaphore>
-#include <private/qatomicscopedvaluerollback_p.h>
-#include <qlist.h>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 
+#include <cstdio>
+#include <QtCore/q20memory.h>
 
-#if __cplusplus >= 202002L && (!defined(_GLIBCXX_RELEASE) || _GLIBCXX_RELEASE >= 11)
+#ifdef QT_COMPILER_HAS_LWG3346
 #  if __has_include(<concepts>)
 #    include <concepts>
 #    if defined(__cpp_lib_concepts) && __cpp_lib_concepts >= 202002L
@@ -257,6 +266,7 @@ private slots:
     void countCustom() const { count<Custom>(); }
     void cpp17ctad() const;
     void data() const;
+    void reinterpreted() const;
     void emptyInt() const { empty<int>(); }
     void emptyMovable() const { empty<Movable>(); }
     void emptyCustom() const { empty<Custom>(); }
@@ -322,6 +332,7 @@ private slots:
     void resizeToZero() const;
     void resizeToTheSameSize_data();
     void resizeToTheSameSize() const;
+    void resizeForOverwrite() const;
     void iterators() const;
     void constIterators() const;
     void reverseIterators() const;
@@ -332,6 +343,7 @@ private slots:
     void swapInt() const { swap<int>(); }
     void swapMovable() const { swap<Movable>(); }
     void swapCustom() const { swap<Custom>(); }
+    void toAddress() const;
     void toList() const;
 #if QT_VERSION < QT_VERSION_CHECK(6,0,0)
     void fromStdVector() const;
@@ -766,7 +778,7 @@ void tst_QList::assignEmpty() const
     using T = int;
     QList<T> list;
     QList<T> ref1 = list;
-    QVERIFY(list.d.needsDetach());
+    QVERIFY(list.data_ptr().needsDetach());
     list.assign(list.begin(), list.begin());
 
 #if !defined Q_OS_QNX // QNX has problems with the empty istream_iterator
@@ -774,7 +786,7 @@ void tst_QList::assignEmpty() const
     list.squeeze();
     QCOMPARE_EQ(list.capacity(), 0);
     ref1 = list;
-    QVERIFY(list.d.needsDetach());
+    QVERIFY(list.data_ptr().needsDetach());
     list.assign(empty, empty);
 #endif
 }
@@ -984,7 +996,7 @@ namespace QTest {
 char *toString(const ConstructionCounted &cc)
 {
     char *str = new char[5];
-    qsnprintf(str, 4, "%d", cc.i);
+    std::snprintf(str, 4, "%d", cc.i);
     return str;
 }
 }
@@ -1328,6 +1340,29 @@ void tst_QList::data() const
     const QList<int> constVec = myvec;
     QCOMPARE(memcmp(constVec.data(), reinterpret_cast<const int *>(&arr), sizeof(int) * 3), 0);
     QVERIFY(!constVec.isDetached()); // const data() does not detach()
+}
+
+void tst_QList::reinterpreted() const
+{
+    const QList<char16_t> expected = {char16_t(42), char16_t(43), char16_t(44)};
+    {
+        QList<ushort> t = {42, 43, 44};
+        const auto size = t.size();
+        QList<char16_t> x = std::move(t.data_ptr()).reinterpreted<char16_t>();
+
+        QVERIFY(t.data_ptr().isNull());
+        QCOMPARE(x.size(), size);
+        QCOMPARE_EQ(x, expected);
+    }
+    {
+        QList<ushort> t = {42, 43, 44};
+        const auto size = t.size();
+        QList<char16_t> x = std::move(t).data_ptr().reinterpreted<char16_t>();
+
+        QVERIFY(t.data_ptr().isNull());
+        QCOMPARE(x.size(), size);
+        QCOMPARE_EQ(x, expected);
+    }
 }
 
 template<typename T>
@@ -2531,16 +2566,74 @@ void tst_QList::resizeToTheSameSize() const
     QCOMPARE(y.size(), x.size());
 }
 
+void tst_QList::resizeForOverwrite() const
+{
+    constexpr int BUILD_COUNT = 42;
+    {
+        // Smoke test
+        QList<int> l(BUILD_COUNT, Qt::Uninitialized);
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+    }
+
+    {
+        const int beforeCounter = Movable::counter.loadRelaxed();
+        QList<Movable> l(BUILD_COUNT, Qt::Uninitialized);
+        const int after1Counter = Movable::counter.loadRelaxed();
+        QCOMPARE(after1Counter, beforeCounter + BUILD_COUNT);
+
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+        const int after2Counter = Movable::counter.loadRelaxed();
+        QCOMPARE(after2Counter, after1Counter + BUILD_COUNT);
+    }
+
+    struct QtInitializationSupport {
+        bool wasInitialized;
+        QtInitializationSupport() : wasInitialized(true) {}
+        explicit QtInitializationSupport(Qt::Initialization) : wasInitialized(false) {}
+    };
+
+    {
+        QList<QtInitializationSupport> l(BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(elem.wasInitialized);
+        l.resize(l.size() + BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(elem.wasInitialized);
+    }
+
+    {
+        QList<QtInitializationSupport> l(BUILD_COUNT, Qt::Uninitialized);
+        for (const auto &elem : l)
+            QVERIFY(!elem.wasInitialized);
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(!elem.wasInitialized);
+    }
+}
+
 void tst_QList::iterators() const
 {
     QList<int> v;
 
     QCOMPARE(v.begin(), v.end());
     QCOMPARE(v.rbegin(), v.rend());
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), v.end(), Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(v.rbegin(), v.rend(), Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(v.cbegin(), v.end(), Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(v.crbegin(), v.rend(), Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), v.cend(), Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(v.rbegin(), v.crend(), Qt::strong_ordering::equal);
 
     qsizetype idx = 0;
     for (; idx < 10; ++idx)
         v.push_back(idx);
+    QCOMPARE_LT(v.begin(), v.end());
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), v.end(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.rbegin(), v.rend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.cbegin(), v.end(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.crbegin(), v.rend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), v.cend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.rbegin(), v.crend(), Qt::strong_ordering::less);
 
     // stl-style iterators
     idx = 0;
@@ -2550,6 +2643,10 @@ void tst_QList::iterators() const
 
     std::advance(it, 7);
     idx += 7;
+    QT_TEST_ALL_COMPARISON_OPS(it, v.end(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(it, v.cend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), it, Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.cbegin(), it, Qt::strong_ordering::less);
     QCOMPARE(*it, idx);
     // idx == 7
 
@@ -2686,8 +2783,19 @@ void tst_QList::constIterators() const
     QCOMPARE(constEmptyList.constBegin(), constEmptyList.cbegin());
     QCOMPARE(constEmptyList.constEnd(), constEmptyList.cend());
     QVERIFY(!constEmptyList.isDetached());
+    QT_TEST_ALL_COMPARISON_OPS(constEmptyList.begin(), constEmptyList.end(),
+                               Qt::strong_ordering::equal);
+    QT_TEST_ALL_COMPARISON_OPS(constEmptyList.rbegin(), constEmptyList.rend(),
+                               Qt::strong_ordering::equal);
 
     const QList<int> v { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    QCOMPARE_LT(v.begin(), v.end());
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), v.end(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.rbegin(), v.rend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.cbegin(), v.end(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.crbegin(), v.rend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), v.cend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.rbegin(), v.crend(), Qt::strong_ordering::less);
 
     // stl-style iterators
     qsizetype idx = 0;
@@ -2697,6 +2805,10 @@ void tst_QList::constIterators() const
 
     std::advance(it, 7);
     idx += 7;
+    QT_TEST_ALL_COMPARISON_OPS(it, v.end(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(it, v.cend(), Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.begin(), it, Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(v.cbegin(), it, Qt::strong_ordering::less);
     QCOMPARE(*it, idx);
     // idx == 7
 
@@ -2880,6 +2992,23 @@ void tst_QList::startsWith() const
     // remove it again :)
     myvec.remove(0);
     QVERIFY(myvec.startsWith(1));
+}
+
+void tst_QList::toAddress() const
+{
+    // Annoyingly, QList::iterator is a class; make sure std::to_address works on them
+    QList<int> l = {1, 2, 3, 4, 5};
+    auto check = [&](auto b, auto e) {
+        QCOMPARE_EQ(q20::to_address(b), l.data());
+        QCOMPARE_EQ(q20::to_address(e), l.data() + l.size());
+    };
+    // begin QTBUG-130643
+    check(l.begin(), l.end());
+    check(l.cbegin(), l.cend());
+    // end QTBUG-130643
+    // for reverse_iterator, account for the off-by-one to its ::base():
+    check(l.rend() - 1, l.rbegin() - 1);
+    check(l.crend() - 1, l.crbegin() - 1);
 }
 
 template<typename T>

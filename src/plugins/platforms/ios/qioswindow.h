@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QIOSWINDOW_H
 #define QIOSWINDOW_H
@@ -28,7 +29,6 @@ public:
 
     void setWindowState(Qt::WindowStates state) override;
     void setParent(const QPlatformWindow *window) override;
-    void handleContentOrientationChange(Qt::ScreenOrientation orientation) override;
     void setVisible(bool visible) override;
     void setOpacity(qreal level) override;
 
@@ -62,6 +62,9 @@ public:
     CAEAGLLayer *eaglLayer() const;
 #endif
 
+    bool isForeignWindow() const override;
+    UIView *view() const;
+
 private:
     void applicationStateChanged(Qt::ApplicationState state);
     void applyGeometry(const QRect &rect);
@@ -69,10 +72,9 @@ private:
     UIView *m_view;
 
     QRect m_normalGeometry;
-    int m_windowLevel;
 
     void raiseOrLower(bool raise);
-    void updateWindowLevel();
+    int windowLevel() const;
     bool blockedByModal();
 
     friend class QIOSScreen;

@@ -51,9 +51,25 @@ class QDockWidgetPrivate : public QWidgetPrivate
     };
 
 public:
+    enum class DragScope {
+        Group,
+        Widget
+    };
+
+    enum class EndDragMode {
+        LocationChange,
+        Abort
+    };
+
+    enum class WindowState {
+        Unplug = 0x01,
+        Floating = 0x02,
+    };
+    Q_DECLARE_FLAGS(WindowStates, WindowState)
+
     void init();
-    void _q_toggleView(bool); // private slot
-    void _q_toggleTopLevel(); // private slot
+    void toggleView(bool);
+    void toggleTopLevel();
 
     void updateButtons();
     static Qt::DockWidgetArea toDockWidgetArea(QInternal::DockPosition pos);
@@ -78,24 +94,27 @@ public:
     QRect undockedGeometry;
     QString fixedWindowTitle;
     QString dockedWindowTitle;
+    bool inDestructor = false;
 
     bool mousePressEvent(QMouseEvent *event);
     bool mouseDoubleClickEvent(QMouseEvent *event);
     bool mouseMoveEvent(QMouseEvent *event);
     bool mouseReleaseEvent(QMouseEvent *event);
-    void setWindowState(bool floating, bool unplug = false, const QRect &rect = QRect());
+    void setWindowState(WindowStates states, const QRect &rect = QRect());
     void nonClientAreaMouseEvent(QMouseEvent *event);
     void initDrag(const QPoint &pos, bool nca);
-    void startDrag(bool group = true);
-    void endDrag(bool abort = false);
+    void startDrag(DragScope scope);
+    void endDrag(EndDragMode mode);
     void moveEvent(QMoveEvent *event);
     void recalculatePressPos(QResizeEvent *event);
 
     void unplug(const QRect &rect);
     void plug(const QRect &rect);
     void setResizerActive(bool active);
+    void setFloating(bool floating);
 
     bool isAnimating() const;
+    bool isTabbed() const;
 
 private:
     QWidgetResizeHandler *resizer = nullptr;
@@ -105,7 +124,7 @@ class Q_WIDGETS_EXPORT QDockWidgetLayout : public QLayout
 {
     Q_OBJECT
 public:
-    QDockWidgetLayout(QWidget *parent = nullptr);
+    explicit QDockWidgetLayout(QWidget *parent = nullptr);
     ~QDockWidgetLayout();
     void addItem(QLayoutItem *item) override;
     QLayoutItem *itemAt(int index) const override;

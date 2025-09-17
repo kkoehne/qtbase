@@ -67,7 +67,7 @@ protected:
 
     QMutex m_flipMutex;
     QWaitCondition m_flipCond;
-    static QMutex m_nonThreadedFlipMutex;
+    static QMutex s_nonThreadedFlipMutex;
 
     QScopedPointer<QEglFSKmsGbmCursor> m_cursor;
 
@@ -83,6 +83,8 @@ protected:
         bool cloneFlipPending = false;
     };
     QList<CloneDestination> m_cloneDests;
+
+    bool needsNewModeSetForNextFb = false;
 };
 
 QT_END_NAMESPACE

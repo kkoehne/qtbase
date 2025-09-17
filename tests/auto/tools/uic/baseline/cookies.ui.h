@@ -44,7 +44,7 @@ public:
         CookiesDialog->resize(550, 370);
         gridLayout = new QGridLayout(CookiesDialog);
         gridLayout->setObjectName("gridLayout");
-        spacerItem = new QSpacerItem(252, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(252, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem, 0, 0, 1, 1);
 
@@ -70,13 +70,13 @@ public:
 
         hboxLayout->addWidget(removeAllButton);
 
-        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem1);
 
         buttonBox = new QDialogButtonBox(CookiesDialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setStandardButtons(QDialogButtonBox::Ok);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Ok);
 
         hboxLayout->addWidget(buttonBox);
 

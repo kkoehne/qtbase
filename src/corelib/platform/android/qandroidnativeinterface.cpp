@@ -46,10 +46,10 @@ Q_CONSTINIT static QBasicMutex g_pendingRunnablesMutex;
 QT_DEFINE_NATIVE_INTERFACE(QAndroidApplication);
 
 /*!
-    \fn jobject QNativeInterface::QAndroidApplication::context()
+    \fn QJniObject QNativeInterface::QAndroidApplication::context()
 
-    Returns the Android context as a \c jobject. The context is an \c Activity
-    if the main activity object is valid. Otherwise, the context is a \c Service.
+    Returns the Android context as a \c QJniObject. The context is an \c Activity
+    if the most recently started activity object is valid. Otherwise, the context is a \c Service.
 
     \since 6.2
 */
@@ -68,7 +68,7 @@ QtJniTypes::Context QNativeInterface::QAndroidApplication::context()
 */
 bool QNativeInterface::QAndroidApplication::isActivityContext()
 {
-    return QtAndroidPrivate::activity();
+    return QtAndroidPrivate::activity().isValid();
 }
 
 /*!
@@ -94,8 +94,7 @@ int QNativeInterface::QAndroidApplication::sdkVersion()
 */
 void QNativeInterface::QAndroidApplication::hideSplashScreen(int duration)
 {
-    QJniObject::callStaticMethod<void>("org/qtproject/qt/android/QtNative",
-                                       "hideSplashScreen", "(I)V", duration);
+    QtAndroidPrivate::activity().callMethod<void>("hideSplashScreen", duration);
 }
 
 /*!
@@ -154,7 +153,7 @@ void QNativeInterface::QAndroidApplication::hideSplashScreen(int duration)
     also good to use a \l QDeadlineTimer in your \a runnable to manage
     the execution and make sure it doesn't block the UI thread. Usually,
     any operation longer than 5 seconds might block the app's UI. For more
-    information, see \l {Android: Keeping your app responsive}{Keeping your app responsive}.
+    information, see \l {Android: Keep your app responsive}{Keep your app responsive}.
 
     \since 6.2
 */
@@ -231,11 +230,11 @@ static void runPendingCppRunnables(JNIEnv */*env*/, jobject /*obj*/)
 }
 #endif
 
-bool QtAndroidPrivate::registerNativeInterfaceNatives()
+bool QtAndroidPrivate::registerNativeInterfaceNatives(QJniEnvironment &env)
 {
 #if QT_CONFIG(future) && !defined(QT_NO_QOBJECT)
     const JNINativeMethod methods = {"runPendingCppRunnables", "()V", (void *)runPendingCppRunnables};
-    return QJniEnvironment().registerNativeMethods(qtNativeClassName, &methods, 1);
+    return env.registerNativeMethods(qtNativeClassName, &methods, 1);
 #else
     return true;
 #endif

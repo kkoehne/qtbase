@@ -10,6 +10,7 @@
 #include <QtGui/QWindow>
 #include <QtGui/QBitmap>
 #include <QtGui/private/qguiapplication_p.h>
+#include <qpa/qplatformtheme.h>
 
 #if QT_CONFIG(xcb_xlib)
 #include <X11/cursorfont.h>
@@ -246,6 +247,8 @@ QXcbCursorCacheKey::QXcbCursorCacheKey(const QCursor &c)
             maskCacheKey = c.mask().cacheKey();
         }
     }
+    hotspotCacheKey.x = c.hotSpot().x();
+    hotspotCacheKey.y = c.hotSpot().y();
 }
 
 #endif // !QT_NO_CURSOR
@@ -286,6 +289,13 @@ QXcbCursor::~QXcbCursor()
 
     if (m_cursorContext)
         xcb_cursor_context_free(m_cursorContext);
+}
+
+QSize QXcbCursor::size() const
+{
+    if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())
+        return theme->themeHint(QPlatformTheme::MouseCursorSize).toSize();
+    return QSize(24, 24);
 }
 
 void QXcbCursor::updateContext()

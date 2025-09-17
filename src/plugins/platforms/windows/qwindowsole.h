@@ -4,12 +4,12 @@
 #ifndef QWINDOWSOLE_H
 #define QWINDOWSOLE_H
 
-#include "qwindowscombase.h"
 #include <QtCore/qt_windows.h>
 
 #include <QtCore/qlist.h>
 #include <QtCore/qmap.h>
 #include <QtCore/qpointer.h>
+#include <QtCore/private/qcomobject_p.h>
 
 #include <objidl.h>
 
@@ -18,7 +18,7 @@ QT_BEGIN_NAMESPACE
 class QMimeData;
 class QWindow;
 
-class QWindowsOleDataObject : public QWindowsComBase<IDataObject>
+class QWindowsOleDataObject : public QComObject<IDataObject>
 {
 public:
     explicit QWindowsOleDataObject(QMimeData *mimeData);
@@ -29,17 +29,17 @@ public:
     DWORD reportedPerformedEffect() const;
 
     // IDataObject methods
-    STDMETHOD(GetData)(LPFORMATETC pformatetcIn, LPSTGMEDIUM pmedium) override;
-    STDMETHOD(GetDataHere)(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium) override;
-    STDMETHOD(QueryGetData)(LPFORMATETC pformatetc) override;
-    STDMETHOD(GetCanonicalFormatEtc)(LPFORMATETC pformatetc, LPFORMATETC pformatetcOut) override;
-    STDMETHOD(SetData)(LPFORMATETC pformatetc, STGMEDIUM FAR *pmedium, BOOL fRelease) override;
-    STDMETHOD(EnumFormatEtc)(DWORD dwDirection, LPENUMFORMATETC FAR *ppenumFormatEtc) override;
+    STDMETHOD(GetData)(LPFORMATETC pformatetcIn, LPSTGMEDIUM pmedium) noexcept override;
+    STDMETHOD(GetDataHere)(LPFORMATETC pformatetc, LPSTGMEDIUM pmedium) noexcept override;
+    STDMETHOD(QueryGetData)(LPFORMATETC pformatetc) noexcept override;
+    STDMETHOD(GetCanonicalFormatEtc)(LPFORMATETC pformatetc, LPFORMATETC pformatetcOut) noexcept override;
+    STDMETHOD(SetData)(LPFORMATETC pformatetc, STGMEDIUM FAR *pmedium, BOOL fRelease) noexcept override;
+    STDMETHOD(EnumFormatEtc)(DWORD dwDirection, LPENUMFORMATETC FAR *ppenumFormatEtc) noexcept override;
     STDMETHOD(DAdvise)
     (FORMATETC FAR *pFormatetc, DWORD advf, LPADVISESINK pAdvSink,
-     DWORD FAR *pdwConnection) override;
-    STDMETHOD(DUnadvise)(DWORD dwConnection) override;
-    STDMETHOD(EnumDAdvise)(LPENUMSTATDATA FAR *ppenumAdvise) override;
+     DWORD FAR *pdwConnection) noexcept override;
+    STDMETHOD(DUnadvise)(DWORD dwConnection) noexcept override;
+    STDMETHOD(EnumDAdvise)(LPENUMSTATDATA FAR *ppenumAdvise) noexcept override;
 
 private:
     QPointer<QMimeData> data;
@@ -47,7 +47,7 @@ private:
     DWORD performedEffect = DROPEFFECT_NONE;
 };
 
-class QWindowsOleEnumFmtEtc : public QWindowsComBase<IEnumFORMATETC>
+class QWindowsOleEnumFmtEtc : public QComObject<IEnumFORMATETC>
 {
 public:
     explicit QWindowsOleEnumFmtEtc(const QList<FORMATETC> &fmtetcs);
@@ -57,10 +57,10 @@ public:
     bool isNull() const;
 
     // IEnumFORMATETC methods
-    STDMETHOD(Next)(ULONG celt, LPFORMATETC rgelt, ULONG FAR *pceltFetched) override;
-    STDMETHOD(Skip)(ULONG celt) override;
-    STDMETHOD(Reset)(void) override;
-    STDMETHOD(Clone)(LPENUMFORMATETC FAR *newEnum) override;
+    STDMETHOD(Next)(ULONG celt, LPFORMATETC rgelt, ULONG FAR *pceltFetched) noexcept override;
+    STDMETHOD(Skip)(ULONG celt) noexcept override;
+    STDMETHOD(Reset)(void) noexcept override;
+    STDMETHOD(Clone)(LPENUMFORMATETC FAR *newEnum) noexcept override;
 
 private:
     bool copyFormatEtc(LPFORMATETC dest, const FORMATETC *src) const;

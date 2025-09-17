@@ -1,10 +1,11 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
 #include <QSignalSpy>
 #include <qstatusbar.h>
+#include <QElapsedTimer>
 #include <QLabel>
 #include <QMainWindow>
 #include <QSizeGrip>
@@ -251,7 +252,7 @@ void tst_QStatusBar::QTBUG4334_hiddenOnMaximizedWindow()
     main.showMaximized();
     QVERIFY(QTest::qWaitForWindowActive(&main));
 #ifndef Q_OS_MAC
-    QVERIFY(!statusbar.findChild<QSizeGrip*>()->isVisible());
+    QTRY_VERIFY(!statusbar.findChild<QSizeGrip*>()->isVisible());
 #endif
     main.showNormal();
     QVERIFY(QTest::qWaitForWindowExposed(&main));

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 //#define QHOSTINFO_DEBUG
 
@@ -8,7 +9,6 @@
 #include <qplatformdefs.h>
 
 #include "QtCore/qapplicationstatic.h"
-#include "QtCore/qscopedpointer.h"
 #include <qabstracteventdispatcher.h>
 #include <qcoreapplication.h>
 #include <qmetaobject.h>
@@ -221,9 +221,12 @@ static int nextId()
     \note There is no guarantee on the order the signals will be emitted
     if you start multiple requests with lookupHost().
 
+    \note In Qt versions prior to 6.7, this function took \a receiver as
+    (non-const) \c{QObject*}.
+
     \sa abortHostLookup(), addresses(), error(), fromName()
 */
-int QHostInfo::lookupHost(const QString &name, QT7_ONLY(const) QObject *receiver, const char *member)
+int QHostInfo::lookupHost(const QString &name, const QObject *receiver, const char *member)
 {
     if (!receiver || !member) {
         qWarning("QHostInfo::lookupHost: both the receiver and the member to invoke must be non-null");
@@ -246,10 +249,7 @@ int QHostInfo::lookupHost(const QString &name, QT7_ONLY(const) QObject *receiver
 
 /*!
     \fn void QHostInfo::swap(QHostInfo &other)
-
-    Swaps host-info \a other with this host-info. This operation is
-    very fast and never fails.
-
+    \memberswap{host-info}
     \since 5.10
 */
 
@@ -746,7 +746,7 @@ int QHostInfo::lookupHostImpl(const QString &name,
     Q_ASSERT(!member || receiver); // if member is set, also is receiver
     const bool isUsingStringBasedSlot = static_cast<bool>(member);
 
-    if (!QAbstractEventDispatcher::instance(QThread::currentThread())) {
+    if (!QAbstractEventDispatcher::instance()) {
         qWarning("QHostInfo::lookupHost() called with no event dispatcher");
         return -1;
     }
@@ -964,7 +964,7 @@ void QHostInfoLookupManager::rescheduleWithMutexHeld()
                                        isAlreadyRunning).second,
                            scheduledLookups.end());
 
-    const int availableThreads = threadPool.maxThreadCount() - currentLookups.size();
+    const int availableThreads = std::max(threadPool.maxThreadCount(), 1) - currentLookups.size();
     if (availableThreads > 0) {
         int readyToStartCount = qMin(availableThreads, scheduledLookups.size());
         auto it = scheduledLookups.begin();
@@ -1153,3 +1153,4 @@ void QHostInfoCache::clear()
 QT_END_NAMESPACE
 
 #include "moc_qhostinfo_p.cpp"
+#include "moc_qhostinfo.cpp"

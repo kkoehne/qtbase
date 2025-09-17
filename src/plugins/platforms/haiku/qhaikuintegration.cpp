@@ -20,6 +20,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::Literals::StringLiterals;
+
 static long int startApplicationThread(void *data)
 {
     QHaikuApplication *app = static_cast<QHaikuApplication*>(data);
@@ -32,7 +34,7 @@ QHaikuIntegration::QHaikuIntegration(const QStringList &parameters)
 {
     Q_UNUSED(parameters);
 
-    const QString signature = QStringLiteral("application/x-vnd.Qt.%1").arg(QFileInfo(QCoreApplication::applicationFilePath()).fileName());
+    const QString signature = "application/x-vnd.Qt.%1"_L1.arg(QFileInfo(QCoreApplication::applicationFilePath()).fileName());
 
     QHaikuApplication *app = new QHaikuApplication(signature.toLocal8Bit());
     be_app = app;
@@ -42,8 +44,6 @@ QHaikuIntegration::QHaikuIntegration(const QStringList &parameters)
     app->UnlockLooper();
 
     m_screen = new QHaikuScreen;
-
-    m_services = new QHaikuServices;
 
     // notify system about available screen
     QWindowSystemInterface::handleScreenAdded(m_screen);
@@ -76,6 +76,9 @@ QPlatformFontDatabase *QHaikuIntegration::fontDatabase() const
 
 QPlatformServices *QHaikuIntegration::services() const
 {
+    if (!m_services)
+        m_services = new QHaikuServices;
+
     return m_services;
 }
 

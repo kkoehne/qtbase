@@ -105,7 +105,8 @@ public:
         BatchableVertexShader,
         UInt16IndexedVertexAsComputeShader,
         UInt32IndexedVertexAsComputeShader,
-        NonIndexedVertexAsComputeShader
+        NonIndexedVertexAsComputeShader,
+        HdrCapableFragmentShader,
     };
 
     enum class SerializedFormatVersion {
@@ -117,7 +118,11 @@ public:
     QShader();
     QShader(const QShader &other);
     QShader &operator=(const QShader &other);
+    QShader(QShader &&other) noexcept : d(std::exchange(other.d, nullptr)) {}
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QShader)
     ~QShader();
+
+    void swap(QShader &other) noexcept { qt_ptr_swap(d, other.d); }
     void detach();
 
     bool isValid() const;
@@ -136,7 +141,7 @@ public:
     QByteArray serialized(SerializedFormatVersion version = SerializedFormatVersion::Latest) const;
     static QShader fromSerialized(const QByteArray &data);
 
-    using NativeResourceBindingMap = QMap<int, QPair<int, int> >; // binding -> native_binding[, native_binding]
+    using NativeResourceBindingMap = QMap<int, std::pair<int, int>>; // binding -> native_binding[, native_binding]
     NativeResourceBindingMap nativeResourceBindingMap(const QShaderKey &key) const;
     void setResourceBindingMap(const QShaderKey &key, const NativeResourceBindingMap &map);
     void removeResourceBindingMap(const QShaderKey &key);

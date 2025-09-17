@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QColumnView>
 #include <QScrollBar>
@@ -718,6 +718,8 @@ void tst_QColumnView::gripMoved()
 void tst_QColumnView::preview()
 {
     QColumnView view;
+    view.resize(800, 300);
+    view.show();
     QCOMPARE(view.previewWidget(), nullptr);
     TreeModel model;
     view.setModel(&model);
@@ -738,18 +740,26 @@ void tst_QColumnView::preview()
     }
     QVERIFY(file.isValid());
     view.setCurrentIndex(file);
-    QVERIFY(view.previewWidget() != nullptr);
+    QCOMPARE(view.previewWidget(), nullptr);
 
     QWidget *previewWidget = new QWidget(&view);
     view.setPreviewWidget(previewWidget);
     QCOMPARE(view.previewWidget(), previewWidget);
     QVERIFY(previewWidget->parent() != &view);
+    QTRY_VERIFY(view.previewWidget()->isVisible());
+    view.setPreviewColumnVisible(false);
+    QTRY_VERIFY(!view.previewWidget()->isVisible());
+    view.setPreviewColumnVisible(true);
+    QTRY_VERIFY(view.previewWidget()->isVisible());
     view.setCurrentIndex(home);
+    QTRY_VERIFY(!view.previewWidget()->isVisible());
 
     // previewWidget should be marked for deletion
     QWidget *previewWidget2 = new QWidget(&view);
     view.setPreviewWidget(previewWidget2);
     QCOMPARE(view.previewWidget(), previewWidget2);
+    view.setPreviewWidget(nullptr);
+    QCOMPARE(view.previewWidget(), nullptr);
 }
 
 void tst_QColumnView::swapPreview()

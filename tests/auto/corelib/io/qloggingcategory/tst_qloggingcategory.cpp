@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QMutexLocker>
@@ -909,6 +909,21 @@ private slots:
                 QVERIFY2(false, "Multithread log is not complete!");
             }
         }
+    }
+
+    void debugLoggingCategories()
+    {
+        _config->clear();
+        _config->addKey("_logging_categories", true);
+        QLoggingCategory *pcategorybject = nullptr;
+        QLoggingCategory::setFilterRules(_config->array());
+        {
+            logMessage = "no change";
+            QLoggingCategory mycategoryobject("LoggingCategoryObject");
+            pcategorybject = &mycategoryobject;
+            QVERIFY(logMessage.contains("CATEGORY:LoggingCategoryObject"));
+        }
+        Q_UNUSED(pcategorybject);
     }
 
     void cleanupTestCase()

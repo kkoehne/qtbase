@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusabstractadaptor.h"
 #include "qdbusabstractadaptor_p.h"
@@ -8,7 +9,6 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qset.h>
-#include <QtCore/qtimer.h>
 #include <QtCore/qthread.h>
 
 #include "qdbusconnection.h"
@@ -104,6 +104,9 @@ void QDBusAbstractAdaptorPrivate::saveIntrospectionXml(QDBusAbstractAdaptor *ada
 QDBusAbstractAdaptor::QDBusAbstractAdaptor(QObject* obj)
     : QObject(*new QDBusAbstractAdaptorPrivate, obj)
 {
+
+    Q_ASSERT_X(obj, Q_FUNC_INFO, "Expected non-null parent");
+
     QDBusAdaptorConnector *connector = qDBusCreateAdaptorConnector(obj);
 
     connector->waitingForPolish = true;
@@ -182,7 +185,7 @@ void QDBusAdaptorConnector::addAdaptor(QDBusAbstractAdaptor *adaptor)
             // find out if this interface exists first
             const char *interface = mci.value();
             AdaptorMap::Iterator it = std::lower_bound(adaptors.begin(), adaptors.end(),
-                                                       QByteArray(interface));
+                                                       QByteArrayView(interface));
             if (it != adaptors.end() && qstrcmp(interface, it->interface) == 0) {
                 // exists. Replace it (though it's probably the same)
                 if (it->adaptor != adaptor) {

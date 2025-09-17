@@ -14,7 +14,10 @@
 #include <qendian.h>
 #include <qplatformdefs.h>
 #include "qctflib_p.h"
+
+#if QT_CONFIG(cxx17_filesystem)
 #include <filesystem>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -118,6 +121,10 @@ QCtfLibImpl::QCtfLibImpl()
         m_session.tracepoints.append(allLiteral());
         m_session.name = defaultLiteral();
     } else {
+#if !QT_CONFIG(cxx17_filesystem)
+        qCWarning(lcDebugTrace) << "Unable to use filesystem";
+        return;
+#endif
         // Check if the location is writable
         if (QT_ACCESS(qPrintable(location), W_OK) != 0) {
             qCWarning(lcDebugTrace) << "Unable to write to location";
@@ -161,7 +168,9 @@ QCtfLibImpl::QCtfLibImpl()
                 m_session.name = defaultLiteral();
             }
             m_location = location + u"/ust";
+#if QT_CONFIG(cxx17_filesystem)
             std::filesystem::create_directory(qPrintable(m_location), qPrintable(location));
+#endif
         }
         clearLocation();
     }
@@ -176,7 +185,8 @@ QCtfLibImpl::QCtfLibImpl()
 
 void QCtfLibImpl::clearLocation()
 {
-    const std::filesystem::path location{qUtf16Printable(m_location)};
+#if QT_CONFIG(cxx17_filesystem)
+    const std::filesystem::path location{m_location.toStdU16String()};
     for (auto const& dirEntry : std::filesystem::directory_iterator{location})
     {
         const auto path = dirEntry.path();
@@ -196,6 +206,7 @@ void QCtfLibImpl::clearLocation()
             }
         }
     }
+#endif
 }
 
 void QCtfLibImpl::writeMetadata(const QString &metadata, bool overwrite)
@@ -319,7 +330,7 @@ event {
     return QStringView(u"event {\n    name = \"") + provider + QLatin1Char(':') + name + u"\";\n"
            + u"    id = " + QString::number(eventId) + u";\n"
            + u"    stream_id = 0;\n    loglevel = 13;\n    fields := struct {\n        "
-           + metadata + u"\n    };\n};\n"
+           + metadata + u"\n    };\n};\n";
 }
 
 QCtfTracePointPrivate *QCtfLibImpl::initializeTracepoint(const QCtfTracePointEvent &point)

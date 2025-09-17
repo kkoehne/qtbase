@@ -18,7 +18,7 @@
 
 #include "QtCore/qlibrary.h"
 
-#include "QtCore/private/qfactoryloader_p.h"
+#include "QtCore/private/qplugin_p.h"
 #include "QtCore/qloggingcategory.h"
 #include "QtCore/qmutex.h"
 #include "QtCore/qplugin.h"
@@ -79,7 +79,16 @@ public:
     static QLibraryPrivate *findOrCreate(const QString &fileName, const QString &version = QString(),
                                          QLibrary::LoadHints loadHints = { });
     static QStringList suffixes_sys(const QString &fullVersion);
-    static QStringList prefixes_sys();
+    static constexpr QStringView prefix_sys()
+    {
+#ifdef Q_OS_WIN
+        return {};
+#elif defined(Q_OS_CYGWIN)
+        return u"cyg";
+#else
+        return u"lib";
+#endif
+    }
 
     QAtomicPointer<std::remove_pointer<QtPluginInstanceFunction>::type> instanceFactory;
     QAtomicPointer<std::remove_pointer<Handle>::type> pHnd;

@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-//#define QT_EXPERIMENTAL_CLIENT_DECORATIONS
-
 #include "qmainwindow.h"
 #include "qmainwindowlayout_p.h"
 
@@ -49,7 +47,7 @@ public:
             , useUnifiedToolBar(false)
 #endif
     { }
-    QMainWindowLayout *layout;
+    QPointer<QMainWindowLayout> layout;
     QSize iconSize;
     bool explicitIconSize;
     Qt::ToolButtonStyle toolButtonStyle;
@@ -60,7 +58,7 @@ public:
 
     static inline QMainWindowLayout *mainWindowLayout(const QMainWindow *mainWindow)
     {
-        return mainWindow ? mainWindow->d_func()->layout : static_cast<QMainWindowLayout *>(nullptr);
+        return mainWindow ? mainWindow->d_func()->layout.data() : static_cast<QMainWindowLayout *>(nullptr);
     }
 };
 
@@ -69,57 +67,11 @@ QMainWindowLayout *qt_mainwindow_layout(const QMainWindow *mainWindow)
     return QMainWindowPrivate::mainWindowLayout(mainWindow);
 }
 
-#ifdef QT_EXPERIMENTAL_CLIENT_DECORATIONS
-Q_WIDGETS_EXPORT void qt_setMainWindowTitleWidget(QMainWindow *mainWindow, Qt::DockWidgetArea area, QWidget *widget)
-{
-    QGridLayout *topLayout = qobject_cast<QGridLayout *>(mainWindow->layout());
-    Q_ASSERT(topLayout);
-
-    int row = 0;
-    int column = 0;
-
-    switch (area) {
-    case Qt::LeftDockWidgetArea:
-        row = 1;
-        column = 0;
-        break;
-    case Qt::TopDockWidgetArea:
-        row = 0;
-        column = 1;
-        break;
-    case Qt::BottomDockWidgetArea:
-        row = 2;
-        column = 1;
-        break;
-    case Qt::RightDockWidgetArea:
-        row = 1;
-        column = 2;
-        break;
-    default:
-        Q_ASSERT_X(false, "qt_setMainWindowTitleWidget", "Unknown area");
-        return;
-    }
-
-    if (QLayoutItem *oldItem = topLayout->itemAtPosition(row, column))
-        delete oldItem->widget();
-    topLayout->addWidget(widget, row, column);
-}
-#endif
-
 void QMainWindowPrivate::init()
 {
     Q_Q(QMainWindow);
 
-#ifdef QT_EXPERIMENTAL_CLIENT_DECORATIONS
-    QGridLayout *topLayout = new QGridLayout(q);
-    topLayout->setContentsMargins(0, 0, 0, 0);
-
-    layout = new QMainWindowLayout(q, topLayout);
-
-    topLayout->addItem(layout, 1, 1);
-#else
     layout = new QMainWindowLayout(q, nullptr);
-#endif
 
     const int metric = q->style()->pixelMetric(QStyle::PM_ToolBarIconSize, nullptr, q);
     iconSize = QSize(metric, metric);
@@ -165,8 +117,6 @@ void QMainWindowPrivate::init()
            window.
     \ingroup mainwindow-classes
     \inmodule QtWidgets
-
-    \tableofcontents
 
     \section1 Qt Main Window Framework
 
@@ -1039,8 +989,11 @@ void QMainWindow::addDockWidget(Qt::DockWidgetArea area, QDockWidget *dockwidget
     default:
         break;
     }
+    const Qt::DockWidgetArea oldArea = dockWidgetArea(dockwidget);
     d_func()->layout->removeWidget(dockwidget); // in case it was already in here
     addDockWidget(area, dockwidget, orientation);
+    if (oldArea != area)
+       emit dockwidget->dockLocationChanged(area);
 }
 
 /*!
@@ -1123,21 +1076,8 @@ void QMainWindow::tabifyDockWidget(QDockWidget *first, QDockWidget *second)
 
 QList<QDockWidget*> QMainWindow::tabifiedDockWidgets(QDockWidget *dockwidget) const
 {
-    QList<QDockWidget*> ret;
-    const QDockAreaLayoutInfo *info = d_func()->layout->layoutState.dockAreaLayout.info(dockwidget);
-    if (info && info->tabbed && info->tabBar) {
-        for(int i = 0; i < info->item_list.size(); ++i) {
-            const QDockAreaLayoutItem &item = info->item_list.at(i);
-            if (item.widgetItem) {
-                if (QDockWidget *dock = qobject_cast<QDockWidget*>(item.widgetItem->widget())) {
-                    if (dock != dockwidget) {
-                        ret += dock;
-                    }
-                }
-            }
-        }
-    }
-    return ret;
+    Q_D(const QMainWindow);
+    return d->layout ? d->layout->tabifiedDockWidgets(dockwidget) : QList<QDockWidget *>();
 }
 #endif // QT_CONFIG(tabbar)
 
@@ -1309,10 +1249,16 @@ bool QMainWindow::event(QEvent *event)
             if (!d->layout->draggingWidget)
                 break;
             auto dragMoveEvent = static_cast<QDragMoveEvent *>(event);
-            d->layout->hover(d->layout->draggingWidget, dragMoveEvent->position().toPoint());
+            d->layout->hover(d->layout->draggingWidget,
+                             mapToGlobal(dragMoveEvent->position()).toPoint());
             event->accept();
             return true;
         }
+        case QEvent::DragLeave:
+            if (!d->layout->draggingWidget)
+                break;
+            d->layout->hover(d->layout->draggingWidget, pos() - QPoint(-1, -1));
+            return true;
 #endif
         default:
             break;

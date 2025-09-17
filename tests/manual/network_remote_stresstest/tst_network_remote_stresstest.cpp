@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtTest/qtesteventloop.h>
@@ -75,7 +75,7 @@ tst_NetworkRemoteStressTest::tst_NetworkRemoteStressTest()
     WSAData wsadata;
 
     // IPv6 requires Winsock v2.0 or better.
-    WSAStartup(MAKEWORD(2,0), &wsadata);
+    WSAStartup(MAKEWORD(2, 2), &wsadata);
 #elif defined(Q_OS_UNIX)
     ::signal(SIGALRM, SIG_IGN);
 #endif

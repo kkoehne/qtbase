@@ -69,6 +69,10 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
     picture is available, for example, size(), isNull() and
     boundingRect().
 
+    \note QPicture uses QDataStream for serialization. The
+    \l {QDataStream#Corruption and Security}{same reservations} against
+    reading untrusted data apply.
+
     \sa QMovie
 */
 
@@ -925,10 +929,7 @@ QPicture& QPicture::operator=(const QPicture &p)
 
 /*!
     \fn void QPicture::swap(QPicture &other)
-    \since 4.8
-
-    Swaps picture \a other with this picture. This operation is very
-    fast and never fails.
+    \memberswap{picture}
 */
 
 /*!

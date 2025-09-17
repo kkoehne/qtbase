@@ -66,7 +66,7 @@ public:
     static void setFont(const QFont &, const char* className = nullptr);
 
 #if QT_DEPRECATED_SINCE(6,0)
-    QT_DEPRECATED_VERSION_X_6_0("Use the QFontMetricsF constructor instead.")
+    QT_DEPRECATED_VERSION_X_6_0("Use QFontMetricsF(qApp->font()) instead.")
     static QFontMetrics fontMetrics();
 #endif
 
@@ -140,7 +140,10 @@ public Q_SLOTS:
 
 protected:
     bool event(QEvent *) override;
+#  if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    QT_DEPRECATED_VERSION_X_6_10("This feature will be removed in Qt 7")
     bool compressEvent(QEvent *, QObject *receiver, QPostEventList *) override;
+#  endif
 
 private:
     Q_DISABLE_COPY(QApplication)

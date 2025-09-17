@@ -1,5 +1,5 @@
 // Copyright (C) 2013 BlackBerry Limited. All rights reserved.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qplatformdefs.h>
@@ -31,7 +31,7 @@ private slots:
     void urlConvenience_data();
     void urlConvenience();
 
-    void addStatics();
+    void addAndRemoveStatics();
 };
 
 void tst_QFileSelector::basicTest_data()
@@ -60,8 +60,8 @@ void tst_QFileSelector::basicTest_data()
     QString expectedPlatform1File(":/platforms");
     QString expectedPlatform2File(""); //Only the last selector
     QString expectedPlatform3File; // Only the first selector (the family)
-#if defined(Q_OS_UNIX) && !defined(Q_OS_ANDROID) && \
-    !defined(Q_OS_DARWIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_HAIKU) && !defined(Q_OS_QNX)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_ANDROID) && !defined(Q_OS_WASM) && \
+    !defined(Q_OS_DARWIN) && !defined(Q_OS_LINUX) && !defined(Q_OS_HAIKU) && !defined(Q_OS_QNX) && !defined(Q_OS_VXWORKS)
     /* We are only aware of specific unixes, and do not have test files for any of the others.
        However those unixes can get a selector added from the result of a uname call, so this will
        lead to a case where we don't have that file so we can't expect the concatenation of platform
@@ -213,13 +213,16 @@ void tst_QFileSelector::urlConvenience()
     QCOMPARE(fs.select(testUrl), expectedUrl);
 }
 
-void tst_QFileSelector::addStatics()
+void tst_QFileSelector::addAndRemoveStatics()
 {
     QFileSelector fs;
     QCOMPARE(fs.select(QStringLiteral(":/extras/test")), QStringLiteral(":/extras/test"));
 
     QFileSelectorPrivate::addStatics(QStringList() << QStringLiteral("custom1"));
     QCOMPARE(fs.select(QStringLiteral(":/extras/test")), QStringLiteral(":/extras/+custom1/test"));
+
+    QCOMPARE(QFileSelectorPrivate::removeStatics(QStringList() << QStringLiteral("custom1")), 1);
+    QCOMPARE(fs.select(QStringLiteral(":/extras/test")), QStringLiteral(":/extras/test"));
 }
 
 QTEST_MAIN(tst_QFileSelector)

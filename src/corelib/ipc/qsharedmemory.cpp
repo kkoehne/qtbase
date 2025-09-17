@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsharedmemory.h"
 #include "qsharedmemory_p.h"
@@ -12,9 +13,14 @@
 #ifdef Q_OS_WIN
 #  include <qt_windows.h>
 #endif
+#include <errno.h>
 
 #ifndef MAX_PATH
-#  define MAX_PATH PATH_MAX
+#  ifdef PATH_MAX
+#    define MAX_PATH PATH_MAX
+#  else
+#    define MAX_PATH 1024
+#  endif
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -125,15 +131,10 @@ QSharedMemory::QSharedMemory(const QNativeIpcKey &key, QObject *parent)
     setNativeKey(key);
 }
 
-#if QT_DEPRECATED_SINCE(6, 10)
 /*!
-  \deprecated
-
   Constructs a shared memory object with the given \a parent and with
   the legacy key set to \a key. Because its key is set, its create() and
   attach() functions can be called.
-
-  Legacy keys are deprecated. See \l{Native IPC Keys} for more information.
 
   \sa setKey(), create(), attach()
  */
@@ -141,7 +142,6 @@ QSharedMemory::QSharedMemory(const QString &key, QObject *parent)
     : QSharedMemory(legacyNativeKey(key), parent)
 {
 }
-#endif
 
 /*!
   The destructor clears the key, which forces the shared memory object
@@ -160,9 +160,7 @@ QSharedMemory::~QSharedMemory()
     d->cleanHandle();
 }
 
-#if QT_DEPRECATED_SINCE(6, 10)
 /*!
-  \deprecated
   \overload
 
   Sets the legacy \a key for this shared memory object. If \a key is the same
@@ -186,7 +184,6 @@ void QSharedMemory::setKey(const QString &key)
 {
     setNativeKey(legacyNativeKey(key));
 }
-#endif
 
 /*!
   \since 4.8
@@ -258,7 +255,11 @@ bool QSharedMemoryPrivate::initKey(SemaphoreAccessMode mode)
     if (!cleanHandle())
         return false;
 #if QT_CONFIG(systemsemaphore)
-    systemSemaphore.setNativeKey(semaphoreNativeKey(), 1, mode);
+    const QString legacyKey = QNativeIpcKeyPrivate::legacyKey(nativeKey);
+    const QNativeIpcKey semKey = legacyKey.isEmpty()
+            ? semaphoreNativeKey()
+            : QSystemSemaphore::legacyNativeKey(legacyKey, nativeKey.type());
+    systemSemaphore.setNativeKey(semKey, 1, mode);
     if (systemSemaphore.error() != QSystemSemaphore::NoError) {
         QString function = "QSharedMemoryPrivate::initKey"_L1;
         errorString = QSharedMemory::tr("%1: unable to set key on lock (%2)")
@@ -294,9 +295,7 @@ bool QSharedMemoryPrivate::initKey(SemaphoreAccessMode mode)
     return true;
 }
 
-#if QT_DEPRECATED_SINCE(6, 10)
 /*!
-  \deprecated
   Returns the legacy key assigned with setKey() to this shared memory, or a null key
   if no key has been assigned, or if the segment is using a nativeKey(). The
   key is the identifier used by Qt applications to identify the shared memory
@@ -312,7 +311,6 @@ QString QSharedMemory::key() const
     Q_D(const QSharedMemory);
     return QNativeIpcKeyPrivate::legacyKey(d->nativeKey);
 }
-#endif
 
 /*!
   \since 4.8

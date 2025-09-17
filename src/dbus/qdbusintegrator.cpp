@@ -1,17 +1,18 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusintegrator_p.h"
 
 #include <qcoreapplication.h>
 #include <qelapsedtimer.h>
+#include <private/qlatch_p.h>
 #include <qloggingcategory.h>
 #include <qmetaobject.h>
 #include <qobject.h>
 #include <qsocketnotifier.h>
 #include <qstringlist.h>
-#include <qtimer.h>
 #include <qthread.h>
 #include <private/qlocking_p.h>
 #include <QtCore/qset.h>
@@ -50,7 +51,7 @@ QT_IMPL_METATYPE_EXTERN(QDBusSlotCache)
 // used with dbus_server_allocate_data_slot
 static dbus_int32_t server_slot = -1;
 
-Q_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
+Q_STATIC_LOGGING_CATEGORY(dbusIntegration, "qt.dbus.integration", QtWarningMsg)
 
 Q_CONSTINIT static QBasicAtomicInt isDebugging = Q_BASIC_ATOMIC_INITIALIZER(-1);
 #define qDBusDebug              if (::isDebugging.loadRelaxed() == 0); else qDebug
@@ -151,7 +152,8 @@ static dbus_bool_t qDBusAddTimeout(DBusTimeout *timeout, void *data)
 
     Q_ASSERT(d->timeouts.key(timeout, 0) == 0);
 
-    int timerId = d->startTimer(std::chrono::milliseconds{q_dbus_timeout_get_interval(timeout)});
+    using namespace std::chrono_literals;
+    int timerId = d->startTimer(q_dbus_timeout_get_interval(timeout) * 1ms); // no overflow possible
     if (!timerId)
         return false;
 
@@ -559,7 +561,7 @@ bool QDBusConnectionPrivate::handleMessage(const QDBusMessage &amsg)
         // run it through the spy filters (if any) before the regular processing:
         // a) if it's a local message, we're in the caller's thread, so invoke the filter directly
         // b) if it's an external message, post to the main thread
-        if (Q_UNLIKELY(qDBusSpyHookList.exists()) && qApp) {
+        if (Q_UNLIKELY(qDBusSpyHookList.exists()) && QCoreApplication::instanceExists()) {
             if (isLocal) {
                 Q_ASSERT(QThread::currentThread() != thread());
                 qDBusDebug() << this << "invoking message spies directly";
@@ -665,6 +667,7 @@ static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
                     const QString &signature_, QList<QMetaType> &metaTypes)
 {
     QByteArray msgSignature = signature_.toLatin1();
+    QString parametersErrorMsg;
 
     for (int idx = mo->methodCount() - 1 ; idx >= QObject::staticMetaObject.methodCount(); --idx) {
         QMetaMethod mm = mo->method(idx);
@@ -691,8 +694,10 @@ static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
 
         QString errorMsg;
         int inputCount = qDBusParametersForMethod(mm, metaTypes, errorMsg);
-        if (inputCount == -1)
+        if (inputCount == -1) {
+            parametersErrorMsg = errorMsg;
             continue;           // problem parsing
+        }
 
         metaTypes[0] = returnType;
         bool hasMessage = false;
@@ -754,6 +759,13 @@ static int findSlot(const QMetaObject *mo, const QByteArray &name, int flags,
     }
 
     // no slot matched
+    if (!parametersErrorMsg.isEmpty()) {
+        qCWarning(dbusIntegration, "QDBusConnection: couldn't handle call to %s: %ls",
+                  name.constData(), qUtf16Printable(parametersErrorMsg));
+    } else {
+        qCWarning(dbusIntegration, "QDBusConnection: couldn't handle call to %s, no slot matched",
+                  name.constData());
+    }
     return -1;
 }
 
@@ -1401,6 +1413,13 @@ bool QDBusConnectionPrivate::activateInternalFilters(const ObjectTreeNode &node,
     if (node.obj && (interface.isEmpty() ||
                      interface == QDBusUtil::dbusInterfaceProperties())) {
         //qDebug() << "QDBusConnectionPrivate::activateInternalFilters properties" << msg.d_ptr->msg;
+
+        QDBusContextPrivate context(QDBusConnection(this), msg);
+        QDBusContextPrivate *old = QDBusContextPrivate::set(node.obj, &context);
+        auto guard = qScopeGuard([&node, old]{
+            QDBusContextPrivate::set(node.obj, old);
+        });
+
         if (msg.member() == "Get"_L1 && msg.signature() == "ss"_L1) {
             QDBusMessage reply = qDBusPropertyGet(node, msg);
             send(reply);
@@ -1520,8 +1539,8 @@ void QDBusConnectionPrivate::handleObjectCall(const QDBusMessage &msg)
     ObjectTreeNode result;
     int usedLength;
     QThread *objThread = nullptr;
-    QSemaphore sem;
-    bool semWait;
+    QLatch latch(1);
+    bool latchWait;
 
     {
         QDBusReadLocker locker(HandleObjectCallAction, this);
@@ -1559,16 +1578,16 @@ void QDBusConnectionPrivate::handleObjectCall(const QDBusMessage &msg)
             // synchronize with it
             postEventToThread(HandleObjectCallPostEventAction, result.obj,
                               new QDBusActivateObjectEvent(QDBusConnection(this), this, result,
-                                                           usedLength, msg, &sem));
-            semWait = true;
+                                                           usedLength, msg, &latch));
+            latchWait = true;
         } else {
             // looped-back message, targeting current thread
-            semWait = false;
+            latchWait = false;
         }
     } // release the lock
 
-    if (semWait)
-        SEM_ACQUIRE(HandleObjectCallSemaphoreAction, sem);
+    if (latchWait)
+        latch.wait();
     else
         activateObject(result, msg, usedLength);
 }
@@ -2018,7 +2037,7 @@ public:
         // if this call is running on the main thread, we have a much lower
         // tolerance for delay because any long-term delay will wreck user
         // interactivity.
-        if (qApp && qApp->thread() == QThread::currentThread())
+        if (QThread::isMainThread())
             m_maxCallTimeoutMs = mainThreadWarningAmount;
         else
             m_maxCallTimeoutMs = otherThreadWarningAmount;

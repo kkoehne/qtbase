@@ -1462,7 +1462,8 @@ void QCalendarView::mouseDoubleClickEvent(QMouseEvent *event)
 
     QDate date = handleMouseEvent(event);
     validDateClicked = false;
-    if (date == calendarModel->m_date && !style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick)) {
+    if (date == calendarModel->m_date &&
+        !style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick, nullptr, this)) {
         emit editingFinished();
     }
 }
@@ -1539,7 +1540,7 @@ void QCalendarView::mouseReleaseEvent(QMouseEvent *event)
         if (date.isValid()) {
             emit changeDate(date, true);
             emit clicked(date);
-            if (style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick))
+            if (style()->styleHint(QStyle::SH_ItemView_ActivateItemOnSingleClick, nullptr, this))
                 emit editingFinished();
         }
         validDateClicked = false;
@@ -1576,20 +1577,15 @@ protected:
     {
         Q_UNUSED(e);
 
+        QStylePainter painter(this);
         QStyleOptionToolButton opt;
         initStyleOption(&opt);
 
-        if (opt.state & QStyle::State_MouseOver || isDown()) {
-            //act as normal button
-            setPalette(QPalette());
-        } else {
-            //set the highlight color for button text
-            QPalette toolPalette = palette();
-            toolPalette.setColor(QPalette::ButtonText, toolPalette.color(QPalette::HighlightedText));
-            setPalette(toolPalette);
-        }
+        // set the highlight color for button text so it remains legible on top of navBarBackground
+        if (!opt.state.testFlag(QStyle::State_MouseOver) || isDown())
+            opt.palette.setColor(QPalette::ButtonText, opt.palette.color(QPalette::HighlightedText));
 
-        QToolButton::paintEvent(e);
+        painter.drawComplexControl(QStyle::CC_ToolButton, opt);
     }
 };
 
@@ -2200,7 +2196,7 @@ QSize QCalendarWidget::minimumSizeHint() const
 
     QStyleOption option;
     option.initFrom(this);
-    const int marginH = (style()->pixelMetric(QStyle::PM_FocusFrameHMargin, &option) + 1) * 2;
+    const int marginH = (style()->pixelMetric(QStyle::PM_FocusFrameHMargin, &option, this) + 1) * 2;
 
     if (horizontalHeaderFormat() == QCalendarWidget::NoHorizontalHeader) {
         rows = 6;
@@ -2731,11 +2727,28 @@ bool QCalendarWidget::isGridVisible() const
     return d->m_view->showGrid();
 }
 
+/*!
+    \since 5.14
+    Report the calendar system in use by this widget.
+
+    \sa setCalendar()
+*/
+
 QCalendar QCalendarWidget::calendar() const
 {
     Q_D(const QCalendarWidget);
     return d->m_model->m_calendar;
 }
+
+/*!
+    \since 5.14
+    Set \a c as the calendar system to be used by this widget.
+
+    The widget can use any supported calendar system.
+    By default, it uses the Gregorian calendar.
+
+    \sa calendar()
+*/
 
 void QCalendarWidget::setCalendar(QCalendar c)
 {
@@ -2874,7 +2887,7 @@ QMap<QDate, QTextCharFormat> QCalendarWidget::dateTextFormat() const
 
 /*!
     Returns a QTextCharFormat for \a date. The char format can be
-    empty if the date is not renderd specially.
+    empty if the date is not rendered specially.
 */
 QTextCharFormat QCalendarWidget::dateTextFormat(QDate date) const
 {
@@ -3099,6 +3112,7 @@ bool QCalendarWidget::event(QEvent *event)
         case QEvent::StyleChange:
             d->cachedSizeHint = QSize();
             d->m_view->updateGeometry();
+            break;
         default:
             break;
     }

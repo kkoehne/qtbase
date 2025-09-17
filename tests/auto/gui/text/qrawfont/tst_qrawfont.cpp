@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtGui/QFontDatabase>
@@ -71,10 +71,13 @@ private slots:
     void qtbug65923_partal_clone_data();
     void qtbug65923_partal_clone();
 
+    void zeroEmSquare();
+
 private:
     QString testFont;
     QString testFontBoldItalic;
     QString testFontOs2V1;
+    QString testFontNoEmSquare;
 #endif // QT_NO_RAWFONT
 };
 
@@ -93,7 +96,9 @@ void tst_QRawFont::initTestCase()
     testFont = QFINDTESTDATA("testfont.ttf");
     testFontBoldItalic = QFINDTESTDATA("testfont_bold_italic.ttf");
     testFontOs2V1 = QFINDTESTDATA("testfont_os2_v1.ttf");
-    if (testFont.isEmpty() || testFontBoldItalic.isEmpty())
+    testFontNoEmSquare = QFINDTESTDATA("testfont_zeroem.ttf");
+
+    if (testFont.isEmpty() || testFontBoldItalic.isEmpty() || testFontNoEmSquare.isEmpty())
         QFAIL("qrawfont unittest font files not found!");
 
     if (QFontDatabase::families().size() == 0)
@@ -398,13 +403,13 @@ void tst_QRawFont::textLayout()
 
 void tst_QRawFont::fontTable_data()
 {
-    QTest::addColumn<QByteArray>("tagName");
+    QTest::addColumn<QFont::Tag>("tag");
     QTest::addColumn<QFont::HintingPreference>("hintingPreference");
     QTest::addColumn<int>("offset");
     QTest::addColumn<quint32>("expectedValue");
 
     QTest::newRow("Head table, magic number, default hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferDefaultHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -412,7 +417,7 @@ void tst_QRawFont::fontTable_data()
                 : 0xF53C0F5F);
 
     QTest::newRow("Head table, magic number, no hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferNoHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -420,7 +425,7 @@ void tst_QRawFont::fontTable_data()
                 : 0xF53C0F5F);
 
     QTest::newRow("Head table, magic number, vertical hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferVerticalHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -428,7 +433,7 @@ void tst_QRawFont::fontTable_data()
                 : 0xF53C0F5F);
 
     QTest::newRow("Head table, magic number, full hinting")
-            << QByteArray("head")
+            << QFont::Tag("head")
             << QFont::PreferFullHinting
             << 12
             << (QSysInfo::ByteOrder == QSysInfo::BigEndian
@@ -438,7 +443,7 @@ void tst_QRawFont::fontTable_data()
 
 void tst_QRawFont::fontTable()
 {
-    QFETCH(QByteArray, tagName);
+    QFETCH(QFont::Tag, tag);
     QFETCH(QFont::HintingPreference, hintingPreference);
     QFETCH(int, offset);
     QFETCH(quint32, expectedValue);
@@ -446,11 +451,13 @@ void tst_QRawFont::fontTable()
     QRawFont font(testFont, 10, hintingPreference);
     QVERIFY(font.isValid());
 
-    QByteArray table = font.fontTable(tagName);
+    QByteArray table = font.fontTable(tag);
     QVERIFY(!table.isEmpty());
 
     const quint32 *value = reinterpret_cast<const quint32 *>(table.constData() + offset);
     QCOMPARE(*value, expectedValue);
+
+    QCOMPARE(font.fontTable(tag.toString()), table);
 }
 
 typedef QList<QFontDatabase::WritingSystem> WritingSystemList;
@@ -1052,7 +1059,7 @@ void tst_QRawFont::qtbug65923_partal_clone_data()
 void tst_QRawFont::qtbug65923_partal_clone()
 {
     QFile file(testFont);
-    file.open(QIODevice::ReadOnly);
+    QVERIFY(file.open(QIODevice::ReadOnly));
     QByteArray fontData = file.readAll();
 
     QRawFont outerFont;
@@ -1075,6 +1082,12 @@ void tst_QRawFont::qtbug65923_partal_clone()
     fontData.fill('\0');
 
     QVERIFY(!outerFont.boundingRect(42).isEmpty());
+}
+
+void tst_QRawFont::zeroEmSquare()
+{
+    QRawFont rawFont(testFontNoEmSquare, 12);
+    QVERIFY(!rawFont.isValid() || rawFont.unitsPerEm() > 0);
 }
 
 #endif // QT_NO_RAWFONT

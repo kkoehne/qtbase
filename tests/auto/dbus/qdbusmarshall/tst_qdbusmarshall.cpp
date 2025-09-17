@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtCore/QtCore>
 #include <QTest>
@@ -161,7 +161,9 @@ void basicStringTypes_data()
 {
     QTest::newRow("string") << QVariant("ping") << "s" << "\"ping\"";
     QTest::newRow("objectpath") << QVariant::fromValue(QDBusObjectPath("/org/kde")) << "o" << "[ObjectPath: /org/kde]";
+    QTest::newRow("emptysignature") << QVariant::fromValue(QDBusSignature(QString())) << "g" << "[Signature: ]";
     QTest::newRow("signature") << QVariant::fromValue(QDBusSignature("g")) << "g" << "[Signature: g]";
+    QTest::newRow("multisignature") << QVariant::fromValue(QDBusSignature("bit")) << "g" << "[Signature: bit]";
     QTest::newRow("emptystring") << QVariant("") << "s" << "\"\"";
     QTest::newRow("nullstring") << QVariant(QString()) << "s" << "\"\"";
 }
@@ -413,7 +415,7 @@ void tst_QDBusMarshall::sendArrayOfArrays_data()
     QTest::newRow("emptyvariantlist") << QVariant::fromValue(variants) << "aav"
             << "[Argument: aav {}]";
     variants << QVariantList();
-    QTest::newRow("emptyvariantlist") << QVariant::fromValue(variants) << "aav"
+    QTest::newRow("variantlist-empty-variantlist-element") << QVariant::fromValue(variants) << "aav"
             << "[Argument: aav {[Argument: av {}]}]";
     variants << (QVariantList() << QString("Hello") << QByteArray("World"))
              << (QVariantList() << 42 << -43.0 << 44U << Q_INT64_C(-45))
@@ -476,6 +478,17 @@ void tst_QDBusMarshall::sendMaps_data()
     QTest::newRow("gs-map") << QVariant::fromValue(gsmap) << "a{gs}"
             << "[Argument: a{gs} {[Signature: a{gs}] = \"array of dict_entry of (signature, string)\", [Signature: i] = \"int32\", [Signature: s] = \"string\"}]";
 
+    QMap<QString, std::pair<int, int>> siimap;
+    QTest::newRow("empty-sii-map") << QVariant::fromValue(siimap) << "a{s(ii)}"
+                                   << "[Argument: a{s(ii)} {}]";
+    siimap["0,0"] = { 0, 0 };
+    siimap["1,-1"] = { 1, -1 };
+    QTest::newRow("sii-map") << QVariant::fromValue(siimap) << "a{s(ii)}"
+                             << "[Argument: a{s(ii)} {"
+                                    "\"0,0\" = [Argument: (ii) 0, 0], "
+                                    "\"1,-1\" = [Argument: (ii) 1, -1]"
+                                "}]";
+
     if (fileDescriptorPassing) {
         svmap["zzfiledescriptor"] = QVariant::fromValue(QDBusUnixFileDescriptor(fileDescriptorForTest()));
         QTest::newRow("sv-map1-fd") << QVariant::fromValue(svmap) << "a{sv}"
@@ -535,6 +548,27 @@ void tst_QDBusMarshall::sendStructs_data()
     QTest::newRow("empty-list-of-string-variantmap") << QVariant::fromValue(list) << "a(sa{sv})" << "[Argument: a(sa{sv}) {}]";
     list << mvms;
     QTest::newRow("list-of-string-variantmap") << QVariant::fromValue(list) << "a(sa{sv})" << "[Argument: a(sa{sv}) {[Argument: (sa{sv}) \"Hello, World\", [Argument: a{sv} {\"bytearray\" = [Variant(QByteArray): {72, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100}], \"int\" = [Variant(int): 42], \"short\" = [Variant(short): -47], \"uint\" = [Variant(uint): 42]}]]}]";
+
+    QTest::newRow("std::tuple<int>")
+            << QVariant::fromValue(std::tuple<int>{ 1 }) << "(i)" << "[Argument: (i) 1]";
+    QTest::newRow("std::tuple<QString>") << QVariant::fromValue(std::tuple<QString>{ "foo" })
+                                         << "(s)" << "[Argument: (s) \"foo\"]";
+    QTest::newRow("std::tuple<QVariantMap>")
+            << QVariant::fromValue(std::tuple<QVariantMap>{ { { "foo", 1 } } }) << "(a{sv})"
+            << "[Argument: (a{sv}) [Argument: a{sv} {\"foo\" = [Variant(int): 1]}]]";
+    QTest::newRow("std::tuple<QPoint>") << QVariant::fromValue(std::tuple<QPoint>{ { 1, 2 } })
+                                        << "((ii))" << "[Argument: ((ii)) [Argument: (ii) 1, 2]]";
+    QTest::newRow("std::tuple<std::tuple<int>>")
+            << QVariant::fromValue(std::tuple<std::tuple<int>>{ 1 }) << "((i))"
+            << "[Argument: ((i)) [Argument: (i) 1]]";
+    QTest::newRow("std::tuple<QList<int>>")
+            << QVariant::fromValue(std::tuple<QList<int>>{ { 1, 2, 3 } }) << "(ai)"
+            << "[Argument: (ai) [Argument: ai {1, 2, 3}]]";
+    QTest::newRow("std::tuple<int, QString, QVariantMap>")
+            << QVariant::fromValue(
+                       std::tuple<int, QString, QVariantMap>{ 1, "foo", { { "bar", 2 } } })
+            << "(isa{sv})"
+            << "[Argument: (isa{sv}) 1, \"foo\", [Argument: a{sv} {\"bar\" = [Variant(int): 2]}]]";
 
     if (fileDescriptorPassing) {
         MyFileDescriptorStruct fds;
@@ -896,7 +930,7 @@ void tst_QDBusMarshall::sendSignalErrors()
     QTest::ignoreMessage(QtWarningMsg, "QDBusConnection: error: could not send signal to service \"\" path \"/foo\" interface \"local.interfaceName\" member \"signalName\": Marshalling failed: Invalid object path passed in arguments");
     QVERIFY(!con.send(msg));
 
-    QDBusSignature sig;
+    QDBusSignature sig(QChar(0));
     msg.setArguments(QVariantList() << QVariant::fromValue(sig));
     QTest::ignoreMessage(QtWarningMsg, "QDBusConnection: error: could not send signal to service \"\" path \"/foo\" interface \"local.interfaceName\" member \"signalName\": Marshalling failed: Invalid signature passed in arguments");
     QVERIFY(!con.send(msg));
@@ -920,10 +954,13 @@ void tst_QDBusMarshall::sendCallErrors_data()
     QTest::addColumn<QString>("errorMsg");
     QTest::addColumn<QString>("ignoreMsg");
 
-    // this error comes from the bus server
     QTest::newRow("empty-service") << "" << objectPath << interfaceName << "ping" << QVariantList()
-            << "org.freedesktop.DBus.Error.UnknownMethod"
-            << "Method \"ping\" with signature \"\" on interface \"org.qtproject.autotests.qpong\" doesn't exist\n" << (const char*)0;
+            << "org.qtproject.QtDBus.Error.InvalidService"
+            << "Service name cannot be empty" << "";
+
+    QTest::newRow("invalid-service-single-label") << "service" << objectPath << interfaceName << "ping" << QVariantList()
+            << "org.qtproject.QtDBus.Error.InvalidService"
+            << "Invalid service name: service" << "";
 
     QTest::newRow("invalid-service") << "this isn't valid" << objectPath << interfaceName << "ping" << QVariantList()
             << "org.qtproject.QtDBus.Error.InvalidService"
@@ -948,12 +985,12 @@ void tst_QDBusMarshall::sendCallErrors_data()
             << "org.qtproject.QtDBus.Error.InvalidMember"
             << "Invalid method name: this isn't valid" << "";
 
-    QTest::newRow("invalid-variant1") << serviceName << objectPath << interfaceName << "ping"
+    QTest::newRow("invalid-variant") << serviceName << objectPath << interfaceName << "ping"
             << (QVariantList() << QVariant())
             << "org.freedesktop.DBus.Error.Failed"
             << "Marshalling failed: Invalid QVariant passed in arguments"
             << "QDBusMarshaller: cannot add an invalid QVariant";
-    QTest::newRow("invalid-variant1") << serviceName << objectPath << interfaceName << "ping"
+    QTest::newRow("invalid-qdbusvariant") << serviceName << objectPath << interfaceName << "ping"
             << (QVariantList() << QVariant::fromValue(QDBusVariant()))
             << "org.freedesktop.DBus.Error.Failed"
             << "Marshalling failed: Invalid QVariant passed in arguments"
@@ -981,7 +1018,7 @@ void tst_QDBusMarshall::sendCallErrors_data()
             << "";
 
     QTest::newRow("invalid-signature-arg") << serviceName << objectPath << interfaceName << "ping"
-            << (QVariantList() << QVariant::fromValue(QDBusSignature()))
+            << (QVariantList() << QVariant::fromValue(QDBusSignature(QChar(0))))
             << "org.freedesktop.DBus.Error.Failed"
             << "Marshalling failed: Invalid signature passed in arguments"
             << "";
@@ -1146,6 +1183,7 @@ void tst_QDBusMarshall::receiveUnknownType()
         // now spin our event loop. We don't catch this call, so let's get the reply
         QEventLoop loop;
         QTimer::singleShot(200, &loop, SLOT(quit()));
+        QTest::ignoreMessage(QtWarningMsg, "QDBusConnection: couldn't handle call to theSlot, no slot matched");
         loop.exec();
 
         // now try to receive the reply
@@ -1303,22 +1341,23 @@ void tst_QDBusMarshall::demarshallStrings_data()
 
     // All primitive types demarshall to null string types
     typedef QPair<QVariant, char> ValSigPair;
-    const QList<ValSigPair> nullStringTypes
-        = QList<ValSigPair>()
-            << ValSigPair(QVariant::fromValue(QString()), 's')
-            << ValSigPair(QVariant::fromValue(QDBusObjectPath()), 'o')
-            << ValSigPair(QVariant::fromValue(QDBusSignature()), 'g');
-    for (const ValSigPair &valSigPair : nullStringTypes) {
-        QTest::newRow("bool(false)") << QVariant(false) << valSigPair.second << valSigPair.first;
-        QTest::newRow("bool(true)") << QVariant(true) << valSigPair.second << valSigPair.first;
-        QTest::newRow("byte") << QVariant::fromValue(uchar(1)) << valSigPair.second << valSigPair.first;
-        QTest::newRow("int16") << QVariant::fromValue(short(2)) << valSigPair.second << valSigPair.first;
-        QTest::newRow("uint16") << QVariant::fromValue(ushort(3)) << valSigPair.second << valSigPair.first;
-        QTest::newRow("int") << QVariant(1) << valSigPair.second << valSigPair.first;
-        QTest::newRow("uint") << QVariant(2U) << valSigPair.second << valSigPair.first;
-        QTest::newRow("int64") << QVariant(Q_INT64_C(3)) << valSigPair.second << valSigPair.first;
-        QTest::newRow("uint64") << QVariant(Q_UINT64_C(4)) << valSigPair.second << valSigPair.first;
-        QTest::newRow("double") << QVariant(42.5) << valSigPair.second << valSigPair.first;
+    const QList<ValSigPair> nullStringTypes = {
+        ValSigPair(QVariant::fromValue(QString()), 's'),
+        ValSigPair(QVariant::fromValue(QDBusObjectPath()), 'o'),
+        ValSigPair(QVariant::fromValue(QDBusSignature()), 'g')
+    };
+    for (const auto &[v, charSymbol] : nullStringTypes) {
+        const char *name = v.typeName();
+        QTest::addRow("bool(false)-%s", name) << QVariant(false) << charSymbol << v;
+        QTest::addRow("bool(true)-%s", name) << QVariant(true) << charSymbol << v;
+        QTest::addRow("byte-%s", name) << QVariant::fromValue(uchar(1)) << charSymbol << v;
+        QTest::addRow("int16-%s", name) << QVariant::fromValue(short(2)) << charSymbol << v;
+        QTest::addRow("uint16-%s", name) << QVariant::fromValue(ushort(3)) << charSymbol << v;
+        QTest::addRow("int-%s", name) << QVariant(1) << charSymbol << v;
+        QTest::addRow("uint-%s", name) << QVariant(2U) << charSymbol << v;
+        QTest::addRow("int64-%s", name) << QVariant(Q_INT64_C(3)) << charSymbol << v;
+        QTest::addRow("uint64-%s", name) << QVariant(Q_UINT64_C(4)) << charSymbol << v;
+        QTest::addRow("double-%s", name) << QVariant(42.5) << charSymbol << v;
     }
 
     // String types should demarshall to each other. This is a regression test

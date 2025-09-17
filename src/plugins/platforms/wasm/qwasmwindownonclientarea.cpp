@@ -100,7 +100,7 @@ Resizer::ResizerElement::ResizerElement(emscripten::val parentElement, Qt::Edges
 
     m_mouseDownEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerdown", [this](emscripten::val event) {
-                if (!onPointerDown(*PointerEvent::fromWeb(event)))
+                if (!onPointerDown(PointerEvent(EventType::PointerDown, event)))
                     return;
                 m_resizer->onInteraction();
                 event.call<void>("preventDefault");
@@ -108,12 +108,12 @@ Resizer::ResizerElement::ResizerElement(emscripten::val parentElement, Qt::Edges
             });
     m_mouseMoveEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointermove", [this](emscripten::val event) {
-                if (onPointerMove(*PointerEvent::fromWeb(event)))
+                if (onPointerMove(PointerEvent(EventType::PointerMove, event)))
                     event.call<void>("preventDefault");
             });
     m_mouseUpEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerup", [this](emscripten::val event) {
-                if (onPointerUp(*PointerEvent::fromWeb(event))) {
+                if (onPointerUp(PointerEvent(EventType::PointerUp, event))) {
                     event.call<void>("preventDefault");
                     event.call<void>("stopPropagation");
                 }
@@ -208,7 +208,7 @@ void Resizer::startResize(Qt::Edges resizeEdges, const PointerEvent &event)
     m_currentResizeData.reset(new ResizeData{
             .edges = resizeEdges,
             .originInScreenCoords = dom::mapPoint(
-                    event.target, m_window->platformScreen()->element(), event.localPoint),
+            event.target(), m_window->platformScreen()->element(), event.localPoint),
     });
 
     const auto resizeConstraints = getResizeConstraints();
@@ -225,7 +225,7 @@ void Resizer::startResize(Qt::Edges resizeEdges, const PointerEvent &event)
 void Resizer::continueResize(const PointerEvent &event)
 {
     const auto pointInScreen =
-            dom::mapPoint(event.target, m_window->platformScreen()->element(), event.localPoint);
+        dom::mapPoint(event.target(), m_window->platformScreen()->element(), event.localPoint);
     const auto amount = (pointInScreen - m_currentResizeData->originInScreenCoords).toPoint();
     const QPoint cappedGrowVector(
             std::min(m_currentResizeData->maxGrow.x(),
@@ -308,7 +308,7 @@ TitleBar::TitleBar(QWasmWindow *window, emscripten::val parentElement)
 
     m_mouseDownEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerdown", [this](emscripten::val event) {
-                if (!onPointerDown(*PointerEvent::fromWeb(event)))
+                if (!onPointerDown(PointerEvent(EventType::PointerDown, event)))
                     return;
                 m_window->onNonClientAreaInteraction();
                 event.call<void>("preventDefault");
@@ -316,13 +316,13 @@ TitleBar::TitleBar(QWasmWindow *window, emscripten::val parentElement)
             });
     m_mouseMoveEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointermove", [this](emscripten::val event) {
-                if (onPointerMove(*PointerEvent::fromWeb(event))) {
+                if (onPointerMove(PointerEvent(EventType::PointerMove, event))) {
                     event.call<void>("preventDefault");
                 }
             });
     m_mouseUpEvent = std::make_unique<qstdweb::EventCallback>(
             m_element, "pointerup", [this](emscripten::val event) {
-                if (onPointerUp(*PointerEvent::fromWeb(event))) {
+                if (onPointerUp(PointerEvent(EventType::PointerUp, event))) {
                     event.call<void>("preventDefault");
                     event.call<void>("stopPropagation");
                 }

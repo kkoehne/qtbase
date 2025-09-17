@@ -14,7 +14,6 @@
     \ingroup explanations-ui
     \ingroup frameworks-technologies
     \ingroup qt-basic-concepts
-    \ingroup best-practices
 
     \nextpage Rich Text Document Structure
 
@@ -63,8 +62,6 @@
     \nextpage The QTextCursor Interface
 
     \title Rich Text Document Structure
-
-    \tableofcontents
 
     Text documents are represented by the QTextDocument class, which
     contains information about the document's internal representation, its
@@ -325,8 +322,6 @@
     \nextpage Document Layouts
 
     \title The QTextCursor Interface
-
-    \tableofcontents
 
     Documents can be edited via the interface provided by the QTextCursor
     class; cursors are either created using a constructor or obtained from
@@ -632,8 +627,6 @@
 
     \title Document Layouts
 
-    \tableofcontents
-
     The layout of a document is only relevant when it is to be displayed on
     a device, or when some information is requested that requires a visual
     representation of the document. Until this occurs, the document does
@@ -681,8 +674,6 @@
     \nextpage Advanced Rich Text Processing
 
     \title Common Rich Text Editing Tasks
-
-    \tableofcontents
 
     There are a number of tasks that are often performed by developers
     when editing and processing text documents using Qt. These include the use
@@ -823,8 +814,6 @@
     markup. Widgets that use QTextDocument, such as QLabel and QTextEdit, are able to display
     rich text specified in this way.
 
-    \tableofcontents
-
     \section1 Using HTML Markup in Text Widgets
 
     Widgets automatically detect HTML markup and display rich text accordingly. For example,
@@ -867,7 +856,7 @@
     \row    \li \c body
             \li Document body
             \li Supports the \c bgcolor attribute, which
-               can be a Qt \l{QColor::setNamedColor()}{color name}
+               can be a Qt \l{QColor::fromString()}{color name}
                or a \c #RRGGBB color specification.
     \row    \li \c br
             \li Line break
@@ -903,7 +892,7 @@
             \li Font size, family, and/or color
             \li Supports the following attributes:
                \c size, \c face, and \c color (Qt
-               \l{QColor::setNamedColor()}{color names} or
+               \l{QColor::fromString()}{color names} or
                \c #RRGGBB).
     \row    \li \c h1
             \li Level 1 heading
@@ -996,7 +985,7 @@
     \row    \li \c table
             \li Table
             \li Supports the following attributes: \c border,
-               \c bgcolor (Qt \l{QColor::setNamedColor()}{color names}
+               \c bgcolor (Qt \l{QColor::fromString()}{color names}
                or \c #RRGGBB), \c cellspacing, \c cellpadding,
                \c width (absolute or relative), and \c height.
     \row    \li \c tbody
@@ -1023,7 +1012,7 @@
     \row    \li \c tr
             \li Table row
             \li Supports the \c bgcolor attribute, which
-               can be a Qt \l{QColor::setNamedColor()}{color name}
+               can be a Qt \l{QColor::fromString()}{color name}
                or a \c #RRGGBB color specification.
     \row    \li \c tt
             \li Typewrite font
@@ -1064,7 +1053,7 @@
 
     \list
     \li \c width (absolute, relative, or no-value)
-    \li \c bgcolor (Qt \l{QColor::setNamedColor()}{color names} or \c #RRGGBB)
+    \li \c bgcolor (Qt \l{QColor::fromString()}{color names} or \c #RRGGBB)
     \li \c colspan
     \li \c rowspan
     \li \c align (\c left, \c right, \c center, \c justify)
@@ -1249,6 +1238,11 @@
                  \li a percentage of the current font size.
                 \endlist
     \endtable
+
+    \note Certain CSS properties are only supported when applied to a block tag, such as \c{<p>}.
+    Setting these properties on a \c{<span>}, for instance, will have no effect. The margin is one
+    example of such a property. See QTextBlockFormat and QTextCharFormat for an overview of the
+    formatting options available on blocks and spans in QTextDocument.
 
     \section1 Qt-specific CSS properties
 

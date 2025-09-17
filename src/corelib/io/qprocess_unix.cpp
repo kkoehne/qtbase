@@ -2,6 +2,7 @@
 // Copyright (C) 2022 Intel Corporation.
 // Copyright (C) 2021 Alex Trotsenko.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 //#define QPROCESS_DEBUG
 #include "qdebug.h"
@@ -37,14 +38,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <termios.h>
 #include <unistd.h>
 
 #if __has_include(<paths.h>)
 #  include <paths.h>
-#endif
-#if __has_include(<linux/close_range.h>)
-// FreeBSD's is in <unistd.h>
-#  include <linux/close_range.h>
 #endif
 
 #if QT_CONFIG(process)
@@ -183,10 +181,40 @@ struct ChildError
     int code;
     char function[_POSIX_PIPE_BUF - sizeof(code)];
 };
-static_assert(std::is_trivial_v<ChildError>);
+static_assert(std::is_trivially_copy_constructible_v<ChildError>);
 #ifdef PIPE_BUF
 static_assert(PIPE_BUF >= sizeof(ChildError)); // PIPE_BUF may be bigger
 #endif
+
+// we need an errno value to use to indicate the child process modifier threw,
+// something the regular operations shouldn't set.
+static constexpr int FakeErrnoForThrow = std::numeric_limits<int>::max();
+
+static QString errorMessageForSyscall(QUtf8StringView fnName, int errnoCode = -1)
+{
+    QString msg = qt_error_string(errnoCode);
+    return QProcess::tr("Child process set up failed: %1: %2").arg(fnName, std::move(msg));
+}
+
+static QString startFailureErrorMessage(ChildError &err, [[maybe_unused]] ssize_t bytesRead)
+{
+    // ChildError is less than the POSIX pipe buffer atomic size, so the read
+    // must not have been truncated
+    Q_ASSERT(bytesRead == sizeof(err));
+
+    qsizetype len = qstrnlen(err.function, sizeof(err.function));
+    const QUtf8StringView complement(err.function, len);
+    if (err.code == FakeErrnoForThrow)
+        return QProcess::tr("Child process modifier threw an exception: %1")
+                .arg(complement);
+    if (err.code == 0)
+        return QProcess::tr("Child process modifier reported error: %1")
+                .arg(complement);
+    if (err.code < 0)
+        return QProcess::tr("Child process modifier reported error: %1: %2")
+                .arg(complement, qt_error_string(-err.code));
+    return errorMessageForSyscall(complement, err.code);
+}
 
 struct QProcessPoller
 {
@@ -221,7 +249,7 @@ QProcessPoller::QProcessPoller(const QProcessPrivate &proc)
 
 int QProcessPoller::poll(const QDeadlineTimer &deadline)
 {
-    return qt_poll_msecs(pfds, n_pfds, deadline.remainingTime());
+    return qt_safe_poll(pfds, n_pfds, deadline);
 }
 
 struct QChildProcess
@@ -245,6 +273,7 @@ struct QChildProcess
     CharPointerList envp;
     sigset_t oldsigset;
     int workingDirectory = -2;
+    bool isUsingVfork = usingVfork();
 
     bool ok() const
     {
@@ -255,11 +284,16 @@ struct QChildProcess
         : d(d), argv(resolveExecutable(d->program), d->arguments),
           envp(d->environmentPrivate())
     {
+        // Open the working directory first, because this operation can fail.
+        // That way, if it does, we don't have anything to clean up.
         if (!d->workingDirectory.isEmpty()) {
             workingDirectory = opendirfd(QFile::encodeName(d->workingDirectory));
             if (workingDirectory < 0) {
-                d->setErrorAndEmit(QProcess::FailedToStart, "chdir: "_L1 + qt_error_string());
+                d->setErrorAndEmit(QProcess::FailedToStart, errorMessageForSyscall("chdir"));
                 d->cleanup();
+
+                // make sure our destructor does nothing
+                isUsingVfork = false;
                 return;
             }
         }
@@ -278,11 +312,17 @@ struct QChildProcess
     }
     ~QChildProcess() noexcept(false)
     {
+        cleanup();
+    }
+
+    void cleanup() noexcept(false)
+    {
         if (workingDirectory >= 0)
             close(workingDirectory);
+        workingDirectory = -1;
 
-        restoreThreadCancellations();
         restoreSignalMask();
+        restoreThreadCancellations();
     }
 
     void maybeBlockSignals() noexcept
@@ -290,7 +330,7 @@ struct QChildProcess
         // We only block Unix signals if we're using vfork(), to avoid a
         // changing behavior to the user's modifier and because in some OSes
         // this action would block crashing signals too.
-        if (usingVfork()) {
+        if (isUsingVfork) {
             sigset_t emptyset;
             sigfillset(&emptyset);
             pthread_sigmask(SIG_SETMASK, &emptyset, &oldsigset);
@@ -299,7 +339,8 @@ struct QChildProcess
 
     void restoreSignalMask() const noexcept
     {
-        if (usingVfork())
+        // this function may be called more than once
+        if (isUsingVfork)
             pthread_sigmask(SIG_SETMASK, &oldsigset, nullptr);
     }
 
@@ -308,7 +349,7 @@ struct QChildProcess
     template <typename Lambda> int doFork(Lambda &&childLambda)
     {
         pid_t pid;
-        if (usingVfork()) {
+        if (isUsingVfork) {
             QT_IGNORE_DEPRECATIONS(pid = vfork();)
         } else {
             pid = fork();
@@ -320,7 +361,7 @@ struct QChildProcess
 
     int startChild(pid_t *pid)
     {
-        int ffdflags = FFD_CLOEXEC | (usingVfork() ? 0 : FFD_USE_FORK);
+        int ffdflags = FFD_CLOEXEC | (isUsingVfork ? 0 : FFD_USE_FORK);
         return ::vforkfd(ffdflags, pid, &QChildProcess::startProcess, this);
     }
 
@@ -333,7 +374,7 @@ private:
     }
 
 #if defined(PTHREAD_CANCEL_DISABLE)
-    int oldstate;
+    int oldstate = PTHREAD_CANCEL_DISABLE;
     void disableThreadCancellations() noexcept
     {
         // the following is *not* noexcept, but it won't throw while disabling
@@ -341,8 +382,12 @@ private:
     }
     void restoreThreadCancellations() noexcept(false)
     {
-        // this doesn't touch errno
-        pthread_setcancelstate(oldstate, nullptr);
+        // ensure we don't call pthread_setcancelstate() again
+        int oldoldstate = std::exchange(oldstate, PTHREAD_CANCEL_DISABLE);
+        if (oldoldstate != PTHREAD_CANCEL_DISABLE) {
+            // this doesn't touch errno
+            pthread_setcancelstate(oldoldstate, nullptr);
+        }
     }
 #else
     void disableThreadCancellations() noexcept {}
@@ -422,7 +467,8 @@ static int qt_create_pipe(int *pipe)
         qt_safe_close(pipe[1]);
     int pipe_ret = qt_safe_pipe(pipe);
     if (pipe_ret != 0) {
-        qErrnoWarning("QProcessPrivate::createPipe: Cannot create pipe %p", pipe);
+        QScopedValueRollback rollback(errno);
+        qErrnoWarning("QProcess: Cannot create pipe");
     }
     return pipe_ret;
 }
@@ -471,26 +517,25 @@ bool QProcessPrivate::openChannel(Channel &channel)
 
     if (channel.type == Channel::Normal) {
         // we're piping this channel to our own process
-        if (qt_create_pipe(channel.pipe) != 0)
+        if (qt_create_pipe(channel.pipe) != 0) {
+            setErrorAndEmit(QProcess::FailedToStart, errorMessageForSyscall("pipe"));
             return false;
+        }
 
         // create the socket notifiers
         if (threadData.loadRelaxed()->hasEventDispatcher()) {
             if (&channel == &stdinChannel) {
                 channel.notifier = new QSocketNotifier(QSocketNotifier::Write, q);
                 channel.notifier->setSocket(channel.pipe[1]);
-                QObject::connect(channel.notifier, SIGNAL(activated(QSocketDescriptor)),
-                                 q, SLOT(_q_canWrite()));
+                QObjectPrivate::connect(channel.notifier, &QSocketNotifier::activated, this,
+                                        &QProcessPrivate::_q_canWrite);
             } else {
                 channel.notifier = new QSocketNotifier(QSocketNotifier::Read, q);
                 channel.notifier->setSocket(channel.pipe[0]);
-                const char *receiver;
-                if (&channel == &stdoutChannel)
-                    receiver = SLOT(_q_canReadStandardOutput());
-                else
-                    receiver = SLOT(_q_canReadStandardError());
-                QObject::connect(channel.notifier, SIGNAL(activated(QSocketDescriptor)),
-                                 q, receiver);
+                auto receiver = &channel == &stdoutChannel ? &QProcessPrivate::_q_canReadStandardOutput
+                                                           : &QProcessPrivate::_q_canReadStandardError;
+                QObjectPrivate::connect(channel.notifier, &QSocketNotifier::activated, this,
+                                        receiver);
             }
         }
 
@@ -520,7 +565,6 @@ bool QProcessPrivate::openChannel(Channel &channel)
             setErrorAndEmit(QProcess::FailedToStart,
                             QProcess::tr("Could not open input redirection for reading"));
         }
-        cleanup();
         return false;
     } else {
         Q_ASSERT_X(channel.process, "QProcess::start", "Internal error");
@@ -552,8 +596,10 @@ bool QProcessPrivate::openChannel(Channel &channel)
             Q_ASSERT(sink->pipe[0] == INVALID_Q_PIPE && sink->pipe[1] == INVALID_Q_PIPE);
 
             Q_PIPE pipe[2] = { -1, -1 };
-            if (qt_create_pipe(pipe) != 0)
+            if (qt_create_pipe(pipe) != 0) {
+                setErrorAndEmit(QProcess::FailedToStart, errorMessageForSyscall("pipe"));
                 return false;
+            }
             sink->pipe[0] = pipe[0];
             source->pipe[1] = pipe[1];
 
@@ -616,10 +662,18 @@ inline QString QChildProcess::resolveExecutable(const QString &program)
     return program;
 }
 
+extern "C" {
+__attribute__((weak)) pid_t __interceptor_vfork();
+}
+
 inline bool globalUsingVfork() noexcept
 {
 #if defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
     // ASan writes to global memory, so we mustn't use vfork().
+    return false;
+#endif
+#if defined(__SANITIZE_THREAD__) || __has_feature(thread_sanitizer)
+    // Ditto, apparently
     return false;
 #endif
 #if defined(Q_OS_LINUX) && !QT_CONFIG(forkfd_pidfd)
@@ -633,8 +687,15 @@ inline bool globalUsingVfork() noexcept
     // why: without the tools to investigate why it happens, we didn't bother.
     return false;
 #endif
+#if defined(Q_OS_CYGWIN)
+    // Fails to link Qt6Core, so we avoid that..
+    return false;
+#endif
 
-    return true;
+    // Dynamically detect whether libasan or libtsan are loaded into the
+    // process' memory. We need this because the user's code may be compiled
+    // with ASan or TSan, but not Qt.
+    return __interceptor_vfork == nullptr;
 }
 
 inline bool QChildProcess::usingVfork() const noexcept
@@ -661,6 +722,7 @@ Q_AUTOTEST_EXPORT bool _qprocessUsingVfork() noexcept
 void QProcessPrivate::startProcess()
 {
     Q_Q(QProcess);
+    q->setProcessState(QProcess::Starting);
 
 #if defined (QPROCESS_DEBUG)
     qDebug("QProcessPrivate::startProcess()");
@@ -669,10 +731,12 @@ void QProcessPrivate::startProcess()
     // Initialize pipes
     if (!openChannels()) {
         // openChannel sets the error string
+        Q_ASSERT(!errorString.isEmpty());
+        cleanup();
         return;
     }
     if (qt_create_pipe(childStartedPipe) != 0) {
-        setErrorAndEmit(QProcess::FailedToStart, "pipe: "_L1 + qt_error_string(errno));
+        setErrorAndEmit(QProcess::FailedToStart, errorMessageForSyscall("pipe"));
         cleanup();
         return;
     }
@@ -683,8 +747,8 @@ void QProcessPrivate::startProcess()
         // notifier to watch the fork_fd for expected death.
         stateNotifier = new QSocketNotifier(childStartedPipe[0],
                                             QSocketNotifier::Read, q);
-        QObject::connect(stateNotifier, SIGNAL(activated(QSocketDescriptor)),
-                         q, SLOT(_q_startupNotification()));
+        QObjectPrivate::connect(stateNotifier, &QSocketNotifier::activated, this,
+                                &QProcessPrivate::_q_startupNotification);
     }
 
     // Prepare the arguments and the environment
@@ -695,12 +759,12 @@ void QProcessPrivate::startProcess()
     }
 
     // Start the child.
-    q->setProcessState(QProcess::Starting);
     forkfd = childProcess.startChild(&pid);
     int lastForkErrno = errno;
 
     if (forkfd == -1) {
         // Cleanup, report error and return
+        childProcess.cleanup();
 #if defined (QPROCESS_DEBUG)
         qDebug("fork failed: %ls", qUtf16Printable(qt_error_string(lastForkErrno)));
 #endif
@@ -740,31 +804,6 @@ void QProcessPrivate::startProcess()
     }
     if (stderrChannel.pipe[0] != -1)
         ::fcntl(stderrChannel.pipe[0], F_SETFL, ::fcntl(stderrChannel.pipe[0], F_GETFL) | O_NONBLOCK);
-}
-
-// we need an errno number to use to indicate the child process modifier threw,
-// something the regular operations shouldn't set.
-static constexpr int FakeErrnoForThrow = std::numeric_limits<int>::max();
-
-static QString startFailureErrorMessage(ChildError &err, [[maybe_unused]] ssize_t bytesRead)
-{
-    // ChildError is less than the POSIX pipe buffer atomic size, so the read
-    // must not have been truncated
-    Q_ASSERT(bytesRead == sizeof(err));
-
-    qsizetype len = qstrnlen(err.function, sizeof(err.function));
-    QString complement = QString::fromUtf8(err.function, len);
-    if (err.code == FakeErrnoForThrow)
-        return QProcess::tr("Child process modifier threw an exception: %1")
-                .arg(std::move(complement));
-    if (err.code == 0)
-        return QProcess::tr("Child process modifier reported error: %1")
-                .arg(std::move(complement));
-    if (err.code < 0)
-        return QProcess::tr("Child process modifier reported error: %1: %2")
-                .arg(std::move(complement), qt_error_string(-err.code));
-    return QProcess::tr("Child process set up failed: %1: %2")
-            .arg(std::move(complement), qt_error_string(err.code));
 }
 
 Q_NORETURN void
@@ -810,10 +849,13 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
     if (params.flags.testFlag(QProcess::UnixProcessFlag::CloseFileDescriptors)) {
         int r = -1;
         int fd = qMax(STDERR_FILENO + 1, params.lowestFileDescriptorToClose);
-#if QT_CONFIG(close_range)
+#ifdef CLOSE_RANGE_CLOEXEC
+        // Mark the file descriptors for closing upon execve() - we delay
+        // closing so we don't close the ones QProcess needs for itself.
         // On FreeBSD, this probably won't fail.
-        // On Linux, this will fail with ENOSYS before kernel 5.9.
-        r = close_range(fd, INT_MAX, 0);
+        // On Linux, this will fail with ENOSYS before kernel 5.9 and EINVAL
+        // before 5.11.
+        r = close_range(fd, INT_MAX, CLOSE_RANGE_CLOEXEC);
 #endif
         if (r == -1) {
             // We *could* read /dev/fd to find out what file descriptors are
@@ -824,7 +866,7 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
             if (struct rlimit limit; getrlimit(RLIMIT_NOFILE, &limit) == 0)
                 max_fd = limit.rlim_cur;
             for ( ; fd < max_fd; ++fd)
-                close(fd);
+                fcntl(fd, F_SETFD, FD_CLOEXEC);
         }
     }
 
@@ -837,6 +879,7 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
     // Disconnect from the controlling TTY. This probably won't fail. Must be
     // done after the session settings from above.
     if (params.flags.testFlag(QProcess::UnixProcessFlag::DisconnectControllingTerminal)) {
+#ifdef TIOCNOTTY
         if (int fd = open(_PATH_TTY, O_RDONLY | O_NOCTTY); fd >= 0) {
             // we still have a controlling TTY; give it up
             int r = ioctl(fd, TIOCNOTTY);
@@ -846,6 +889,18 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
                 errno = savedErrno;
                 return "ioctl";
             }
+        }
+#endif
+    }
+
+    // Disable core dumps near the end. This isn't expected to fail.
+    if (params.flags.testFlag(QProcess::UnixProcessFlag::DisableCoreDumps)) {
+        if (struct rlimit lim; getrlimit(RLIMIT_CORE, &lim) == 0 && lim.rlim_cur) {
+            // We'll leave rlim_max untouched, so the child can set it back if it
+            // wants to. We don't expect setrlimit() to fail, so we ignore its
+            // return value.
+            lim.rlim_cur = 0;
+            (void) setrlimit(RLIMIT_CORE, &lim);
         }
     }
 
@@ -945,8 +1000,8 @@ bool QProcessPrivate::processStarted(QString *errorMessage)
 
     if (ret <= 0) {  // process successfully started
         if (stateNotifier) {
-            QObject::connect(stateNotifier, SIGNAL(activated(QSocketDescriptor)),
-                             q, SLOT(_q_processDied()));
+            QObjectPrivate::connect(stateNotifier, &QSocketNotifier::activated, this,
+                                    &QProcessPrivate::_q_processDied);
             stateNotifier->setSocket(forkfd);
             stateNotifier->setEnabled(true);
         }
@@ -1092,15 +1147,15 @@ void QProcessPrivate::killProcess()
 
 bool QProcessPrivate::waitForStarted(const QDeadlineTimer &deadline)
 {
-    const qint64 msecs = deadline.remainingTime();
 #if defined (QPROCESS_DEBUG)
+    const qint64 msecs = deadline.remainingTime();
     qDebug("QProcessPrivate::waitForStarted(%lld) waiting for child to start (fd = %d)",
            msecs, childStartedPipe[0]);
 #endif
 
     pollfd pfd = qt_make_pollfd(childStartedPipe[0], POLLIN);
 
-    if (qt_poll_msecs(&pfd, 1, msecs) == 0) {
+    if (qt_safe_poll(&pfd, 1, deadline) == 0) {
         setError(QProcess::Timedout);
 #if defined (QPROCESS_DEBUG)
         qDebug("QProcessPrivate::waitForStarted(%lld) == false (timed out)", msecs);
@@ -1249,9 +1304,10 @@ void QProcessPrivate::waitForDeadChild()
     Q_ASSERT(forkfd != -1);
 
     // read the process information from our fd
-    forkfd_info info;
+    forkfd_info info = {}; // Silence -Wmaybe-uninitialized; Thiago says forkfd_wait cannot fail here
+                           // (QTBUG-119081)
     int ret;
-    EINTR_LOOP(ret, forkfd_wait(forkfd, &info, nullptr));
+    QT_EINTR_LOOP(ret, forkfd_wait(forkfd, &info, nullptr));
 
     exitCode = info.status;
     exitStatus = info.code == CLD_EXITED ? QProcess::NormalExit : QProcess::CrashExit;
@@ -1259,7 +1315,7 @@ void QProcessPrivate::waitForDeadChild()
     delete stateNotifier;
     stateNotifier = nullptr;
 
-    EINTR_LOOP(ret, forkfd_close(forkfd));
+    QT_EINTR_LOOP(ret, forkfd_close(forkfd));
     forkfd = -1; // Child is dead, don't try to kill it anymore
 
 #if defined QPROCESS_DEBUG
@@ -1271,9 +1327,8 @@ void QProcessPrivate::waitForDeadChild()
 bool QProcessPrivate::startDetached(qint64 *pid)
 {
     AutoPipe startedPipe, pidPipe;
-    childStartedPipe[1] = startedPipe[1];
     if (!startedPipe || !pidPipe) {
-        setErrorAndEmit(QProcess::FailedToStart, "pipe: "_L1 + qt_error_string(errno));
+        setErrorAndEmit(QProcess::FailedToStart, errorMessageForSyscall("pipe"));
         return false;
     }
 
@@ -1290,6 +1345,7 @@ bool QProcessPrivate::startDetached(qint64 *pid)
         return false;
     }
 
+    childStartedPipe[1] = startedPipe[1];   // for failChildProcess()
     pid_t childPid = childProcess.doFork([&] {
         ::setsid();
 
@@ -1304,12 +1360,14 @@ bool QProcessPrivate::startDetached(qint64 *pid)
         qt_safe_write(pidPipe[1], &doubleForkPid, sizeof(pid_t));
         return 0;
     });
+    childStartedPipe[1] = -1;
 
     int savedErrno = errno;
     closeChannels();
 
     if (childPid == -1) {
-        setErrorAndEmit(QProcess::FailedToStart, "fork: "_L1 + qt_error_string(savedErrno));
+        childProcess.cleanup();
+        setErrorAndEmit(QProcess::FailedToStart, errorMessageForSyscall("fork", savedErrno));
         return false;
     }
 
@@ -1339,6 +1397,7 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     } else if (!success) {
         if (pid)
             *pid = -1;
+        childProcess.cleanup();
         setErrorAndEmit(QProcess::FailedToStart,
                         startFailureErrorMessage(childStatus, startResult));
     }

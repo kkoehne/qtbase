@@ -14,6 +14,7 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qshareddata.h>
 #include <QtCore/qvariant.h>
+#include <QtCore/qhash.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -159,7 +160,9 @@ public:
         FontStrikeOut = 0x2007,
         FontFixedPitch = 0x2008,
         FontPixelSize = 0x2009,
-        LastFontProperty = FontPixelSize,
+        FontFeatures = 0x2010, // Note: Same as OldTextUnderlineColor
+        FontVariableAxes = 0x2011,
+        LastFontProperty = FontVariableAxes,
 
         TextUnderlineColor = 0x2020,
         TextVerticalAlignment = 0x2021,
@@ -241,6 +244,7 @@ public:
         ImageWidth = 0x5010,
         ImageHeight = 0x5011,
         ImageQuality = 0x5014,
+        ImageMaxWidth = 0x5015,
 
         // internal
         /*
@@ -516,6 +520,11 @@ public:
     {
         return static_cast<QFont::HintingPreference>(intProperty(FontHintingPreference));
     }
+
+    void setFontFeatures(const QHash<QFont::Tag, quint32> &fontFeatures);
+    QHash<QFont::Tag, quint32> fontFeatures() const;
+    void setFontVariableAxes(const QHash<QFont::Tag, float> &fontVariableAxes);
+    QHash<QFont::Tag, float> fontVariableAxes() const;
 
     inline void setFontKerning(bool enable)
     { setProperty(FontKerning, enable); }
@@ -796,6 +805,10 @@ public:
     inline qreal width() const
     { return doubleProperty(ImageWidth); }
 
+    inline void setMaximumWidth(QTextLength maxWidth);
+    inline QTextLength maximumWidth() const
+    { return lengthProperty(ImageMaxWidth); }
+
     inline void setHeight(qreal height);
     inline qreal height() const
     { return doubleProperty(ImageHeight); }
@@ -822,6 +835,9 @@ inline void QTextImageFormat::setName(const QString &aname)
 
 inline void QTextImageFormat::setWidth(qreal awidth)
 { setProperty(ImageWidth, awidth); }
+
+inline void QTextImageFormat::setMaximumWidth(QTextLength maxWidth)
+{ setProperty(ImageMaxWidth, maxWidth); }
 
 inline void QTextImageFormat::setHeight(qreal aheight)
 { setProperty(ImageHeight, aheight); }

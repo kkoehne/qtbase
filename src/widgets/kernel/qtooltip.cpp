@@ -9,7 +9,6 @@
 #include <qstyle.h>
 #include <qstyleoption.h>
 #include <qstylepainter.h>
-#include <qtimer.h>
 #if QT_CONFIG(effects)
 #include <private/qeffects_p.h>
 #endif
@@ -17,12 +16,16 @@
 #include <qdebug.h>
 #include <qpa/qplatformscreen.h>
 #include <qpa/qplatformcursor.h>
+#if QT_CONFIG(style_stylesheet)
 #include <private/qstylesheetstyle_p.h>
+#endif
 
 #include <qlabel.h>
 #include <QtWidgets/private/qlabel_p.h>
 #include <QtGui/private/qhighdpiscaling_p.h>
 #include <qtooltip.h>
+
+#include <QtCore/qbasictimer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -45,15 +48,24 @@ using namespace Qt::StringLiterals;
     Rich text displayed in a tool tip is implicitly word-wrapped unless
     specified differently with \c{<p style='white-space:pre'>}.
 
-    The simplest and most common way to set a widget's tool tip is by
-    calling its QWidget::setToolTip() function.
+    UI elements that are created via \l{QAction} use the tooltip property
+    of the QAction, so for most interactive UI elements, setting that
+    property is the easiest way to provide tool tips.
+
+    \snippet tooltips/main.cpp action_tooltip
+
+    For any other widgets, the simplest and most common way to set
+    a widget's tool tip is by calling its QWidget::setToolTip() function.
+
+    \snippet tooltips/main.cpp static_tooltip
 
     It is also possible to show different tool tips for different
     regions of a widget, by using a QHelpEvent of type
     QEvent::ToolTip. Intercept the help event in your widget's \l
     {QWidget::}{event()} function and call QToolTip::showText() with
-    the text you want to display. The \l{widgets/tooltips}{Tooltips}
-    example illustrates this technique.
+    the text you want to display.
+
+    \snippet tooltips/main.cpp dynamic_tooltip
 
     If you are calling QToolTip::hideText(), or QToolTip::showText()
     with an empty string, as a result of a \l{QEvent::}{ToolTip}-event you
@@ -75,7 +87,7 @@ using namespace Qt::StringLiterals;
     \note Tool tips use the inactive color group of QPalette, because tool
     tips are not active windows.
 
-    \sa QWidget::toolTip, QAction::toolTip, {Tool Tips Example}
+    \sa QWidget::toolTip, QAction::toolTip
 */
 
 class QTipLabel : public QLabel
@@ -110,7 +122,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
 
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
 public slots:
     /** \internal
       Cleanup the _q_stylesheet_parent property.
@@ -133,7 +145,7 @@ QTipLabel *QTipLabel::instance = nullptr;
 
 QTipLabel::QTipLabel(const QString &text, const QPoint &pos, QWidget *w, int msecDisplayTime)
     : QLabel(w, Qt::ToolTip | Qt::BypassGraphicsProxyWidget)
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     , styleSheetParent(nullptr)
 #endif
     , widget(nullptr)
@@ -168,10 +180,10 @@ void QTipLabel::restartExpireTimer(int msecDisplayTime)
 
 void QTipLabel::reuseTip(const QString &text, int msecDisplayTime, const QPoint &pos)
 {
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (styleSheetParent){
-        disconnect(styleSheetParent, SIGNAL(destroyed()),
-                   QTipLabel::instance, SLOT(styleSheetParentDestroyed()));
+        disconnect(styleSheetParent, &QWidget::destroyed,
+                   this, &QTipLabel::styleSheetParentDestroyed);
         styleSheetParent = nullptr;
     }
 #endif
@@ -320,6 +332,7 @@ bool QTipLabel::eventFilter(QObject *o, QEvent *e)
     case QEvent::MouseMove:
         if (o == widget && !rect.isNull() && !rect.contains(static_cast<QMouseEvent*>(e)->position().toPoint()))
             hideTip();
+        break;
     default:
         break;
     }
@@ -335,7 +348,7 @@ QScreen *QTipLabel::getTipScreen(const QPoint &pos, QWidget *w)
 
 void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
 {
-#ifndef QT_NO_STYLE_STYLESHEET
+#if QT_CONFIG(style_stylesheet)
     if (testAttribute(Qt::WA_StyleSheet) || (w && qt_styleSheet(w->style()))) {
         //the stylesheet need to know the real parent
         QTipLabel::instance->setProperty("_q_stylesheet_parent", QVariant::fromValue(w));
@@ -345,14 +358,16 @@ void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
         // Set up for cleaning up this later...
         QTipLabel::instance->styleSheetParent = w;
         if (w) {
-            connect(w, SIGNAL(destroyed()),
-                QTipLabel::instance, SLOT(styleSheetParentDestroyed()));
-            // QTBUG-64550: A font inherited by the style sheet might change the size,
-            // particular on Windows, where the tip is not parented on a window.
-            QTipLabel::instance->updateSize(pos);
+            connect(w, &QWidget::destroyed,
+                    QTipLabel::instance, &QTipLabel::styleSheetParentDestroyed);
         }
+        // QTBUG-64550: A font inherited by the style sheet might change the size,
+        // particular on Windows, where the tip is not parented on a window.
+        // The updatesSize() also makes sure that the content size be updated with
+        // correct content margin.
+        QTipLabel::instance->updateSize(pos);
     }
-#endif //QT_NO_STYLE_STYLESHEET
+#endif //QT_CONFIG(style_stylesheet)
 
     QPoint p = pos;
     const QScreen *screen = getTipScreen(pos, w);
@@ -372,9 +387,9 @@ void QTipLabel::placeTip(const QPoint &pos, QWidget *w)
 
         QRect screenRect = screen->geometry();
         if (p.x() + this->width() > screenRect.x() + screenRect.width())
-        p.rx() -= 4 + this->width();
+            p.rx() -= 4 + this->width();
         if (p.y() + this->height() > screenRect.y() + screenRect.height())
-        p.ry() -= 24 + this->height();
+            p.ry() -= 24 + this->height();
         if (p.y() < screenRect.y())
             p.setY(screenRect.y());
         if (p.x() + this->width() > screenRect.x() + screenRect.width())

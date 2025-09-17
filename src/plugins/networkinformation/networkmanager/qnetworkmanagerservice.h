@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QNETWORKMANAGERSERVICE_H
 #define QNETWORKMANAGERSERVICE_H
@@ -39,6 +40,7 @@ enum NMDeviceState {
 QT_BEGIN_NAMESPACE
 
 class QDBusObjectPath;
+class QNetworkManagerNetworkInformationBackend;
 
 // This tiny class exists for the purpose of seeing if NetworkManager is available without
 // initializing everything the derived/full class needs.
@@ -46,7 +48,7 @@ class QNetworkManagerInterfaceBase : public QDBusAbstractInterface
 {
     Q_OBJECT
 public:
-    QNetworkManagerInterfaceBase(QObject *parent = nullptr);
+    explicit QNetworkManagerInterfaceBase(QObject *parent = nullptr);
     ~QNetworkManagerInterfaceBase() = default;
 
     static bool networkManagerAvailable();
@@ -71,7 +73,7 @@ public:
         NM_STATE_CONNECTED_SITE = 60,
         NM_STATE_CONNECTED_GLOBAL = 70
     };
-    Q_ENUM(NMState);
+    Q_ENUM(NMState)
     // Matches 'NMConnectivityState' from
     // https://developer.gnome.org/NetworkManager/stable/nm-dbus-types.html#NMConnectivityState
     enum NMConnectivityState {
@@ -81,7 +83,7 @@ public:
         NM_CONNECTIVITY_LIMITED = 3,
         NM_CONNECTIVITY_FULL = 4,
     };
-    Q_ENUM(NMConnectivityState);
+    Q_ENUM(NMConnectivityState)
     // Matches 'NMDeviceType' from
     // https://developer-old.gnome.org/NetworkManager/stable/nm-dbus-types.html#NMDeviceType
     enum NMDeviceType {
@@ -128,19 +130,17 @@ public:
         NM_METERED_GUESS_NO,
     };
 
-    QNetworkManagerInterface(QObject *parent = nullptr);
+    explicit QNetworkManagerInterface(QObject *parent = nullptr);
     ~QNetworkManagerInterface();
+
+    void setBackend(QNetworkManagerNetworkInformationBackend *ourBackend);
 
     NMState state() const;
     NMConnectivityState connectivityState() const;
     NMDeviceType deviceType() const;
     NMMetered meteredState() const;
 
-Q_SIGNALS:
-    void stateChanged(NMState);
-    void connectivityChanged(NMConnectivityState);
-    void deviceTypeChanged(NMDeviceType);
-    void meteredChanged(NMMetered);
+    bool isValid() const { return QDBusAbstractInterface::isValid() && validDBusConnection; }
 
 private Q_SLOTS:
     void setProperties(const QString &interfaceName, const QMap<QString, QVariant> &map,
@@ -155,6 +155,8 @@ private:
     std::optional<QDBusObjectPath> primaryConnectionDevicePath() const;
 
     QVariantMap propertyMap;
+    QNetworkManagerNetworkInformationBackend *backend = nullptr;
+    bool validDBusConnection = true;
 };
 
 class PropertiesDBusInterface : public QDBusAbstractInterface

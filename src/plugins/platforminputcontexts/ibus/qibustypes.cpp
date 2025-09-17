@@ -175,7 +175,7 @@ void QIBusAttributeList::deserializeFrom(const QDBusArgument &arg)
 
 QList<QInputMethodEvent::Attribute> QIBusAttributeList::imAttributes() const
 {
-    QHash<QPair<int, int>, QTextCharFormat> rangeAttrs;
+    QHash<std::pair<int, int>, QTextCharFormat> rangeAttrs;
     const int numAttributes = attributes.size();
 
     // Merge text formats for identical ranges into a single QTextFormat.
@@ -184,7 +184,7 @@ QList<QInputMethodEvent::Attribute> QIBusAttributeList::imAttributes() const
         const QTextCharFormat &format = attr.format();
 
         if (format.isValid()) {
-            const QPair<int, int> range(attr.start, attr.end);
+            const std::pair<int, int> range(attr.start, attr.end);
             rangeAttrs[range].merge(format);
         }
     }
@@ -200,7 +200,7 @@ QList<QInputMethodEvent::Attribute> QIBusAttributeList::imAttributes() const
         imAttrs += QInputMethodEvent::Attribute(QInputMethodEvent::TextFormat,
             attr.start,
             attr.end - attr.start,
-            format.isValid() ? rangeAttrs[QPair<int, int>(attr.start, attr.end)] : format);
+            format.isValid() ? rangeAttrs[std::pair<int, int>(attr.start, attr.end)] : format);
     }
 
     return imAttrs;
@@ -319,6 +319,46 @@ olderThanV5:
     iconpropkey.clear();
     // <-- insert new members here (2/2)
 newest:
+    argument.endStructure();
+}
+
+QIBusPropTypeClientCommitPreedit::QIBusPropTypeClientCommitPreedit(bool inClientCommitPreedit)
+    : clientCommitPreedit(inClientCommitPreedit)
+{
+}
+
+void QIBusPropTypeClientCommitPreedit::serializeTo(QDBusArgument &argument) const
+{
+    argument.beginStructure();
+    argument << clientCommitPreedit;
+    argument.endStructure();
+}
+
+void QIBusPropTypeClientCommitPreedit::deserializeFrom(const QDBusArgument &argument)
+{
+    argument.beginStructure();
+    argument >> clientCommitPreedit;
+    argument.endStructure();
+}
+
+QIBusPropTypeContentType::QIBusPropTypeContentType(unsigned int inPurpose, unsigned int inHints)
+    : purpose(inPurpose)
+    , hints(inHints)
+{
+}
+
+void QIBusPropTypeContentType::serializeTo(QDBusArgument &argument) const
+{
+    argument.beginStructure();
+    argument << purpose << hints;
+    argument.endStructure();
+}
+
+void QIBusPropTypeContentType::deserializeFrom(const QDBusArgument &argument)
+{
+    argument.beginStructure();
+    argument >> purpose;
+    argument >> hints;
     argument.endStructure();
 }
 

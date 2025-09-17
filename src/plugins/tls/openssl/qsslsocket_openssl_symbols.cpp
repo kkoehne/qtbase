@@ -2,6 +2,7 @@
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // Copyright (C) 2016 Richard J. Moore <rich@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
 
 /****************************************************************************
 **
@@ -31,6 +32,7 @@
 #include <QtCore/qdatetime.h>
 #if defined(Q_OS_UNIX)
 #include <QtCore/qdir.h>
+#include <QtCore/qdirlisting.h>
 #endif
 #include <QtCore/private/qduplicatetracker_p.h>
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
@@ -305,7 +307,9 @@ DEFINEFUNC(STACK_OF(X509) *, SSL_get_peer_cert_chain, SSL *a, a, return nullptr,
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
 DEFINEFUNC(X509 *, SSL_get1_peer_certificate, SSL *a, a, return nullptr, return)
 DEFINEFUNC(int, EVP_PKEY_get_bits, const EVP_PKEY *pkey, pkey, return -1, return)
+DEFINEFUNC(int, EVP_PKEY_get_security_bits, const EVP_PKEY *pkey, pkey, return -1, return)
 DEFINEFUNC(int, EVP_PKEY_get_base_id, const EVP_PKEY *pkey, pkey, return -1, return)
+DEFINEFUNC(const char *, EVP_PKEY_get0_type_name, const EVP_PKEY *pkey, pkey, return nullptr, return)
 #else
 DEFINEFUNC(X509 *, SSL_get_peer_certificate, SSL *a, a, return nullptr, return)
 DEFINEFUNC(int, EVP_PKEY_base_id, EVP_PKEY *a, a, return NID_undef, return)
@@ -623,9 +627,11 @@ static QStringList findAllLibs(QLatin1StringView filter)
     QStringList found;
     const QStringList filters((QString(filter)));
 
+    using F = QDirListing::IteratorFlag;
     for (const QString &path : paths) {
-        QDir dir(path);
-        QStringList entryList = dir.entryList(filters, QDir::Files);
+        QStringList entryList;
+        for (const auto &dirEntry : QDirListing(path, filters, F::FilesOnly))
+            entryList.emplace_back(dirEntry.fileName());
 
         std::sort(entryList.begin(), entryList.end(), LibGreaterThan());
         for (const QString &entry : std::as_const(entryList))
@@ -749,10 +755,22 @@ static LoadedOpenSsl loadOpenSsl()
 #ifdef Q_OS_OPENBSD
     libcrypto->setLoadHints(QLibrary::ExportExternalSymbolsHint);
 #endif
-#if defined(SHLIB_VERSION_NUMBER) && !defined(Q_OS_QNX) // on QNX, the libs are always libssl.so and libcrypto.so
+
+#if !defined(Q_OS_QNX) // on QNX, the libs are always libssl.so and libcrypto.so
+
+#if defined(OPENSSL_SHLIB_VERSION)
+    // OpenSSL v.3 does not have SLIB_VERSION_NUMBER but has OPENSSL_SHLIB_VERSION.
+    // The comment about OPENSSL_SHLIB_VERSION in opensslv.h is a bit troublesome:
+    // "This is defined in free form."
+    auto shlibVersion = QString("%1"_L1).arg(OPENSSL_SHLIB_VERSION);
+    libssl->setFileNameAndVersion("ssl"_L1, shlibVersion);
+    libcrypto->setFileNameAndVersion("crypto"_L1, shlibVersion);
+#elif defined(SHLIB_VERSION_NUMBER)
     // first attempt: the canonical name is libssl.so.<SHLIB_VERSION_NUMBER>
     libssl->setFileNameAndVersion("ssl"_L1, SHLIB_VERSION_NUMBER ""_L1);
     libcrypto->setFileNameAndVersion("crypto"_L1, SHLIB_VERSION_NUMBER ""_L1);
+#endif // OPENSSL_SHLIB_VERSION
+
     if (libcrypto->load() && libssl->load()) {
         // libssl.so.<SHLIB_VERSION_NUMBER> and libcrypto.so.<SHLIB_VERSION_NUMBER> found
         return result;
@@ -760,7 +778,7 @@ static LoadedOpenSsl loadOpenSsl()
         libssl->unload();
         libcrypto->unload();
     }
-#endif
+#endif // !defined(Q_OS_QNX)
 
 #ifndef Q_OS_DARWIN
     // second attempt: find the development files libssl.so and libcrypto.so
@@ -802,7 +820,7 @@ static LoadedOpenSsl loadOpenSsl()
     for (const QString &crypto : cryptoList) {
 #ifdef Q_OS_DARWIN
         // Clients should not load the unversioned libcrypto dylib as it does not have a stable ABI
-        if (crypto.endsWith("libcrypto.dylib"))
+        if (crypto.endsWith("libcrypto.dylib"_L1))
             continue;
 #endif
         libcrypto->setFileNameAndVersion(crypto, -1);
@@ -1063,7 +1081,9 @@ bool q_resolveOpenSslSymbols()
 #if defined(OPENSSL_VERSION_MAJOR) && OPENSSL_VERSION_MAJOR >= 3
         RESOLVEFUNC(SSL_get1_peer_certificate)
         RESOLVEFUNC(EVP_PKEY_get_bits)
+        RESOLVEFUNC(EVP_PKEY_get_security_bits)
         RESOLVEFUNC(EVP_PKEY_get_base_id)
+        RESOLVEFUNC(EVP_PKEY_get0_type_name)
 #else
         RESOLVEFUNC(SSL_get_peer_certificate)
         RESOLVEFUNC(EVP_PKEY_base_id)

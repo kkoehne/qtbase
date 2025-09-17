@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
 
@@ -82,7 +82,7 @@ void DownloadManager::authenticationRequired(QNetworkReply *reply, QAuthenticato
     qDebug() << "authenticationRequired" << reply;
     TransferItem *transfer = findTransfer(reply);
     //provide the credentials exactly once, so that it fails if credentials are incorrect.
-    if ((transfer && !transfer->user.isEmpty()) || !transfer->password.isEmpty()) {
+    if (transfer && (!transfer->user.isEmpty() || !transfer->password.isEmpty())) {
         auth->setUser(transfer->user);
         auth->setPassword(transfer->password);
         transfer->user.clear();

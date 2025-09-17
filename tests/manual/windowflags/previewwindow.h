@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef PREVIEWWINDOW_H
 #define PREVIEWWINDOW_H
@@ -13,7 +13,16 @@ QT_END_NAMESPACE
 
 class PreviewWindow : public QRasterWindow
 {
+public:
+    PreviewWindow(QWindow *parent = nullptr);
+    void setVisualizeSafeAreas(bool enable)
+    {
+        m_visualizeSafeAreas = enable;
+    }
+
+protected:
     void paintEvent(QPaintEvent *event);
+    bool m_visualizeSafeAreas = false;
 };
 
 class PreviewWidget : public QWidget

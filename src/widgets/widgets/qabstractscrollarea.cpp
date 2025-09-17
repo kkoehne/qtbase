@@ -24,6 +24,9 @@
 #include "qscrollbar_p.h"
 #include <qwidget.h>
 
+#include <private/qguiapplication_p.h>
+#include <qpa/qplatformtheme.h>
+
 #include <private/qapplication_p.h>
 
 #ifdef Q_OS_WIN
@@ -1433,7 +1436,7 @@ QSize QAbstractScrollArea::sizeHint() const
         const int f = 2 * d->frameWidth;
         const QSize frame(f, f);
         const bool vbarHidden = !d->vbar->isVisibleTo(this) || d->vbarpolicy == Qt::ScrollBarAlwaysOff;
-        const bool hbarHidden = !d->vbar->isVisibleTo(this) || d->hbarpolicy == Qt::ScrollBarAlwaysOff;
+        const bool hbarHidden = !d->hbar->isVisibleTo(this) || d->hbarpolicy == Qt::ScrollBarAlwaysOff;
         const QSize scrollbars(vbarHidden ? 0 : d->vbar->sizeHint().width(),
                                hbarHidden ? 0 : d->hbar->sizeHint().height());
         d->sizeHint = frame + scrollbars + viewportSizeHint();
@@ -1498,6 +1501,12 @@ void QAbstractScrollArea::setSizeAdjustPolicy(SizeAdjustPolicy policy)
 void QAbstractScrollArea::setupViewport(QWidget *viewport)
 {
     Q_UNUSED(viewport);
+}
+
+int QAbstractScrollAreaPrivate::defaultSingleStep() const
+{
+    auto *platformTheme = QGuiApplicationPrivate::platformTheme();
+    return platformTheme->themeHint(QPlatformTheme::ScrollSingleStepDistance).value<int>();
 }
 
 QT_END_NAMESPACE

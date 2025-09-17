@@ -5,6 +5,7 @@
 #include <xcb/xcb.h>
 #include "qxcbconnection.h"
 #include "qxcbclipboard.h"
+#include "qxcbkeyboard.h"
 #include "qxcbmime.h"
 #include "qxcbwindow.h"
 #include "qxcbscreen.h"
@@ -16,7 +17,6 @@
 #include <qguiapplication.h>
 #include <qrect.h>
 #include <qpainter.h>
-#include <qtimer.h>
 
 #include <qpa/qwindowsysteminterface.h>
 
@@ -26,6 +26,8 @@
 #include <private/qhighdpiscaling_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::Literals::StringLiterals;
 
 const int xdnd_version = 5;
 
@@ -89,7 +91,6 @@ QXcbDrag::QXcbDrag(QXcbConnection *c) : QXcbObject(c)
     m_dropData = new QXcbDropData(this);
 
     init();
-    cleanup_timer = -1;
 }
 
 QXcbDrag::~QXcbDrag()
@@ -459,7 +460,7 @@ void QXcbDrag::move(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
     static const bool isUnity = qgetenv("XDG_CURRENT_DESKTOP").toLower() == "unity";
     if (isUnity && xdndCollectionWindow == XCB_NONE) {
         QString name = QXcbWindow::windowTitle(connection(), target);
-        if (name == QStringLiteral("XdndCollectionWindowImp"))
+        if (name == "XdndCollectionWindowImp"_L1)
             xdndCollectionWindow = target;
     }
     if (target == xdndCollectionWindow) {
@@ -506,9 +507,8 @@ void QXcbDrag::drop(const QPoint &globalPos, Qt::MouseButtons b, Qt::KeyboardMod
     transactions.append(t);
 
     // timer is needed only for drops that came from other processes.
-    if (!t.targetWindow && cleanup_timer == -1) {
-        cleanup_timer = startTimer(XdndDropTransactionTimeout);
-    }
+    if (!t.targetWindow && !cleanup_timer.isActive())
+        cleanup_timer.start(XdndDropTransactionTimeout, this);
 
     qCDebug(lcQpaXDnd) << "sending drop to target:" << current_target;
 
@@ -594,6 +594,9 @@ void QXcbDrag::setActionList(Qt::DropAction requestedAction, Qt::DropActions sup
                             XCB_ATOM_ATOM, 32, actions.size(), actions.constData());
         current_actions = actions;
     }
+#else
+    Q_UNUSED(requestedAction)
+    Q_UNUSED(supportedActions)
 #endif
 }
 
@@ -766,7 +769,7 @@ void QXcbDrag::handle_xdnd_position(QPlatformWindow *w, const xcb_client_message
     }
 
     auto buttons = currentDrag() ? b : connection()->queryMouseButtons();
-    auto modifiers = currentDrag() ? mods : connection()->queryKeyboardModifiers();
+    auto modifiers = currentDrag() ? mods : connection()->keyboard()->queryKeyboardModifiers();
 
     QPlatformDragQtResponse qt_response = QWindowSystemInterface::handleDrag(
                 w->window(), dropData, p, supported_actions, buttons, modifiers);
@@ -1006,7 +1009,7 @@ void QXcbDrag::handleDrop(QPlatformWindow *, const xcb_client_message_event_t *e
         return;
 
     auto buttons = currentDrag() ? b : connection()->queryMouseButtons();
-    auto modifiers = currentDrag() ? mods : connection()->queryKeyboardModifiers();
+    auto modifiers = currentDrag() ? mods : connection()->keyboard()->queryKeyboardModifiers();
 
     QPlatformDropQtResponse response = QWindowSystemInterface::handleDrop(
                 currentWindow.data(), dropData, currentPosition, supported_drop_actions,
@@ -1047,9 +1050,8 @@ void QXcbDrag::handleFinished(const xcb_client_message_event_t *event)
     if (event->window != connection()->qtSelectionOwner())
         return;
 
-    const unsigned long *l = (const unsigned long *)event->data.data32;
-    if (l[0]) {
-        int at = findTransactionByWindow(l[0]);
+    if (xcb_window_t w = event->data.data32[0]) {
+        int at = findTransactionByWindow(w);
         if (at != -1) {
 
             Transaction t = transactions.takeAt(at);
@@ -1087,7 +1089,7 @@ void QXcbDrag::handleFinished(const xcb_client_message_event_t *event)
 
 void QXcbDrag::timerEvent(QTimerEvent* e)
 {
-    if (e->timerId() == cleanup_timer) {
+    if (e->id() == cleanup_timer.id()) {
         bool stopTimer = true;
         for (int i = 0; i < transactions.size(); ++i) {
             const Transaction &t = transactions.at(i);
@@ -1113,10 +1115,8 @@ void QXcbDrag::timerEvent(QTimerEvent* e)
             }
 
         }
-        if (stopTimer && cleanup_timer != -1) {
-            killTimer(cleanup_timer);
-            cleanup_timer = -1;
-        }
+        if (stopTimer)
+            cleanup_timer.stop();
     }
 }
 
@@ -1231,7 +1231,7 @@ void QXcbDrag::handleSelectionRequest(const xcb_selection_request_event_t *event
 
 bool QXcbDrag::dndEnable(QXcbWindow *w, bool on)
 {
-    qCDebug(lcQpaXDnd) << "dndEnable" << w << on;
+    qCDebug(lcQpaXDnd) << "dndEnable" << static_cast<QPlatformWindow *>(w) << on;
     // Windows announce that they support the XDND protocol by creating a window property XdndAware.
     if (on) {
         QXcbWindow *window = nullptr;
@@ -1303,32 +1303,33 @@ QVariant QXcbDropData::retrieveData_sys(const QString &mimetype, QMetaType reque
 
 QVariant QXcbDropData::xdndObtainData(const QByteArray &format, QMetaType requestedType) const
 {
-    QByteArray result;
-
     QXcbConnection *c = drag->connection();
     QXcbWindow *xcb_window = c->platformWindowFromId(drag->xdnd_dragsource);
     if (xcb_window && drag->currentDrag() && xcb_window->window()->type() != Qt::Desktop) {
         QMimeData *data = drag->currentDrag()->mimeData();
         if (data->hasFormat(QLatin1StringView(format)))
-            result = data->data(QLatin1StringView(format));
-        return result;
+            return data->data(QLatin1StringView(format));
+        return QVariant();
     }
 
     QList<xcb_atom_t> atoms = drag->xdnd_types;
     bool hasUtf8 = false;
     xcb_atom_t a = mimeAtomForFormat(c, QLatin1StringView(format), requestedType, atoms, &hasUtf8);
     if (a == XCB_NONE)
-        return result;
+        return QVariant();
 
 #ifndef QT_NO_CLIPBOARD
     if (c->selectionOwner(c->atom(QXcbAtom::AtomXdndSelection)) == XCB_NONE)
-        return result; // should never happen?
+        return QVariant(); // should never happen?
 
     xcb_atom_t xdnd_selection = c->atom(QXcbAtom::AtomXdndSelection);
-    result = c->clipboard()->getSelection(xdnd_selection, a, xdnd_selection, drag->targetTime());
+    const std::optional<QByteArray> result = c->clipboard()->getSelection(xdnd_selection, a, xdnd_selection, drag->targetTime());
+    if (!result.has_value())
+        return QVariant();
+    return mimeConvertToFormat(c, a, result.value(), QLatin1StringView(format), requestedType, hasUtf8);
+#else
+    return QVariant();
 #endif
-
-    return mimeConvertToFormat(c, a, result, QLatin1StringView(format), requestedType, hasUtf8);
 }
 
 bool QXcbDropData::hasFormat_sys(const QString &format) const

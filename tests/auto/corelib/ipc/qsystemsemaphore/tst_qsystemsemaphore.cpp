@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #if QT_CONFIG(process)
@@ -232,7 +232,7 @@ void tst_QSystemSemaphore::twoSemaphores()
 void tst_QSystemSemaphore::basicProcesses()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QNativeIpcKey key = platformSafeKey("store");
     QSystemSemaphore sem(key, 0, QSystemSemaphore::Create);
@@ -269,7 +269,7 @@ void tst_QSystemSemaphore::processes_data()
 void tst_QSystemSemaphore::processes()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QNativeIpcKey key = platformSafeKey("store");
     QSystemSemaphore sem(key, 1, QSystemSemaphore::Create);
@@ -297,7 +297,7 @@ void tst_QSystemSemaphore::processes()
 void tst_QSystemSemaphore::undo()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QNativeIpcKey key = platformSafeKey("store");
     switch (key.type()) {
@@ -331,7 +331,7 @@ void tst_QSystemSemaphore::undo()
 void tst_QSystemSemaphore::initialValue()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QNativeIpcKey key = platformSafeKey("store");
     QSystemSemaphore sem(key, 1, QSystemSemaphore::Create);

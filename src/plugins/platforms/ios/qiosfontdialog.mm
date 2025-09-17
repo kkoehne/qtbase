@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIKit.h>
 
@@ -11,6 +12,7 @@
 #include <QtGui/private/qfont_p.h>
 #include <QtGui/private/qfontengine_p.h>
 
+#include "qiosglobal.h"
 #include "qiosfontdialog.h"
 #include "qiosintegration.h"
 
@@ -144,8 +146,7 @@ bool QIOSFontDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
     if (windowModality == Qt::ApplicationModal || windowModality == Qt::WindowModal)
         m_viewController.modalInPresentation = YES;
 
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-        : qt_apple_sharedApplication().keyWindow;
+    UIWindow *window = presentationWindow(parent);
     if (!window)
         return false;
 

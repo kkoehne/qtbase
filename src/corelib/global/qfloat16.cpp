@@ -10,10 +10,14 @@
 #include <QtCore/qmetatype.h>
 #include <QtCore/qtextstream.h>
 
-QT_DECL_METATYPE_EXTERN(qfloat16, Q_CORE_EXPORT)
 QT_BEGIN_NAMESPACE
 
-QT_IMPL_METATYPE_EXTERN(qfloat16)
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+Q_CORE_EXPORT int qRegisterNormalizedMetaType_qfloat16(const QByteArray &)
+{
+    return QMetaType::Float16;
+}
+#endif
 
 /*!
     \class qfloat16
@@ -22,6 +26,15 @@ QT_IMPL_METATYPE_EXTERN(qfloat16)
     \inmodule QtCore
     \inheaderfile QFloat16
     \brief Provides 16-bit floating point support.
+
+    \compares partial
+    \compareswith partial float double {long double} qint8 quint8 qint16 quint16 \
+                  qint32 quint32 long {unsigned long} qint64 quint64
+    \endcompareswith
+    \compareswith partial qint128 quint128
+    Comparison with 128-bit integral types is only supported if Qt provides
+    these types.
+    \endcompareswith
 
     The \c qfloat16 class provides support for half-precision (16-bit) floating
     point data.  It is fully compliant with IEEE 754 as a storage type.  This
@@ -113,6 +126,17 @@ QT_IMPL_METATYPE_EXTERN(qfloat16)
 
     Returns a qfloat16 with the sign of \a sign but the rest of its value taken
     from this qfloat16. Serves as qfloat16's equivalent of std::copysign().
+
+    \sa signBit()
+*/
+
+/*!
+    \since 6.11
+    \fn qfloat16 qfloat16::signBit() const noexcept
+
+    Returns a true if this \c qfloat16 is negative, false otherwise. Note this
+    function returns true for negative zero, negative infinity, and negative
+    NaN values.
 */
 
 /*!
@@ -366,10 +390,7 @@ Q_CORE_EXPORT void qFloatFromFloat16(float *out, const qfloat16 *in, qsizetype l
 /*!
     \fn size_t qfloat16::qHash(qfloat16 key, size_t seed)
     \since 6.5.3
-    \relates qfloat16
-
-    Returns the hash value for the \a key, using \a seed to seed the
-    calculation.
+    \qhash{qfloat16}
 
     \note In Qt versions before 6.5, this operation was provided by the
     qHash(float) overload. In Qt versions 6.5.0 to 6.5.2, this functionality

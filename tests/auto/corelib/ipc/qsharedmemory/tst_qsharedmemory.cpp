@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QDebug>
 #include <QFile>
@@ -56,6 +56,8 @@ private slots:
     void removeWhileAttached();
     void emptyMemory();
     void readOnly();
+    void attachBeforeCreate_data();
+    void attachBeforeCreate();
 
     // basics all together
     void simpleProducerConsumer_data();
@@ -77,6 +79,9 @@ private slots:
     // unique keys
     void uniqueKey_data();
     void uniqueKey();
+
+    // legacy
+    void createWithSameKey();
 
 protected:
     void remove(const QNativeIpcKey &key);
@@ -524,13 +529,13 @@ void tst_QSharedMemory::emptyMemory()
 void tst_QSharedMemory::readOnly()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #elif defined(Q_OS_MACOS)
-    QSKIP("QTBUG-59936: Times out on macOS", SkipAll);
+    QSKIP("QTBUG-59936: Times out on macOS");
 #elif defined(Q_OS_WIN)
     QSKIP("This test opens a crash dialog on Windows.");
 #elif defined(__SANITIZE_ADDRESS__) || __has_feature(address_sanitizer)
-    QSKIP("ASan prevents the crash this test is looking for.", SkipAll);
+    QSKIP("ASan prevents the crash this test is looking for.");
 #else
     QNativeIpcKey key = rememberKey("readonly_segfault");
 
@@ -543,11 +548,45 @@ void tst_QSharedMemory::readOnly()
 #endif
 }
 
+void tst_QSharedMemory::attachBeforeCreate_data()
+{
+    QTest::addColumn<bool>("legacy");
+
+    QTest::addRow("legacy") << true;
+    QTest::addRow("non-legacy") << false;
+}
+
+void tst_QSharedMemory::attachBeforeCreate()
+{
+    QFETCH_GLOBAL(const QNativeIpcKey::Type, keyType);
+    QFETCH(const bool, legacy);
+    const QString keyStr(u"test"_s);
+    QNativeIpcKey key;
+    if (legacy) {
+        key = QSharedMemory::legacyNativeKey(keyStr, keyType);
+        // same as rememberKey(), but with legacy
+        if (!keys.contains(key)) {
+            keys.append(key);
+            remove(key);
+        }
+    } else {
+        key = rememberKey(keyStr);
+    }
+    const qsizetype sz = 100;
+    QSharedMemory mem(key);
+    QVERIFY(!mem.attach());
+    QVERIFY(mem.create(sz));
+}
+
 /*!
     Keep making shared memory until the kernel stops us.
  */
 void tst_QSharedMemory::useTooMuchMemory()
 {
+    if (QSysInfo::kernelType() == QLatin1String("linux")
+        && QSysInfo::currentCpuArchitecture() == QLatin1String("arm64"))
+        QSKIP("This test is unstable: QTBUG-119321");
+
 #ifdef Q_OS_LINUX
     bool success = true;
     int count = 0;
@@ -821,7 +860,7 @@ void tst_QSharedMemory::simpleProcessProducerConsumer_data()
 void tst_QSharedMemory::simpleProcessProducerConsumer()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QFETCH(int, processes);
 
@@ -898,6 +937,29 @@ void tst_QSharedMemory::uniqueKey()
     QCOMPARE(keyEqual, setEqual);
     QCOMPARE(nativeEqual, setEqual);
 }
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
+void tst_QSharedMemory::createWithSameKey()
+{
+    const QString key = u"legacy_key"_s;
+    const qsizetype sz = 100;
+    QSharedMemory mem1(key);
+    QVERIFY(mem1.create(sz));
+
+    {
+        QSharedMemory mem2(key);
+        QVERIFY(!mem2.create(sz));
+        QVERIFY(mem2.attach());
+    }
+    // and the second create() should fail as well, QTBUG-111855
+    {
+        QSharedMemory mem2(key);
+        QVERIFY(!mem2.create(sz));
+        QVERIFY(mem2.attach());
+    }
+}
+QT_WARNING_POP
 
 QTEST_MAIN(tst_QSharedMemory)
 #include "tst_qsharedmemory.moc"

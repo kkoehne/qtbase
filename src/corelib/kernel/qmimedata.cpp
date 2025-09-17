@@ -90,6 +90,11 @@ static QList<QVariant> dataToUrls(QByteArrayView text)
         if (from >= text.size())
             break;
     }
+    if (from != text.size()) {
+        const auto bav = QByteArrayView(begin + from, text.end()).trimmed();
+        if (!bav.isEmpty())
+            list.push_back(QUrl::fromEncoded(bav));
+    }
     return list;
 }
 
@@ -369,8 +374,9 @@ bool QMimeData::hasUrls() const
 
 
 /*!
-    Returns a plain text (MIME type \c text/plain) representation of
-    the data.
+    Returns the plain text (MIME type \c text/plain) representation of
+    the data if this object contains plain text. If it contains some other
+    content, this function makes a best effort to convert it to plain text.
 
     \sa hasText(), html(), data()
 */
@@ -405,7 +411,7 @@ void QMimeData::setText(const QString &text)
 */
 bool QMimeData::hasText() const
 {
-    return hasFormat(textPlainLiteral()) || hasUrls();
+    return hasFormat(textPlainLiteral()) || hasFormat(textPlainUtf8Literal()) || hasUrls();
 }
 
 /*!
@@ -536,7 +542,11 @@ bool QMimeData::hasColor() const
 
 /*!
     Returns the data stored in the object in the format described by
-    the MIME type specified by \a mimeType.
+    the MIME type specified by \a mimeType. If this object does not contain
+    data for the \a mimeType MIME type (see hasFormat()), this function may
+    perform a best effort conversion to it.
+
+    \sa hasFormat(), setData()
 */
 QByteArray QMimeData::data(const QString &mimeType) const
 {
@@ -585,6 +595,8 @@ void QMimeData::setData(const QString &mimeType, const QByteArray &data)
 */
 bool QMimeData::hasFormat(const QString &mimeType) const
 {
+    // formats() is virtual and could be reimplemented in sub-classes,
+    // so we have to use it here.
     return formats().contains(mimeType);
 }
 

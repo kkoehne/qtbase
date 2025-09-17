@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef CONTROLS_H
 #define CONTROLS_H
@@ -44,9 +44,11 @@ private:
     QCheckBox *windowShadeButtonCheckBox;
     QCheckBox *windowStaysOnTopCheckBox;
     QCheckBox *windowStaysOnBottomCheckBox;
-    QCheckBox *customizeWindowHintCheckBox;
+    QGroupBox *customizeWindowGroup;
     QCheckBox *transparentForInputCheckBox;
     QCheckBox *noDropShadowCheckBox;
+    QCheckBox *expandedClientAreaCheckBox;
+    QCheckBox *noTitleBarBackgroundCheckBox;
 };
 
 // Control for the Qt::WindowState enum, optional with a "visible" QCheckbox

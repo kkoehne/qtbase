@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "http2protocol_p.h"
 #include "http2frames_p.h"
@@ -184,18 +185,44 @@ QNetworkReply::NetworkError qt_error(quint32 errorCode)
 
 bool is_protocol_upgraded(const QHttpNetworkReply &reply)
 {
-    if (reply.statusCode() == 101) {
-        // Do some minimal checks here - we expect 'Upgrade: h2c' to be found.
-        const auto &header = reply.header();
-        for (const QPair<QByteArray, QByteArray> &field : header) {
-            if (field.first.compare("upgrade", Qt::CaseInsensitive) == 0 &&
-                    field.second.compare("h2c", Qt::CaseInsensitive) == 0)
-                return true;
-        }
+    if (reply.statusCode() != 101)
+        return false;
+
+    // Do some minimal checks here - we expect 'Upgrade: h2c' to be found.
+    for (const auto &v : reply.header().values(QHttpHeaders::WellKnownHeader::Upgrade)) {
+        if (v.compare("h2c", Qt::CaseInsensitive) == 0)
+            return true;
     }
 
     return false;
 }
+
+std::vector<uchar> assemble_hpack_block(const std::vector<Frame> &frames)
+{
+    std::vector<uchar> hpackBlock;
+
+    size_t total = 0;
+    for (const auto &frame : frames) {
+        if (qAddOverflow(total, size_t{frame.hpackBlockSize()}, &total))
+            return hpackBlock;
+    }
+
+    if (!total)
+        return hpackBlock;
+
+    hpackBlock.resize(total);
+    auto dst = hpackBlock.begin();
+    for (const auto &frame : frames) {
+        if (const auto hpackBlockSize = frame.hpackBlockSize()) {
+            const uchar *src = frame.hpackBlockBegin();
+            std::copy(src, src + hpackBlockSize, dst);
+            dst += hpackBlockSize;
+        }
+    }
+
+    return hpackBlock;
+}
+
 
 } // namespace Http2
 

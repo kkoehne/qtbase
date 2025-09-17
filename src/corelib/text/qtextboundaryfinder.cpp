@@ -1,5 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
+
 #include <QtCore/qtextboundaryfinder.h>
 #include <QtCore/qvarlengtharray.h>
 
@@ -161,7 +163,6 @@ QTextBoundaryFinder &QTextBoundaryFinder::operator=(const QTextBoundaryFinder &o
 */
 QTextBoundaryFinder::~QTextBoundaryFinder()
 {
-    Q_UNUSED(unused);
     if (freeBuffer)
         free(attributes);
 }
@@ -173,9 +174,7 @@ QTextBoundaryFinder::QTextBoundaryFinder(BoundaryType type, const QString &strin
     : t(type)
     , s(string)
     , sv(s)
-    , pos(0)
     , freeBuffer(true)
-    , attributes(nullptr)
 {
     if (sv.size() > 0) {
         attributes = (QCharAttributes *) malloc((sv.size() + 1) * sizeof(QCharAttributes));
@@ -208,9 +207,7 @@ QTextBoundaryFinder::QTextBoundaryFinder(BoundaryType type, const QString &strin
 QTextBoundaryFinder::QTextBoundaryFinder(BoundaryType type, QStringView string, unsigned char *buffer, qsizetype bufferSize)
     : t(type)
     , sv(string)
-    , pos(0)
     , freeBuffer(true)
-    , attributes(nullptr)
 {
     if (!sv.isEmpty()) {
         if (buffer && bufferSize / int(sizeof(QCharAttributes)) >= sv.size() + 1) {

@@ -47,7 +47,7 @@ public:
     {
         if (QPrintWidget->objectName().isEmpty())
             QPrintWidget->setObjectName("QPrintWidget");
-        QPrintWidget->resize(443, 175);
+        QPrintWidget->resize(443, 178);
         horizontalLayout_2 = new QHBoxLayout(QPrintWidget);
         horizontalLayout_2->setContentsMargins(0, 0, 0, 0);
         horizontalLayout_2->setObjectName("horizontalLayout_2");
@@ -62,7 +62,7 @@ public:
 
         printers = new QComboBox(printerGroup);
         printers->setObjectName("printers");
-        QSizePolicy sizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(3);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(printers->sizePolicy().hasHeightForWidth());
@@ -72,7 +72,7 @@ public:
 
         properties = new QPushButton(printerGroup);
         properties->setObjectName("properties");
-        QSizePolicy sizePolicy1(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy1.setHorizontalStretch(1);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(properties->sizePolicy().hasHeightForWidth());

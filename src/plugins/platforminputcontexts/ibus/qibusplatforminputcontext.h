@@ -7,6 +7,7 @@
 
 #include <QtCore/qpointer.h>
 #include <QtCore/QLocale>
+#include <QtCore/QLoggingCategory>
 #include <QtDBus/qdbuspendingreply.h>
 #if QT_CONFIG(filesystemwatcher)
 #include <QFileSystemWatcher>
@@ -14,7 +15,11 @@
 #include <QTimer>
 #include <QWindow>
 
+#include "qibustypes.h"
+
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcQpaInputMethods);
 
 class QIBusPlatformInputContextPrivate;
 class QDBusVariant;
@@ -66,6 +71,7 @@ public:
 public Q_SLOTS:
     void commitText(const QDBusVariant &text);
     void updatePreeditText(const QDBusVariant &text, uint cursor_pos, bool visible);
+    void updatePreeditTextWithMode(const QDBusVariant &text, uint cursor_pos, bool visible, uint mode);
     void forwardKeyEvent(uint keyval, uint keycode, uint state);
     void cursorRectChanged();
     void deleteSurroundingText(int offset, uint n_chars);

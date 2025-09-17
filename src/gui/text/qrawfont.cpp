@@ -171,9 +171,7 @@ QRawFont &QRawFont::operator=(const QRawFont &other)
 /*!
   \fn void QRawFont::swap(QRawFont &other)
   \since 5.0
-
-  Swaps this raw font with \a other. This function is very fast and
-  never fails.
+    \memberswap{raw font}
 */
 
 /*!
@@ -281,10 +279,8 @@ bool QRawFont::operator==(const QRawFont &other) const
 }
 
 /*!
-    Returns the hash value for \a font. If specified, \a seed is used
-    to initialize the hash.
-
-    \relates QRawFont
+    \fn size_t qHash(const QRawFont &key, size_t seed)
+    \qhashold{QRawFont}
     \since 5.8
 */
 size_t qHash(const QRawFont &font, size_t seed) noexcept
@@ -498,7 +494,7 @@ QList<quint32> QRawFont::glyphIndexesForString(const QString &text) const
     QGlyphLayout glyphs;
     glyphs.numGlyphs = numGlyphs;
     glyphs.glyphs = glyphIndexes.data();
-    if (!d->fontEngine->stringToCMap(text.data(), text.size(), &glyphs, &numGlyphs, QFontEngine::GlyphIndicesOnly))
+    if (d->fontEngine->stringToCMap(text.data(), text.size(), &glyphs, &numGlyphs, QFontEngine::GlyphIndicesOnly) < 0)
         Q_UNREACHABLE();
 
     glyphIndexes.resize(numGlyphs);
@@ -531,7 +527,7 @@ bool QRawFont::glyphIndexesForChars(const QChar *chars, int numChars, quint32 *g
     QGlyphLayout glyphs;
     glyphs.numGlyphs = *numGlyphs;
     glyphs.glyphs = glyphIndexes;
-    return d->fontEngine->stringToCMap(chars, numChars, &glyphs, numGlyphs, QFontEngine::GlyphIndicesOnly);
+    return d->fontEngine->stringToCMap(chars, numChars, &glyphs, numGlyphs, QFontEngine::GlyphIndicesOnly) >= 0;
 }
 
 /*!
@@ -632,17 +628,33 @@ QFont::HintingPreference QRawFont::hintingPreference() const
 }
 
 /*!
-   Retrieves the sfnt table named \a tagName from the underlying physical font, or an empty
-   byte array if no such table was found. The returned font table's byte order is Big Endian, like
-   the sfnt format specifies. The \a tagName must be four characters long and should be formatted
-   in the default endianness of the current platform.
+    \fn QByteArray QRawFont::fontTable(const char *tag) const
+    \overload fontTable(QFont::Tag)
+
+    The name must be a four-character string.
 */
-QByteArray QRawFont::fontTable(const char *tagName) const
+
+/*!
+    \fn QByteArray QRawFont::fontTable(QFont::Tag tag) const
+    \since 6.7
+
+    Retrieves the sfnt table specified by \a tag from the underlying physical font,
+    or an empty byte array if no such table was found. The returned font table's byte order is
+    Big Endian, like the sfnt format specifies.
+*/
+QByteArray QRawFont::fontTable(const char *tag) const
+{
+    if (auto maybeTag = QFont::Tag::fromString(tag))
+        return fontTable(*maybeTag);
+    return QByteArray();
+}
+
+QByteArray QRawFont::fontTable(QFont::Tag tag) const
 {
     if (!d->isValid())
         return QByteArray();
 
-    return d->fontEngine->getSfntTable(MAKE_TAG(tagName[0], tagName[1], tagName[2], tagName[3]));
+    return d->fontEngine->getSfntTable(tag.value());
 }
 
 /*!

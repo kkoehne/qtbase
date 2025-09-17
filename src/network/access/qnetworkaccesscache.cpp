@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkaccesscache_p.h"
 #include "QtCore/qpointer.h"
@@ -18,14 +19,6 @@ enum ExpiryTimeEnum {
     ExpiryTime = 120
 };
 
-namespace {
-    struct Receiver
-    {
-        QPointer<QObject> object;
-        const char *member;
-    };
-}
-
 // idea copied from qcache.h
 struct QNetworkAccessCache::Node
 {
@@ -39,10 +32,11 @@ struct QNetworkAccessCache::Node
     int useCount = 0;
 };
 
-QNetworkAccessCache::CacheableObject::CacheableObject()
+QNetworkAccessCache::CacheableObject::CacheableObject(Options options)
+    : expires(options & Option::Expires),
+      shareable(options & Option::Shareable)
 {
-    // leave the members uninitialized
-    // they must be initialized by the derived class's constructor
+
 }
 
 QNetworkAccessCache::CacheableObject::~CacheableObject()
@@ -52,16 +46,6 @@ QNetworkAccessCache::CacheableObject::~CacheableObject()
         qWarning() << "QNetworkAccessCache: object" << (void*)this << "key" << key
                    << "destroyed without being removed from cache first!";
 #endif
-}
-
-void QNetworkAccessCache::CacheableObject::setExpires(bool enable)
-{
-    expires = enable;
-}
-
-void QNetworkAccessCache::CacheableObject::setShareable(bool enable)
-{
-    shareable = enable;
 }
 
 QNetworkAccessCache::~QNetworkAccessCache()

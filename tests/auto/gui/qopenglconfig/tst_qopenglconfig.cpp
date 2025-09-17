@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtGui/QOpenGLFunctions>
 #include <QtGui/QScreen>
@@ -97,7 +97,6 @@ static void dumpConfiguration(QTextStream &str)
     DUMP_CAPABILITY(str, platformIntegration, SharedGraphicsCache)
     DUMP_CAPABILITY(str, platformIntegration, BufferQueueingOpenGL)
     DUMP_CAPABILITY(str, platformIntegration, WindowMasks)
-    DUMP_CAPABILITY(str, platformIntegration, RasterGLSurface)
     DUMP_CAPABILITY(str, platformIntegration, AllGLFunctionsQueryable)
     str << '\n';
 

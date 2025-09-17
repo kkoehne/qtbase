@@ -19,6 +19,8 @@
 
 #include <QtCore/qoperatingsystemversion.h>
 
+#include <optional>
+
 #ifdef Q_OS_MACOS
 #include <mach/port.h>
 struct mach_header;
@@ -48,7 +50,6 @@ kern_return_t IOObjectRelease(io_object_t object);
 #endif
 
 #include "qstring.h"
-#include "qscopedpointer.h"
 #include "qpair.h"
 
 #if defined( __OBJC__) && defined(QT_NAMESPACE)
@@ -129,7 +130,7 @@ public:
     Q_NODISCARD_CTOR QMacRootLevelAutoReleasePool();
     ~QMacRootLevelAutoReleasePool();
 private:
-    QScopedPointer<QMacAutoReleasePool> pool;
+    std::optional<QMacAutoReleasePool> pool = std::nullopt;
 };
 #endif
 
@@ -183,8 +184,36 @@ private:
     QString string;
 };
 
+class Q_CORE_EXPORT QObjCWeakPointerBase
+{
+public:
+    QObjCWeakPointerBase(NSObject *object = nil);
+    QObjCWeakPointerBase(const QObjCWeakPointerBase &other);
+    QObjCWeakPointerBase &operator=(const QObjCWeakPointerBase &other);
+
+protected:
+    ~QObjCWeakPointerBase();
+    NSObject *get() const;
+    union {
+        NSObject *m_object = nil;
+#if __has_feature(objc_arc_weak) && __has_feature(objc_arc_fields)
+        // Used by qcore_mac.mm, built with -fobjc-weak, to track lifetime
+        __weak id m_weakReference;
+#endif
+    };
+};
+
+template <typename T>
+class QObjCWeakPointer : public QObjCWeakPointerBase
+{
+public:
+    using QObjCWeakPointerBase::QObjCWeakPointerBase;
+    operator T*() const { return static_cast<T*>(get()); }
+};
+
+// -------------------------------------------------------------------------
+
 #ifdef Q_OS_MACOS
-Q_CORE_EXPORT bool qt_mac_applicationIsInDarkMode();
 Q_CORE_EXPORT bool qt_mac_runningUnderRosetta();
 Q_CORE_EXPORT std::optional<uint32_t> qt_mac_sipConfiguration();
 #ifdef QT_BUILD_INTERNAL
@@ -198,13 +227,14 @@ Q_CORE_EXPORT QDebug operator<<(QDebug debug, const QCFString &string);
 #endif
 
 Q_CORE_EXPORT bool qt_apple_isApplicationExtension();
+Q_CORE_EXPORT bool qt_apple_runningWithLiquidGlass();
 
 #if !defined(QT_BOOTSTRAPPED)
 Q_CORE_EXPORT bool qt_apple_isSandboxed();
 
 #if defined(__OBJC__)
 QT_END_NAMESPACE
-@interface NSObject (QtSandboxHelpers)
+@interface NSObject (QtExtras)
 - (id)qt_valueForPrivateKey:(NSString *)key;
 @end
 QT_BEGIN_NAMESPACE
@@ -236,8 +266,11 @@ QT_BEGIN_NAMESPACE
 class Q_CORE_EXPORT AppleUnifiedLogger
 {
 public:
-    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context, const QString &message,
-        const QString &subsystem = QString());
+    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context,
+                               const QString &message)
+    { return messageHandler(msgType, context, message, QString()); }
+    static bool messageHandler(QtMsgType msgType, const QMessageLogContext &context,
+                               const QString &message, const QString &subsystem);
     static bool preventsStderrLogging();
 private:
     static os_log_type_t logTypeForMessageType(QtMsgType msgType);
@@ -248,7 +281,7 @@ private:
 
 // --------------------------------------------------------------------------
 
-#if !defined(QT_BOOTSTRAPPED)
+#if !defined(QT_BOOTSTRAPPED) && !__has_feature(objc_arc)
 
 QT_END_NAMESPACE
 #include <os/activity.h>
@@ -319,7 +352,7 @@ QT_MAC_WEAK_IMPORT(_os_activity_current);
 
 #define QT_APPLE_SCOPED_LOG_ACTIVITY(...) QAppleLogActivity scopedLogActivity = QT_APPLE_LOG_ACTIVITY(__VA_ARGS__).enter();
 
-#endif // !defined(QT_BOOTSTRAPPED)
+#endif // !defined(QT_BOOTSTRAPPED) && !__has_feature(objc_arc)
 
 // -------------------------------------------------------------------------
 
@@ -332,8 +365,11 @@ public:
     template<typename Functor>
     QMacNotificationObserver(NSObject *object, NSNotificationName name, Functor callback) {
         observer = [[NSNotificationCenter defaultCenter] addObserverForName:name
-            object:object queue:nil usingBlock:^(NSNotification *) {
-                callback();
+            object:object queue:nil usingBlock:^(NSNotification *notification) {
+                if constexpr (std::is_invocable_v<Functor, NSNotification *>)
+                    callback(notification);
+                else
+                    callback();
             }
         ];
     }
@@ -350,7 +386,7 @@ public:
 
     void swap(QMacNotificationObserver &other) noexcept
     {
-        qt_ptr_swap(observer, other.observer);
+        std::swap(observer, other.observer);
     }
 
     void remove();
@@ -372,7 +408,6 @@ public:
     QMacKeyValueObserver() = default;
 
 #if defined( __OBJC__)
-    // Note: QMacKeyValueObserver must not outlive the object observed!
     QMacKeyValueObserver(NSObject *object, NSString *keyPath, Callback callback,
         NSKeyValueObservingOptions options = NSKeyValueObservingOptionNew)
         : object(object), keyPath(keyPath), callback(new Callback(callback))
@@ -400,8 +435,8 @@ public:
 
     void swap(QMacKeyValueObserver &other) noexcept
     {
-        qt_ptr_swap(object, other.object);
-        qt_ptr_swap(keyPath, other.keyPath);
+        std::swap(object, other.object);
+        std::swap(keyPath, other.keyPath);
         callback.swap(other.callback);
     }
 
@@ -410,7 +445,7 @@ private:
     void addObserver(NSKeyValueObservingOptions options);
 #endif
 
-    NSObject *object = nullptr;
+    QObjCWeakPointer<NSObject> object;
     NSString *keyPath = nullptr;
     std::unique_ptr<Callback> callback;
 
@@ -433,7 +468,7 @@ public:
 
 private:
     QMacVersion() = default;
-    using VersionTuple = QPair<QOperatingSystemVersion, QOperatingSystemVersion>;
+    using VersionTuple = std::pair<QOperatingSystemVersion, QOperatingSystemVersion>;
     static VersionTuple versionsForImage(const mach_header *machHeader);
     static VersionTuple applicationVersion();
     static VersionTuple libraryVersion();

@@ -101,8 +101,12 @@ public:
         HelpChanged          = 0x80A0,
         DefaultActionChanged = 0x80B0,
         AcceleratorChanged   = 0x80C0,
+        Announcement         = 0x80D0,
+        IdentifierChanged    = 0x80E0,
+        RoleChanged          = 0x80E1,
 
-        InvalidEvent
+        // was declared after AcceleratorChanged, without explicit value
+        InvalidEvent                    = AcceleratorChanged + 1,
     };
     Q_ENUM(Event)
 
@@ -311,6 +315,14 @@ public:
         // IA2_ROLE_TOGGLE_BUTTON = 0x42A,
         // IA2_ROLE_VIEW_PORT = 0x42B,
         ComplementaryContent = 0x42C,
+        // IA2_ROLE_LANDMARK = 0x42D,
+        // IA2_ROLE_LEVEL_BAR = 0x42E,
+        // IA2_ROLE_CONTENT_DELETION = 0x42F,
+        // IA2_ROLE_CONTENT_INSERTION = 0x430,
+        BlockQuote = 0x431,
+        // IA2_ROLE_MARK = 0x432,
+        // IA2_ROLE_SUGGESTION = 0x433,
+        // IA2_ROLE_COMMENT = = 0x434,
 
         UserRole       = 0x0000ffff
     };
@@ -323,6 +335,7 @@ public:
         Help,
         Accelerator,
         DebugDescription,
+        Identifier,
         UserText     = 0x0000ffff
     };
 
@@ -349,7 +362,8 @@ public:
         TableInterface,
         TableCellInterface,
         HyperlinkInterface,
-        SelectionInterface
+        SelectionInterface,
+        AttributesInterface,
     };
 
     enum TextBoundaryType {
@@ -360,6 +374,19 @@ public:
         LineBoundary,
         NoBoundary
     };
+
+    enum class Attribute {
+        Custom,
+        Level,
+        Locale,
+    };
+    Q_ENUM(Attribute)
+
+    enum class AnnouncementPoliteness {
+        Polite,
+        Assertive,
+    };
+    Q_ENUM(AnnouncementPoliteness)
 
     typedef QAccessibleInterface*(*InterfaceFactory)(const QString &key, QObject*);
     typedef void(*UpdateHandler)(QAccessibleEvent *event);
@@ -395,7 +422,7 @@ public:
 
     static void cleanup();
 
-    static QPair< int, int > qAccessibleTextBoundaryHelper(const QTextCursor &cursor, TextBoundaryType boundaryType);
+    static std::pair< int, int > qAccessibleTextBoundaryHelper(const QTextCursor &cursor, TextBoundaryType boundaryType);
 
 private:
     static UpdateHandler updateHandler;

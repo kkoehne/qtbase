@@ -26,8 +26,8 @@
 #if QT_CONFIG(sizegrip)
 #include <QSizeGrip>
 #endif
+#include <QBasicTimer>
 #include <QPointer>
-#include <QDebug>
 #include <private/qwidget_p.h>
 
 QT_REQUIRE_CONFIG(mdiarea);
@@ -42,7 +42,7 @@ template<typename T>
 class ControlElement : public T             // ELFVERSION:ignore
 {
 public:
-    ControlElement(QMdiSubWindow *child) : T(child, nullptr)
+    ControlElement(QMdiSubWindow *child) : T(nullptr)
     {
         Q_ASSERT(child);
         mdiChild = child;
@@ -172,7 +172,7 @@ public:
     bool isExplicitlyDeactivated;
     int keyboardSingleStep;
     int keyboardPageStep;
-    int resizeTimerId;
+    QBasicTimer resizeTimer;
     Operation currentOperation;
     QStyle::SubControl hoveredSubControl;
     QStyle::SubControl activeSubControl;
@@ -236,6 +236,7 @@ public:
     bool restoreFocus();
     void storeFocusWidget();
     void setWindowFlags(Qt::WindowFlags windowFlags) override;
+    using QWidgetPrivate::setVisible;
     void setVisible(WindowStateAction, bool visible = true);
 #ifndef QT_NO_ACTION
     void setEnabled(WindowStateAction, bool enable = true);

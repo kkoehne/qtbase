@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qrhiwidget_p.h"
 #include <private/qguiapplication_p.h>
@@ -16,11 +16,6 @@ QT_BEGIN_NAMESPACE
     \brief The QRhiWidget class is a widget for rendering 3D graphics via an
     accelerated grapics API, such as Vulkan, Metal, or Direct 3D.
 
-    \preliminary
-
-    \note QRhiWidget is in tech preview in Qt 6.7. \b {The API is under
-    development and subject to change.}
-
     QRhiWidget provides functionality for displaying 3D content rendered
     through the \l QRhi APIs within a QWidget-based application. In many ways
     it is the portable equivalent of \l QOpenGLWidget that is not tied to a
@@ -32,8 +27,8 @@ QT_BEGIN_NAMESPACE
     reimplement the virtual functions initialize() and render().
 
     The size of the texture will by default adapt to the size of the widget. If
-    a fixed size is preferred, set an explicit size specified in pixels by
-    calling setExplicitSize().
+    a fixed size is preferred, set a fixed size specified in pixels by calling
+    setFixedColorBufferSize().
 
     In addition to the texture serving as the color buffer, a depth/stencil
     buffer and a render target binding these together is maintained implicitly
@@ -145,12 +140,12 @@ QT_BEGIN_NAMESPACE
     \enum QRhiWidget::Api
     Specifies the 3D API and QRhi backend to use
 
+    \value Null
     \value OpenGL
     \value Metal
     \value Vulkan
-    \value D3D11
-    \value D3D12
-    \value Null
+    \value Direct3D11
+    \value Direct3D12
 
     \sa QRhi
  */
@@ -174,18 +169,36 @@ QRhiWidget::QRhiWidget(QWidget *parent, Qt::WindowFlags f)
     : QWidget(*(new QRhiWidgetPrivate), parent, f)
 {
     Q_D(QRhiWidget);
+    d->init();
+}
+
+/*!
+ *  \internal
+ */
+QRhiWidget::QRhiWidget(QRhiWidgetPrivate &dd, QWidget *parent, Qt::WindowFlags f)
+    : QWidget(dd, parent, f)
+{
+    Q_D(QRhiWidget);
+    d->init();
+}
+
+/*!
+ *  \internal
+ */
+void QRhiWidgetPrivate::init()
+{
     if (Q_UNLIKELY(!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::RhiBasedRendering)))
         qWarning("QRhiWidget: QRhi is not supported on this platform.");
     else
-        d->setRenderToTexture();
+        setRenderToTexture();
 
-    d->config.setEnabled(true);
+    config.setEnabled(true);
 #if defined(Q_OS_DARWIN)
-    d->config.setApi(QPlatformBackingStoreRhiConfig::Metal);
+    config.setApi(QPlatformBackingStoreRhiConfig::Metal);
 #elif defined(Q_OS_WIN)
-    d->config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
+    config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
 #else
-    d->config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
+    config.setApi(QPlatformBackingStoreRhiConfig::OpenGL);
 #endif
 }
 
@@ -277,7 +290,7 @@ bool QRhiWidget::event(QEvent *e)
 {
     Q_D(QRhiWidget);
     switch (e->type()) {
-    case QEvent::WindowChangeInternal:
+    case QEvent::WindowAboutToChangeInternal:
         // The QRhi will almost certainly change, prevent texture() from
         // returning the existing QRhiTexture in the meantime.
         d->textureInvalid = true;
@@ -420,7 +433,7 @@ QImage QRhiWidgetPrivate::grabFramebuffer()
                             imageFormat);
         QImage result;
         if (rhi->isYUpInFramebuffer())
-            result = wrapperImage.mirrored();
+            result = wrapperImage.flipped();
         else
             result = wrapperImage.copy();
         result.setDevicePixelRatio(q->devicePixelRatio());
@@ -475,14 +488,7 @@ void QRhiWidgetPrivate::releaseResources()
 void QRhiWidgetPrivate::ensureRhi()
 {
     Q_Q(QRhiWidget);
-    // the QRhi and infrastructure belongs to the top-level widget, not to this widget
-    QWidget *tlw = q->window();
-    QWidgetPrivate *wd = get(tlw);
-
-    QRhi *currentRhi = nullptr;
-    if (QWidgetRepaintManager *repaintManager = wd->maybeRepaintManager())
-        currentRhi = repaintManager->rhi();
-
+    QRhi *currentRhi = QWidgetPrivate::rhi();
     if (currentRhi && currentRhi->backend() != QBackingStoreRhiSupport::apiToRhiBackend(config.api())) {
         qWarning("The top-level window is already using another graphics API for composition, "
                  "'%s' is not compatible with this widget",
@@ -491,19 +497,21 @@ void QRhiWidgetPrivate::ensureRhi()
     }
 
     // NB the rhi member may be an invalid object, the pointer can be used, but no deref
-    if (currentRhi && rhi && rhi != currentRhi) {
-        // if previously we created our own but now get a QRhi from the
-        // top-level, then drop what we have and start using the top-level's
-        if (rhi == offscreenRenderer.rhi()) {
-            q->releaseResources(); // notify the user code about the early-release
-            releaseResources();
-            offscreenRenderer.reset();
-        } else {
-            // rhi resources created by us all belong to the old rhi, drop them;
-            // due to nulling out colorTexture this is also what ensures that
-            // initialize() is going to be called again eventually
-            resetRenderTargetObjects();
-            resetColorBufferObjects();
+    if (currentRhi && rhi != currentRhi) {
+        if (rhi) {
+            // if previously we created our own but now get a QRhi from the
+            // top-level, then drop what we have and start using the top-level's
+            if (rhi == offscreenRenderer.rhi()) {
+                q->releaseResources(); // notify the user code about the early-release
+                releaseResources();
+                offscreenRenderer.reset();
+            } else {
+                // rhi resources created by us all belong to the old rhi, drop them;
+                // due to nulling out colorTexture this is also what ensures that
+                // initialize() is going to be called again eventually
+                resetRenderTargetObjects();
+                resetColorBufferObjects();
+            }
         }
 
         // Normally the widget gets destroyed before the QRhi (which is managed by
@@ -528,7 +536,7 @@ void QRhiWidgetPrivate::ensureTexture(bool *changed)
 {
     Q_Q(QRhiWidget);
 
-    QSize newSize = explicitSize;
+    QSize newSize = fixedSize;
     if (newSize.isEmpty())
         newSize = q->size() * q->devicePixelRatio();
 
@@ -702,12 +710,13 @@ QRhiWidget::Api QRhiWidget::api() const
     case QPlatformBackingStoreRhiConfig::Vulkan:
         return Api::Vulkan;
     case QPlatformBackingStoreRhiConfig::D3D11:
-        return Api::D3D11;
+        return Api::Direct3D11;
     case QPlatformBackingStoreRhiConfig::D3D12:
-        return Api::D3D12;
-    default:
+        return Api::Direct3D12;
+    case QPlatformBackingStoreRhiConfig::Null:
         return Api::Null;
     }
+    Q_UNREACHABLE_RETURN(Api::Null);
 }
 
 /*!
@@ -726,7 +735,7 @@ QRhiWidget::Api QRhiWidget::api() const
     backend to render. Attempting to set another value, or to add another
     QRhiWidget with a different \a api will not function as expected.
 
-    \sa setTextureFormat(), setDebugLayer(), api()
+    \sa setColorBufferFormat(), setDebugLayerEnabled(), api()
  */
 void QRhiWidget::setApi(Api api)
 {
@@ -741,10 +750,10 @@ void QRhiWidget::setApi(Api api)
     case Api::Vulkan:
         d->config.setApi(QPlatformBackingStoreRhiConfig::Vulkan);
         break;
-    case Api::D3D11:
+    case Api::Direct3D11:
         d->config.setApi(QPlatformBackingStoreRhiConfig::D3D11);
         break;
-    case Api::D3D12:
+    case Api::Direct3D12:
         d->config.setApi(QPlatformBackingStoreRhiConfig::D3D12);
         break;
     case Api::Null:
@@ -757,7 +766,7 @@ void QRhiWidget::setApi(Api api)
     \return true if a debug or validation layer will be requested if applicable
     to the graphics API in use.
 
-    \sa setDebugLayer()
+    \sa setDebugLayerEnabled()
  */
 bool QRhiWidget::isDebugLayerEnabled() const
 {
@@ -780,20 +789,20 @@ bool QRhiWidget::isDebugLayerEnabled() const
 
     \sa setApi(), isDebugLayerEnabled()
  */
-void QRhiWidget::setDebugLayer(bool enable)
+void QRhiWidget::setDebugLayerEnabled(bool enable)
 {
     Q_D(QRhiWidget);
     d->config.setDebugLayer(enable);
 }
 
 /*!
-    \property QRhiWidget::textureFormat
+    \property QRhiWidget::colorBufferFormat
 
-    This property controls the texture format for the texture used as the color
-    buffer. The default value is TextureFormat::RGBA8. QRhiWidget supports
-    rendering to a subset of the formats supported by \l QRhiTexture. Only
-    formats that are reported as supported from
-    \l QRhi::isTextureFormatSupported() should be specified, rendering will not be
+    This property controls the texture format of the texture (or renderbuffer)
+    used as the color buffer. The default value is TextureFormat::RGBA8.
+    QRhiWidget supports rendering to a subset of the formats supported by \l
+    QRhiTexture. Only formats that are reported as supported from \l
+    QRhi::isTextureFormatSupported() should be specified, rendering will not be
     functional otherwise.
 
     \note Setting a new format when the widget is already initialized and has
@@ -805,13 +814,13 @@ void QRhiWidget::setDebugLayer(bool enable)
     creating new ones.
  */
 
-QRhiWidget::TextureFormat QRhiWidget::textureFormat() const
+QRhiWidget::TextureFormat QRhiWidget::colorBufferFormat() const
 {
     Q_D(const QRhiWidget);
     return d->widgetTextureFormat;
 }
 
-void QRhiWidget::setTextureFormat(TextureFormat format)
+void QRhiWidget::setColorBufferFormat(TextureFormat format)
 {
     Q_D(QRhiWidget);
     if (d->widgetTextureFormat != format) {
@@ -830,7 +839,7 @@ void QRhiWidget::setTextureFormat(TextureFormat format)
             d->rhiTextureFormat = QRhiTexture::RGB10A2;
             break;
         }
-        emit textureFormatChanged(format);
+        emit colorBufferFormatChanged(format);
         update();
     }
 }
@@ -884,7 +893,7 @@ void QRhiWidget::setSampleCount(int samples)
 }
 
 /*!
-    \property QRhiWidget::explicitSize
+    \property QRhiWidget::fixedColorBufferSize
 
     The fixed size, in pixels, of the QRhiWidget's associated texture. Relevant
     when a fixed texture size is desired that does not depend on the widget's
@@ -902,18 +911,18 @@ void QRhiWidget::setSampleCount(int samples)
     size} * \c{device pixel ratio}).
  */
 
-QSize QRhiWidget::explicitSize() const
+QSize QRhiWidget::fixedColorBufferSize() const
 {
     Q_D(const QRhiWidget);
-    return d->explicitSize;
+    return d->fixedSize;
 }
 
-void QRhiWidget::setExplicitSize(const QSize &pixelSize)
+void QRhiWidget::setFixedColorBufferSize(QSize pixelSize)
 {
     Q_D(QRhiWidget);
-    if (d->explicitSize != pixelSize) {
-        d->explicitSize = pixelSize;
-        emit explicitSizeChanged(pixelSize);
+    if (d->fixedSize != pixelSize) {
+        d->fixedSize = pixelSize;
+        emit fixedColorBufferSizeChanged(pixelSize);
         update();
     }
 }
@@ -947,29 +956,36 @@ void QRhiWidget::setMirrorVertically(bool enabled)
 /*!
     \property QRhiWidget::autoRenderTarget
 
-    This property controls if a depth-stencil QRhiRenderBuffer and a
-    QRhiTextureRenderTarget is created and maintained automatically by the
-    widget. The default value is \c true.
+    The current setting for automatic depth-stencil buffer and render
+    target maintenance.
 
-    In automatic mode, the size and sample count of the depth-stencil buffer
-    follows the color buffer texture's settings. In non-automatic mode,
-    renderTarget() and depthStencilBuffer() always return \nullptr and it is
-    then up to the application's implementation of initialize() to take care of
-    setting up and managing these objects.
+    By default the value is \c true.
  */
-
 bool QRhiWidget::isAutoRenderTargetEnabled() const
 {
     Q_D(const QRhiWidget);
     return d->autoRenderTarget;
 }
 
+/*!
+    Controls if a depth-stencil QRhiRenderBuffer and a QRhiTextureRenderTarget
+    is created and maintained automatically by the widget. The default value is
+    \c true.
+
+    In automatic mode, the size and sample count of the depth-stencil buffer
+    follows the color buffer texture's settings. In non-automatic mode,
+    renderTarget() and depthStencilBuffer() always return \nullptr and it is
+    then up to the application's implementation of initialize() to take care of
+    setting up and managing these objects.
+
+    Call this function with \a enabled set to \c false early on, for example in
+    the derived class' constructor, to disable the automatic mode.
+ */
 void QRhiWidget::setAutoRenderTarget(bool enabled)
 {
     Q_D(QRhiWidget);
     if (d->autoRenderTarget != enabled) {
         d->autoRenderTarget = enabled;
-        emit autoRenderTargetChanged(enabled);
         update();
     }
 }
@@ -982,7 +998,7 @@ void QRhiWidget::setAutoRenderTarget(bool enabled)
 
     The returned QImage will have a format of QImage::Format_RGBA8888,
     QImage::Format_RGBA16FPx4, QImage::Format_RGBA32FPx4, or
-    QImage::Format_BGR30 depending on textureFormat().
+    QImage::Format_BGR30, depending on colorBufferFormat().
 
     QRhiWidget does not know the renderer's approach to blending and
     composition, and therefore cannot know if the output has alpha
@@ -1004,7 +1020,7 @@ void QRhiWidget::setAutoRenderTarget(bool enabled)
     go through the rest of QWidget infrastructure but can right away trigger
     rendering a new frame and then do the readback.
 
-    \sa setTextureFormat()
+    \sa setColorBufferFormat()
  */
 QImage QRhiWidget::grabFramebuffer() const
 {

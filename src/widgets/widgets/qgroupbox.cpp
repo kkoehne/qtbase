@@ -22,6 +22,7 @@
 #include <qpa/qplatformtheme.h>
 
 #include "qdebug.h"
+#include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -42,6 +43,7 @@ public:
     void _q_fixFocus(Qt::FocusReason reason);
     void _q_setChildrenEnabled(bool b);
     void click();
+    bool shouldHandleKeyEvent(const QKeyEvent *keyEvent) const;
     bool flat;
     bool checkable;
     bool checked;
@@ -111,7 +113,7 @@ void QGroupBoxPrivate::click()
     \ingroup geomanagement
     \inmodule QtWidgets
 
-    \image windows-groupbox.png
+    \image fusion-groupbox.png
 
     A group box provides a frame, a title on top, a keyboard shortcut, and
     displays various other widgets inside itself. The keyboard shortcut moves
@@ -132,9 +134,9 @@ void QGroupBoxPrivate::click()
     widgets). The following example shows how we can set up a
     QGroupBox with a layout:
 
-    \snippet widgets/groupbox/window.cpp 2
+    \snippet code/src_gui_widgets_qgroupbox.cpp Set up QGroupBox with layout
 
-    \sa QButtonGroup, {Group Box Example}
+    \sa QButtonGroup
 */
 
 
@@ -326,10 +328,7 @@ bool QGroupBox::event(QEvent *e)
         return true;
     case QEvent::KeyPress: {
         QKeyEvent *k = static_cast<QKeyEvent*>(e);
-        const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
-                                             ->themeHint(QPlatformTheme::ButtonPressKeys)
-                                             .value<QList<Qt::Key>>();
-        if (!k->isAutoRepeat() && buttonPressKeys.contains(k->key())) {
+        if (d->shouldHandleKeyEvent(k)) {
             d->pressedControl = QStyle::SC_GroupBoxCheckBox;
             update(style()->subControlRect(QStyle::CC_GroupBox, &box, QStyle::SC_GroupBoxCheckBox, this));
             return true;
@@ -338,10 +337,7 @@ bool QGroupBox::event(QEvent *e)
     }
     case QEvent::KeyRelease: {
         QKeyEvent *k = static_cast<QKeyEvent*>(e);
-        const auto buttonPressKeys = QGuiApplicationPrivate::platformTheme()
-                                             ->themeHint(QPlatformTheme::ButtonPressKeys)
-                                             .value<QList<Qt::Key>>();
-        if (!k->isAutoRepeat() && buttonPressKeys.contains(k->key())) {
+        if (d->shouldHandleKeyEvent(k)) {
             bool toggle = (d->pressedControl == QStyle::SC_GroupBoxLabel
                            || d->pressedControl == QStyle::SC_GroupBoxCheckBox);
             d->pressedControl = QStyle::SC_None;
@@ -463,9 +459,9 @@ QSize QGroupBox::minimumSizeHint() const
     int baseWidth = metrics.horizontalAdvance(d->title) + metrics.horizontalAdvance(u' ');
     int baseHeight = metrics.height();
     if (d->checkable) {
-        baseWidth += style()->pixelMetric(QStyle::PM_IndicatorWidth, &option);
-        baseWidth += style()->pixelMetric(QStyle::PM_CheckBoxLabelSpacing, &option);
-        baseHeight = qMax(baseHeight, style()->pixelMetric(QStyle::PM_IndicatorHeight, &option));
+        baseWidth += style()->pixelMetric(QStyle::PM_IndicatorWidth, &option, this);
+        baseWidth += style()->pixelMetric(QStyle::PM_CheckBoxLabelSpacing, &option, this);
+        baseHeight = qMax(baseHeight, style()->pixelMetric(QStyle::PM_IndicatorHeight, &option, this));
     }
 
     QSize size = style()->sizeFromContents(QStyle::CT_GroupBox, &option, QSize(baseWidth, baseHeight), this);
@@ -600,6 +596,11 @@ bool QGroupBox::isChecked() const
 
     By default, checkable group boxes are also checked.
 
+    \note The group box itself will not be disabled when the box is unchecked,
+    and you can explicitly enable individual children in a group box that is
+    unchecked. This is however not recommended, as it could create a surprising
+    experience for the end user.
+
     \sa checkable
 */
 void QGroupBox::setChecked(bool b)
@@ -726,6 +727,21 @@ void QGroupBox::mouseReleaseEvent(QMouseEvent *event)
     else if (d->checkable)
         update(style()->subControlRect(QStyle::CC_GroupBox, &box, QStyle::SC_GroupBoxCheckBox, this));
 }
+
+
+bool QGroupBoxPrivate::shouldHandleKeyEvent(const QKeyEvent *keyEvent) const
+{
+    Q_Q(const QGroupBox);
+
+    if (!q->isEnabled() || !q->isCheckable() || keyEvent->isAutoRepeat())
+        return false;
+
+    const QList<Qt::Key> buttonPressKeys = QGuiApplicationPrivate::platformTheme()
+                                           ->themeHint(QPlatformTheme::ButtonPressKeys)
+                                           .value<QList<Qt::Key>>();
+    return buttonPressKeys.contains(keyEvent->key());
+}
+
 
 QT_END_NAMESPACE
 

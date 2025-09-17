@@ -21,11 +21,19 @@
 #include <QtCore/qnativeinterface.h>
 #include <QtGui/qwindow.h>
 
-#if defined(Q_OS_UNIX)
+#if QT_CONFIG(wayland)
 #include <any>
 #include <QtCore/qobject.h>
 
 struct wl_surface;
+#endif
+
+#if defined(Q_OS_MACOS)
+Q_FORWARD_DECLARE_OBJC_CLASS(CALayer);
+typedef long NSInteger;
+enum NSVisualEffectMaterial : NSInteger;
+enum NSVisualEffectBlendingMode : NSInteger;
+enum NSVisualEffectState: NSInteger;
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -55,9 +63,13 @@ struct Q_GUI_EXPORT QWasmWindow
 #if defined(Q_OS_MACOS) || defined(Q_QDOC)
 struct Q_GUI_EXPORT QCocoaWindow
 {
-    QT_DECLARE_NATIVE_INTERFACE(QCocoaWindow, 1, QWindow)
+    QT_DECLARE_NATIVE_INTERFACE(QCocoaWindow, 2, QWindow)
     virtual void setContentBorderEnabled(bool enable) = 0;
     virtual QPoint bottomLeftClippedByNSWindowOffset() const = 0;
+    virtual CALayer *contentLayer() const = 0;
+    virtual void manageVisualEffectArea(quintptr identifier, const QRect &rect,
+        NSVisualEffectMaterial material, NSVisualEffectBlendingMode blendMode,
+        NSVisualEffectState activationState) = 0;
 };
 #endif
 
@@ -106,7 +118,7 @@ struct Q_GUI_EXPORT QWindowsWindow
 };
 #endif // Q_OS_WIN
 
-#if defined(Q_OS_UNIX)
+#if QT_CONFIG(wayland)
 struct Q_GUI_EXPORT QWaylandWindow : public QObject
 {
     Q_OBJECT
@@ -123,9 +135,12 @@ public:
         auto role = std::any_cast<T *>(&anyRole);
         return role ? *role : nullptr;
     }
+    virtual void setSessionRestoreId(const QString &role) = 0;
 Q_SIGNALS:
     void surfaceCreated();
     void surfaceDestroyed();
+    void surfaceRoleCreated();
+    void surfaceRoleDestroyed();
     void xdgActivationTokenCreated(const QString &token);
 
 protected:

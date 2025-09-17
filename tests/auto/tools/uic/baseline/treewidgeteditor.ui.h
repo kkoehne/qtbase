@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -75,7 +75,7 @@ public:
     {
         if (qdesigner_internal__TreeWidgetEditor->objectName().isEmpty())
             qdesigner_internal__TreeWidgetEditor->setObjectName("qdesigner_internal__TreeWidgetEditor");
-        qdesigner_internal__TreeWidgetEditor->resize(619, 321);
+        qdesigner_internal__TreeWidgetEditor->resize(644, 321);
         gridLayout_3 = new QGridLayout(qdesigner_internal__TreeWidgetEditor);
         gridLayout_3->setObjectName("gridLayout_3");
         itemsBox = new QGroupBox(qdesigner_internal__TreeWidgetEditor);
@@ -84,7 +84,7 @@ public:
         gridLayout->setObjectName("gridLayout");
         treeWidget = new QTreeWidget(itemsBox);
         treeWidget->setObjectName("treeWidget");
-        treeWidget->setFocusPolicy(Qt::TabFocus);
+        treeWidget->setFocusPolicy(Qt::FocusPolicy::TabFocus);
 
         gridLayout->addWidget(treeWidget, 0, 0, 1, 1);
 
@@ -105,7 +105,7 @@ public:
 
         horizontalLayout_4->addWidget(deleteItemButton);
 
-        spacerItem = new QSpacerItem(28, 23, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(28, 23, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_4->addItem(spacerItem);
 
@@ -144,7 +144,7 @@ public:
 
         horizontalLayout_2->addWidget(itemIconSelector);
 
-        horizontalSpacer = new QSpacerItem(288, 21, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer = new QSpacerItem(288, 21, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_2->addItem(horizontalSpacer);
 
@@ -156,7 +156,7 @@ public:
 
         columnsBox = new QGroupBox(qdesigner_internal__TreeWidgetEditor);
         columnsBox->setObjectName("columnsBox");
-        QSizePolicy sizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Preferred);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(columnsBox->sizePolicy().hasHeightForWidth());
@@ -165,12 +165,12 @@ public:
         gridLayout_2->setObjectName("gridLayout_2");
         listWidget = new QListWidget(columnsBox);
         listWidget->setObjectName("listWidget");
-        QSizePolicy sizePolicy1(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Expanding);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(listWidget->sizePolicy().hasHeightForWidth());
         listWidget->setSizePolicy(sizePolicy1);
-        listWidget->setFocusPolicy(Qt::TabFocus);
+        listWidget->setFocusPolicy(Qt::FocusPolicy::TabFocus);
 
         gridLayout_2->addWidget(listWidget, 0, 0, 1, 1);
 
@@ -186,7 +186,7 @@ public:
 
         horizontalLayout_3->addWidget(deleteColumnButton);
 
-        spacerItem1 = new QSpacerItem(13, 23, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(13, 23, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_3->addItem(spacerItem1);
 
@@ -215,7 +215,7 @@ public:
 
         horizontalLayout->addWidget(columnIconSelector);
 
-        spacerItem2 = new QSpacerItem(0, 10, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem2 = new QSpacerItem(0, 10, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(spacerItem2);
 
@@ -227,8 +227,8 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__TreeWidgetEditor);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         gridLayout_3->addWidget(buttonBox, 1, 0, 1, 2);
 

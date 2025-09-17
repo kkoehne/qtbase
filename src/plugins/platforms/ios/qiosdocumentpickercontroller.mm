@@ -1,5 +1,6 @@
 // Copyright (C) 2020 Harald Meyer.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIKit.h>
 #import <MobileCoreServices/MobileCoreServices.h>
@@ -30,14 +31,14 @@
         case QFileDialogOptions::AnyFile:
         case QFileDialogOptions::ExistingFile:
         case QFileDialogOptions::ExistingFiles:
-            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeContent]];
-            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeItem]];
-            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeData]];
+            [docTypes addObject:UTTypeContent];
+            [docTypes addObject:UTTypeItem];
+            [docTypes addObject:UTTypeData];
             break;
         // Showing files is not supported in Directory mode in iOS
         case QFileDialogOptions::Directory:
         case QFileDialogOptions::DirectoryOnly:
-            [docTypes addObject:[UTType typeWithIdentifier:(__bridge NSString *)kUTTypeFolder]];
+            [docTypes addObject:UTTypeFolder];
             break;
         }
     }

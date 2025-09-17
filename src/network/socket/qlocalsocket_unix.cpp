@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qlocalsocket.h"
 #include "qlocalsocket_p.h"
@@ -13,16 +14,17 @@
 #include <errno.h>
 
 #include <qdir.h>
+#include <qdeadlinetimer.h>
 #include <qdebug.h>
-#include <qelapsedtimer.h>
 #include <qstringconverter.h>
 
 #ifdef Q_OS_VXWORKS
 #  include <selectLib.h>
 #endif
 
-#define QT_CONNECT_TIMEOUT 30000
+using namespace std::chrono_literals;
 
+#define QT_CONNECT_TIMEOUT 30000
 
 QT_BEGIN_NAMESPACE
 
@@ -355,8 +357,14 @@ bool QLocalSocket::setSocketDescriptor(qintptr socketDescriptor,
     QIODevice::open(openMode);
     d->state = socketState;
     d->describeSocket(socketDescriptor);
-    return d->unixSocket.setSocketDescriptor(socketDescriptor,
-                                             newSocketState, openMode);
+    const bool result = d->unixSocket.setSocketDescriptor(socketDescriptor,
+                                                          newSocketState, openMode);
+    // Since we directly assigned d->state above, any emission from unixSocket for
+    // state change emission is ignored because the state hasn't changed. So, we
+    // emit it directly here ourselves.
+    if (result)
+        emit stateChanged(d->state);
+    return result;
 }
 
 void QLocalSocketPrivate::describeSocket(qintptr socketDescriptor)
@@ -585,21 +593,20 @@ bool QLocalSocket::waitForConnected(int msec)
     if (state() != ConnectingState)
         return (state() == ConnectedState);
 
-    QElapsedTimer timer;
-    timer.start();
-
     pollfd pfd = qt_make_pollfd(d->connectingSocket, POLLIN);
 
-    do {
-        const int timeout = (msec > 0) ? qMax(msec - timer.elapsed(), Q_INT64_C(0)) : msec;
-        const int result = qt_poll_msecs(&pfd, 1, timeout);
+    QDeadlineTimer deadline{msec};
+    auto remainingTime = deadline.remainingTimeAsDuration();
 
+    do {
+        const int result = qt_safe_poll(&pfd, 1, deadline);
         if (result == -1)
             d->setErrorAndEmit(QLocalSocket::UnknownSocketError,
                                "QLocalSocket::waitForConnected"_L1);
         else if (result > 0)
             d->_q_connectToSocket();
-    } while (state() == ConnectingState && !timer.hasExpired(msec));
+    } while (state() == ConnectingState
+             && (remainingTime = deadline.remainingTimeAsDuration()) > 0ns);
 
     return (state() == ConnectedState);
 }

@@ -37,7 +37,7 @@ public:
     {
         if (SslErrors->objectName().isEmpty())
             SslErrors->setObjectName("SslErrors");
-        SslErrors->resize(371, 216);
+        SslErrors->resize(375, 216);
         vboxLayout = new QVBoxLayout(SslErrors);
         vboxLayout->setObjectName("vboxLayout");
         label = new QLabel(SslErrors);
@@ -59,7 +59,7 @@ public:
 
         hboxLayout->addWidget(certificateChainButton);
 
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 

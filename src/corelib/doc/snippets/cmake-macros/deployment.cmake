@@ -1,5 +1,5 @@
 # Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #! [qt_generate_deploy_script_example]
 cmake_minimum_required(VERSION 3.16...3.22)
@@ -20,7 +20,7 @@ qt_generate_deploy_script(
     OUTPUT_SCRIPT deploy_script
     CONTENT "
 qt_deploy_runtime_dependencies(
-    EXECUTABLE $<TARGET_FILE_NAME:MyApp>
+    EXECUTABLE $<TARGET_FILE:MyApp>
 )
 ")
 install(SCRIPT ${deploy_script})

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFILEINFO_P_H
 #define QFILEINFO_P_H
@@ -45,6 +46,8 @@ public:
         CachedPerms             = 0x100
     };
 
+    static QFileInfoPrivate *get(QFileInfo *fi) { return fi->d_func(); }
+
     inline QFileInfoPrivate()
         : QSharedData(), fileEngine(nullptr),
         cachedFlags(0),
@@ -55,7 +58,7 @@ public:
         : QSharedData(copy),
         fileEntry(copy.fileEntry),
         metaData(copy.metaData),
-        fileEngine(QFileSystemEngine::resolveEntryAndCreateLegacyEngine(fileEntry, metaData)),
+        fileEngine(QFileSystemEngine::createLegacyEngine(fileEntry, metaData)),
         cachedFlags(0),
 #ifndef QT_NO_FSFILEENGINE
         isDefaultConstructed(false),
@@ -66,7 +69,7 @@ public:
     {}
     inline QFileInfoPrivate(const QString &file)
         : fileEntry(file),
-        fileEngine(QFileSystemEngine::resolveEntryAndCreateLegacyEngine(fileEntry, metaData)),
+        fileEngine(QFileSystemEngine::createLegacyEngine(fileEntry, metaData)),
         cachedFlags(0),
 #ifndef QT_NO_FSFILEENGINE
         isDefaultConstructed(file.isEmpty()),
@@ -81,7 +84,7 @@ public:
         : QSharedData(),
         fileEntry(file),
         metaData(data),
-        fileEngine(QFileSystemEngine::resolveEntryAndCreateLegacyEngine(fileEntry, metaData)),
+        fileEngine(QFileSystemEngine::createLegacyEngine(fileEntry, metaData)),
         cachedFlags(0),
         isDefaultConstructed(false),
         cache_enabled(true), fileFlags(0), fileSize(0)
@@ -122,7 +125,7 @@ public:
     }
 
     uint getFileFlags(QAbstractFileEngine::FileFlags) const;
-    QDateTime &getFileTime(QAbstractFileEngine::FileTime) const;
+    QDateTime &getFileTime(QFile::FileTime) const;
     QString getFileName(QAbstractFileEngine::FileName) const;
     QString getFileOwner(QAbstractFileEngine::FileOwner own) const;
 
@@ -133,7 +136,7 @@ public:
 
     mutable QString fileNames[QAbstractFileEngine::NFileNames];
     mutable QString fileOwners[2];  // QAbstractFileEngine::FileOwner: OwnerUser and OwnerGroup
-    mutable QDateTime fileTimes[4]; // QAbstractFileEngine::FileTime: BirthTime, MetadataChangeTime, ModificationTime, AccessTime
+    mutable QDateTime fileTimes[4]; // QFile::FileTime: FileBirthTime, FileMetadataChangeTime, FileModificationTime, FileAccessTime
 
     mutable uint cachedFlags : 30;
     bool const isDefaultConstructed : 1; // QFileInfo is a default constructed instance
@@ -146,8 +149,8 @@ public:
     { if (cache_enabled) cachedFlags |= c; }
 
     template <typename Ret, typename FSLambda, typename EngineLambda>
-    Ret checkAttribute(Ret defaultValue, QFileSystemMetaData::MetaDataFlags fsFlags, const FSLambda &fsLambda,
-                       const EngineLambda &engineLambda) const
+    Ret checkAttribute(Ret defaultValue, QFileSystemMetaData::MetaDataFlags fsFlags,
+                       FSLambda fsLambda, EngineLambda engineLambda) const
     {
         if (isDefaultConstructed)
             return defaultValue;
@@ -161,10 +164,10 @@ public:
     }
 
     template <typename Ret, typename FSLambda, typename EngineLambda>
-    Ret checkAttribute(QFileSystemMetaData::MetaDataFlags fsFlags, const FSLambda &fsLambda,
-                       const EngineLambda &engineLambda) const
+    Ret checkAttribute(QFileSystemMetaData::MetaDataFlags fsFlags, FSLambda fsLambda,
+                       EngineLambda engineLambda) const
     {
-        return checkAttribute(Ret(), fsFlags, fsLambda, engineLambda);
+        return checkAttribute(Ret(), std::move(fsFlags), std::move(fsLambda), engineLambda);
     }
 };
 

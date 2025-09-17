@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qnativeevents.h"
 
@@ -180,13 +180,13 @@ QString QNativeModifierEvent::toString() const
 
 QDebug operator<<(QDebug d, QNativeEvent *e)
 {
-    Q_UNUSED(e);
-    return d << e->toString();
+    if (e)
+        return d << e->toString();
+    return d << "QNativeEvent(0x0)";
 }
 
 QDebug operator<<(QDebug d, const QNativeEvent &e)
 {
-    Q_UNUSED(e);
     return d << e.toString();
 }
 

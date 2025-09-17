@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QCOCOAWINDOW_H
 #define QCOCOAWINDOW_H
@@ -19,11 +20,13 @@
 #include <MoltenVK/mvk_vulkan.h>
 #endif
 
-#include <QHash>
+#include <QtCore/qhash.h>
+#include <QtCore/private/qflatmap_p.h>
 
 Q_FORWARD_DECLARE_OBJC_CLASS(NSWindow);
 Q_FORWARD_DECLARE_OBJC_CLASS(NSView);
 Q_FORWARD_DECLARE_OBJC_CLASS(NSCursor);
+Q_FORWARD_DECLARE_OBJC_CLASS(NSVisualEffectView);
 
 #if !defined(__OBJC__)
 using NSInteger = long;
@@ -80,6 +83,8 @@ public:
     QRect normalGeometry() const override;
     void setCocoaGeometry(const QRect &rect);
 
+    QMargins safeAreaMargins() const override;
+
     void setVisible(bool visible) override;
     void setWindowFlags(Qt::WindowFlags flags) override;
     void setWindowState(Qt::WindowStates state) override;
@@ -122,6 +127,7 @@ public:
 
     Q_NOTIFICATION_HANDLER(NSWindowDidMoveNotification) void windowDidMove();
     Q_NOTIFICATION_HANDLER(NSWindowDidResizeNotification) void windowDidResize();
+    Q_NOTIFICATION_HANDLER(NSWindowWillStartLiveResizeNotification) void windowWillStartLiveResize();
     Q_NOTIFICATION_HANDLER(NSWindowDidEndLiveResizeNotification) void windowDidEndLiveResize();
     Q_NOTIFICATION_HANDLER(NSWindowDidBecomeKeyNotification) void windowDidBecomeKey();
     Q_NOTIFICATION_HANDLER(NSWindowDidResignKeyNotification) void windowDidResignKey();
@@ -186,6 +192,8 @@ public:
     Q_DECLARE_FLAGS(RecreationReasons, RecreationReason)
     Q_FLAG(RecreationReasons)
 
+    bool allowsIndependentThreadedRendering() const override;
+
 protected:
     void recreateWindowIfNeeded();
     QCocoaNSWindow *createNSWindow(bool shouldBePanel);
@@ -220,6 +228,13 @@ public: // for QNSView
     static void setupPopupMonitor();
     static void removePopupMonitor();
 
+    CALayer *contentLayer() const override;
+
+    void manageVisualEffectArea(quintptr identifier, const QRect &rect,
+        NSVisualEffectMaterial material, NSVisualEffectBlendingMode blendMode,
+        NSVisualEffectState activationState) override;
+    QFlatMap<quintptr, NSVisualEffectView*> m_effectViews;
+
     NSView *m_view = nil;
     QCocoaNSWindow *m_nsWindow = nil;
 
@@ -232,6 +247,7 @@ public: // for QNSView
     bool m_inSetVisible = false;
     bool m_inSetGeometry = false;
     bool m_inSetStyleMask = false;
+    bool m_inLiveResize = false;
 
     QCocoaMenuBar *m_menubar = nullptr;
 
@@ -240,6 +256,10 @@ public: // for QNSView
     QRect m_normalGeometry;
     int m_registerTouchCount = 0;
     bool m_resizableTransientParent = false;
+
+    QMacKeyValueObserver m_safeAreaInsetsObserver;
+    void updateSafeAreaMarginsIfNeeded();
+    QMargins m_lastReportedSafeAreaMargins;
 
     static const int NoAlertRequest;
     NSInteger m_alertRequest = NoAlertRequest;

@@ -55,24 +55,47 @@ qt_install(FILES
     DESTINATION "${__build_internals_install_dir}"
     COMPONENT Devel
 )
+
+qt_path_join(__build_internals_standalone_test_template_path
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "cmake/QtBuildInternals/${__build_internals_standalone_test_template_dir}")
+
 qt_copy_or_install(
-    DIRECTORY
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/${__build_internals_standalone_test_template_dir}"
+    DIRECTORY "${__build_internals_standalone_test_template_path}"
     DESTINATION "${__build_internals_install_dir}")
 
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/${__build_internals_standalone_test_template_dir}/CMakeLists.txt")
+# In prefix builds we also need to copy the files into the build dir.
+if(QT_WILL_INSTALL)
+    file(COPY "${__build_internals_standalone_test_template_path}"
+        DESTINATION "${__build_internals_install_dir}")
+endif()
 
-include(QtToolchainHelpers)
+set(__build_internals_extra_files
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/QtBuildInternalsHelpers.cmake"
+)
+
+qt_copy_or_install(
+    FILES ${__build_internals_extra_files}
+    DESTINATION "${__build_internals_install_dir}")
+
+# In prefix builds we also need to copy the files into the build dir.
+if(QT_WILL_INSTALL)
+    foreach(__build_internals_file ${__build_internals_extra_files})
+        file(COPY "${__build_internals_file}" DESTINATION "${__build_internals_install_dir}")
+    endforeach()
+endif()
+
+_qt_internal_append_cmake_configure_depends(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/QtBuildInternals/${__build_internals_standalone_test_template_dir}/CMakeLists.txt"
+    ${__build_internals_extra_files}
+)
+
 qt_internal_create_toolchain_file()
-
-include(QtWrapperScriptHelpers)
-qt_internal_create_wrapper_scripts()
 
 ## Library to hold global features:
 ## These features are stored and accessed via Qt::GlobalConfig, but the
 ## files always lived in Qt::Core, so we keep it that way
-add_library(GlobalConfig INTERFACE)
+qt_internal_add_platform_internal_target(GlobalConfig)
 target_include_directories(GlobalConfig INTERFACE
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include/QtCore>
@@ -122,9 +145,11 @@ qt_generate_global_module_pri_file()
 qt_generate_global_device_pri_file()
 qt_generate_qmake_and_qtpaths_wrapper_for_target()
 
-add_library(Qt::GlobalConfig ALIAS GlobalConfig)
+# Depends on the global features being evaluated.
+qt_internal_create_wrapper_scripts()
 
-add_library(GlobalConfigPrivate INTERFACE)
+
+qt_internal_add_platform_internal_target(GlobalConfigPrivate)
 target_link_libraries(GlobalConfigPrivate INTERFACE GlobalConfig)
 target_include_directories(GlobalConfigPrivate INTERFACE
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include/QtCore/${PROJECT_VERSION}>
@@ -132,12 +157,11 @@ target_include_directories(GlobalConfigPrivate INTERFACE
     $<INSTALL_INTERFACE:${INSTALL_INCLUDEDIR}/QtCore/${PROJECT_VERSION}>
     $<INSTALL_INTERFACE:${INSTALL_INCLUDEDIR}/QtCore/${PROJECT_VERSION}/QtCore>
 )
-add_library(Qt::GlobalConfigPrivate ALIAS GlobalConfigPrivate)
 
-include(QtPlatformTargetHelpers)
 qt_internal_setup_public_platform_target()
 
 # defines PlatformCommonInternal PlatformModuleInternal PlatformPluginInternal PlatformToolInternal
+# PlatformExampleInternal
 include(QtInternalTargets)
 qt_internal_run_common_config_tests()
 
@@ -152,7 +176,9 @@ set(__export_targets Platform
                      PlatformModuleInternal
                      PlatformPluginInternal
                      PlatformAppInternal
-                     PlatformToolInternal)
+                     PlatformToolInternal
+                     PlatformExampleInternal
+                 )
 set(__export_name "${INSTALL_CMAKE_NAMESPACE}Targets")
 qt_install(TARGETS ${__export_targets} EXPORT "${__export_name}")
 qt_install(EXPORT ${__export_name}
@@ -160,9 +186,10 @@ qt_install(EXPORT ${__export_name}
            DESTINATION "${__GlobalConfig_install_dir}")
 
 qt_internal_export_modern_cmake_config_targets_file(TARGETS ${__export_targets}
-                                                    EXPORT_NAME_PREFIX ${INSTALL_CMAKE_NAMESPACE}
-                                                    CONFIG_INSTALL_DIR
-                                                    ${__GlobalConfig_install_dir})
+    EXPORT_NAME_PREFIX ${INSTALL_CMAKE_NAMESPACE}
+    CONFIG_BUILD_DIR "${__GlobalConfig_build_dir}"
+    CONFIG_INSTALL_DIR "${__GlobalConfig_install_dir}"
+)
 
 # Save minimum required CMake version to use Qt.
 qt_internal_get_supported_min_cmake_version_for_using_qt(supported_min_version_for_using_qt)
@@ -172,6 +199,19 @@ qt_internal_get_computed_min_cmake_version_for_using_qt(computed_min_version_for
 qt_internal_get_min_new_policy_cmake_version(min_new_policy_version)
 qt_internal_get_max_new_policy_cmake_version(max_new_policy_version)
 
+# Get the list of public helper files that should be automatically included in Qt6Config.cmake.
+# Used in QtConfig.cmake.in template and further down for installation purposes.
+qt_internal_get_qt_build_public_helpers(__qt_cmake_public_helpers)
+list(JOIN __qt_cmake_public_helpers "\n    " QT_PUBLIC_FILES_TO_INCLUDE)
+
+set(__qt_cmake_extra_code_before_dependencies "")
+if(ANDROID)
+    list(APPEND __qt_cmake_extra_code_before_dependencies
+        "__qt_internal_workaround_android_cmp0155_issue()")
+endif()
+list(JOIN __qt_cmake_extra_code_before_dependencies
+    "\n    " QT_CONFIG_EXTRA_CODE_BEFORE_DEPENDENCIES)
+
 # Generate and install Qt6 config file. Make sure it happens after the global feature evaluation so
 # they can be accessed in the Config file if needed.
 configure_package_config_file(
@@ -180,11 +220,24 @@ configure_package_config_file(
     INSTALL_DESTINATION "${__GlobalConfig_install_dir}"
 )
 
+_qt_internal_export_apple_sdk_and_xcode_version_requirements(QT_CONFIG_EXTRAS_CODE)
+
 configure_file(
     "${PROJECT_SOURCE_DIR}/cmake/QtConfigExtras.cmake.in"
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}ConfigExtras.cmake"
     @ONLY
 )
+
+qt_configure_file(
+    OUTPUT "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}TargetsPrecheck.cmake"
+    CONTENT
+"
+_qt_internal_should_include_targets(
+    TARGETS ${__export_targets}
+    NAMESPACE ${INSTALL_CMAKE_NAMESPACE}::
+    OUT_VAR_SHOULD_SKIP __qt_skip_include_targets_file
+)
+")
 
 write_basic_package_version_file(
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}ConfigVersionImpl.cmake"
@@ -196,102 +249,49 @@ qt_internal_write_qt_package_version_file(
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}ConfigVersion.cmake"
 )
 
+# Compute the reverse relative path from QtConfig.cmake to the install prefix
+# this is used in QtInstallPaths to make the install paths relocatable
+if(QT_WILL_INSTALL)
+    get_filename_component(_clean_prefix
+        "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}/${QT_CONFIG_INSTALL_DIR}" ABSOLUTE)
+else()
+    get_filename_component(_clean_prefix "${QT_CONFIG_BUILD_DIR}" ABSOLUTE)
+endif()
+file(RELATIVE_PATH QT_INVERSE_CONFIG_INSTALL_DIR
+    "${_clean_prefix}" "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
+configure_file(
+    "${PROJECT_SOURCE_DIR}/cmake/QtInstallPaths.cmake.in"
+    "${__GlobalConfig_build_dir}/QtInstallPaths.cmake"
+    @ONLY
+)
+
 qt_install(FILES
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}Config.cmake"
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}ConfigExtras.cmake"
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}ConfigVersion.cmake"
     "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}ConfigVersionImpl.cmake"
+    "${__GlobalConfig_build_dir}/${INSTALL_CMAKE_NAMESPACE}TargetsPrecheck.cmake"
+    "${__GlobalConfig_build_dir}/QtInstallPaths.cmake"
     DESTINATION "${__GlobalConfig_install_dir}"
     COMPONENT Devel
 )
 
+qt_internal_get_qt_build_private_helpers(__qt_cmake_private_helpers)
+list(TRANSFORM __qt_cmake_private_helpers PREPEND "cmake/")
+list(TRANSFORM __qt_cmake_private_helpers APPEND ".cmake")
+
+qt_internal_get_qt_build_private_files_to_install(__qt_private_files_to_install)
+list(TRANSFORM __qt_private_files_to_install PREPEND "cmake/")
+
 # Install internal CMake files.
 # The functions defined inside can not be used in public projects.
 # They can only be used while building Qt itself.
+set(__private_files
+    ${__qt_cmake_private_helpers}
+    ${__qt_private_files_to_install}
+)
 qt_copy_or_install(FILES
-                   cmake/ModuleDescription.json.in
-                   cmake/PkgConfigLibrary.pc.in
-                   cmake/Qt3rdPartyLibraryConfig.cmake.in
-                   cmake/Qt3rdPartyLibraryHelpers.cmake
-                   cmake/QtAndroidHelpers.cmake
-                   cmake/QtAppHelpers.cmake
-                   cmake/QtAutogenHelpers.cmake
-                   cmake/QtBaseTopLevelHelpers.cmake
-                   cmake/QtBuild.cmake
-                   cmake/QtBuildInformation.cmake
-                   cmake/QtCMakeHelpers.cmake
-                   cmake/QtCMakeVersionHelpers.cmake
-                   cmake/QtCMakePackageVersionFile.cmake.in
-                   cmake/QtCompilerFlags.cmake
-                   cmake/QtCompilerOptimization.cmake
-                   cmake/QtConfigDependencies.cmake.in
-                   cmake/QtConfigureTimeExecutableCMakeLists.txt.in
-                   cmake/QtDeferredDependenciesHelpers.cmake
-                   cmake/QtDbusHelpers.cmake
-                   cmake/QtDocsHelpers.cmake
-                   cmake/QtExecutableHelpers.cmake
-                   cmake/QtFileConfigure.txt.in
-                   cmake/QtFindPackageHelpers.cmake
-                   cmake/QtFindWrapConfigExtra.cmake.in
-                   cmake/QtFindWrapHelper.cmake
-                   cmake/QtFinishPkgConfigFile.cmake
-                   cmake/QtFinishPrlFile.cmake
-                   cmake/QtFlagHandlingHelpers.cmake
-                   cmake/QtFrameworkHelpers.cmake
-                   cmake/QtGenerateExtPri.cmake
-                   cmake/QtGenerateLibHelpers.cmake
-                   cmake/QtGenerateLibPri.cmake
-                   cmake/QtGenerateVersionScript.cmake
-                   cmake/QtGlobalStateHelpers.cmake
-                   cmake/QtHeadersClean.cmake
-                   cmake/QtInstallHelpers.cmake
-                   cmake/QtJavaHelpers.cmake
-                   cmake/QtLalrHelpers.cmake
-                   cmake/QtModuleConfig.cmake.in
-                   cmake/QtModuleDependencies.cmake.in
-                   cmake/QtModuleHeadersCheck.cmake
-                   cmake/QtModuleHelpers.cmake
-                   cmake/QtModuleToolsConfig.cmake.in
-                   cmake/QtModuleToolsDependencies.cmake.in
-                   cmake/QtModuleToolsVersionlessTargets.cmake.in
-                   cmake/QtNoLinkTargetHelpers.cmake
-                   cmake/QtPkgConfigHelpers.cmake
-                   cmake/QtPlatformAndroid.cmake
-                   cmake/QtPlatformSupport.cmake
-                   cmake/QtPluginConfig.cmake.in
-                   cmake/QtPluginDependencies.cmake.in
-                   cmake/QtPluginHelpers.cmake
-                   cmake/QtPlugins.cmake.in
-                   cmake/QtPostProcess.cmake
-                   cmake/QtPostProcessHelpers.cmake
-                   cmake/QtPrecompiledHeadersHelpers.cmake
-                   cmake/QtUnityBuildHelpers.cmake
-                   cmake/QtPriHelpers.cmake
-                   cmake/QtPrlHelpers.cmake
-                   cmake/QtPlatformTargetHelpers.cmake
-                   cmake/QtProcessConfigureArgs.cmake
-                   cmake/QtQmakeHelpers.cmake
-                   cmake/QtResourceHelpers.cmake
-                   cmake/QtRpathHelpers.cmake
-                   cmake/QtSanitizerHelpers.cmake
-                   cmake/QtScopeFinalizerHelpers.cmake
-                   cmake/QtSeparateDebugInfo.Info.plist.in
-                   cmake/QtSeparateDebugInfo.cmake
-                   cmake/QtSetup.cmake
-                   cmake/QtSimdHelpers.cmake
-                   cmake/QtSingleRepoTargetSetBuildHelpers.cmake
-                   cmake/QtStandaloneTestsConfig.cmake.in
-                   cmake/QtSyncQtHelpers.cmake
-                   cmake/QtTargetHelpers.cmake
-                   cmake/QtTestHelpers.cmake
-                   cmake/QtToolchainHelpers.cmake
-                   cmake/QtToolHelpers.cmake
-                   cmake/QtWasmHelpers.cmake
-                   cmake/QtWrapperScriptHelpers.cmake
-                   cmake/QtWriteArgsFile.cmake
-                   cmake/modulecppexports.h.in
-                   cmake/modulecppexports_p.h.in
-                   cmake/qbatchedtestrunner.in.cpp
+                   ${__private_files}
     DESTINATION "${__GlobalConfig_install_dir}"
 )
 
@@ -308,14 +308,24 @@ qt_copy_or_install(DIRECTORY
 )
 
 # Install qt-internal-strip and qt-internal-ninja files.
-set(__qt_internal_strip_wrappers
+set(__qt_internal_strip_wrapper_programs
     libexec/qt-internal-strip.in
-    libexec/qt-internal-strip.bat.in
     libexec/qt-internal-ninja.in
+)
+set(__qt_internal_strip_wrapper_files
+    libexec/qt-internal-strip.bat.in
     libexec/qt-internal-ninja.bat.in
 )
+set(__qt_internal_strip_wrappers
+    ${__qt_internal_strip_wrapper_programs}
+    ${__qt_internal_strip_wrapper_files}
+)
 qt_copy_or_install(PROGRAMS
-    ${__qt_internal_strip_wrappers}
+    ${__qt_internal_strip_wrapper_programs}
+    DESTINATION "${__GlobalConfig_install_dir}/libexec"
+)
+qt_copy_or_install(FILES
+    ${__qt_internal_strip_wrapper_files}
     DESTINATION "${__GlobalConfig_install_dir}/libexec"
 )
 if(QT_WILL_INSTALL)
@@ -325,40 +335,29 @@ if(QT_WILL_INSTALL)
     endforeach()
 endif()
 
+# Wrap previously queried helpers file.
+list(TRANSFORM __qt_cmake_public_helpers PREPEND "cmake/")
+list(TRANSFORM __qt_cmake_public_helpers APPEND ".cmake")
+
+qt_internal_get_qt_build_public_files_to_install(__qt_public_files_to_install)
+list(TRANSFORM __qt_public_files_to_install PREPEND "cmake/")
+
 # Install public CMake files.
 # The functions defined inside can be used in both public projects and while building Qt.
 # Usually we put such functions into Qt6CoreMacros.cmake, but that's getting bloated.
 # These files will be included by Qt6Config.cmake.
-set(__public_cmake_helpers
-    cmake/QtCopyFileIfDifferent.cmake
-    cmake/QtFeature.cmake
-    cmake/QtFeatureCommon.cmake
-    cmake/QtInitProject.cmake
-    cmake/QtPublicAppleHelpers.cmake
-    cmake/QtPublicCMakeHelpers.cmake
-    cmake/QtPublicCMakeVersionHelpers.cmake
-    cmake/QtPublicExternalProjectHelpers.cmake
-    cmake/QtPublicFinalizerHelpers.cmake
-    cmake/QtPublicPluginHelpers.cmake
-    cmake/QtPublicTargetHelpers.cmake
-    cmake/QtPublicTestHelpers.cmake
-    cmake/QtPublicToolHelpers.cmake
-    cmake/QtPublicWalkLibsHelpers.cmake
-    cmake/QtPublicFindPackageHelpers.cmake
-    cmake/QtPublicDependencyHelpers.cmake
-
-    # Public CMake files that are installed next Qt6Config.cmake, but are NOT included by it.
-    # Instead they are included by the generated CMake toolchain file.
-    cmake/QtPublicWasmToolchainHelpers.cmake
+set(__public_files
+    ${__qt_cmake_public_helpers}
+    ${__qt_public_files_to_install}
 )
 
-qt_copy_or_install(FILES ${__public_cmake_helpers} DESTINATION "${__GlobalConfig_install_dir}")
+qt_copy_or_install(FILES ${__public_files} DESTINATION "${__GlobalConfig_install_dir}")
 
 # In prefix builds we also need to copy the files into the build config directory, so that the
 # build-dir Qt6Config.cmake finds the files when building examples in-tree.
 if(QT_WILL_INSTALL)
-    foreach(_public_cmake_helper ${__public_cmake_helpers})
-        file(COPY "${_public_cmake_helper}" DESTINATION "${__GlobalConfig_build_dir}")
+    foreach(_public_file ${__public_files})
+        file(COPY "${_public_file}" DESTINATION "${__GlobalConfig_build_dir}")
     endforeach()
 endif()
 
@@ -379,6 +378,7 @@ qt_copy_or_install(DIRECTORY cmake/
     PATTERN "3rdparty" EXCLUDE
     PATTERN "macos" EXCLUDE
     PATTERN "ios" EXCLUDE
+    PATTERN "visionos" EXCLUDE
     PATTERN "platforms" EXCLUDE
     PATTERN "QtBuildInternals" EXCLUDE
 )
@@ -393,6 +393,7 @@ if(QT_WILL_INSTALL)
         PATTERN "3rdparty" EXCLUDE
         PATTERN "macos" EXCLUDE
         PATTERN "ios" EXCLUDE
+        PATTERN "visionos" EXCLUDE
         PATTERN "platforms" EXCLUDE
         PATTERN "QtBuildInternals" EXCLUDE
     )
@@ -403,8 +404,11 @@ if(APPLE)
         set(platform_shortname "macos")
     elseif(IOS)
         set(platform_shortname "ios")
+    elseif(VISIONOS)
+        set(platform_shortname "visionos")
     endif()
 
+    # Info.plist
     qt_copy_or_install(FILES "cmake/${platform_shortname}/Info.plist.app.in"
         DESTINATION "${__GlobalConfig_install_dir}/${platform_shortname}"
     )
@@ -413,7 +417,24 @@ if(APPLE)
         DESTINATION "${__GlobalConfig_build_dir}/${platform_shortname}"
     )
 
-    if(IOS)
+    # Privacy manifest
+    qt_copy_or_install(FILES "cmake/${platform_shortname}/PrivacyInfo.xcprivacy"
+        DESTINATION "${__GlobalConfig_install_dir}/${platform_shortname}"
+    )
+    # For examples built as part of prefix build before install
+    file(COPY "cmake/${platform_shortname}/PrivacyInfo.xcprivacy"
+        DESTINATION "${__GlobalConfig_build_dir}/${platform_shortname}"
+    )
+
+    if(MACOS)
+        # Test entitlements
+        qt_copy_or_install(FILES "cmake/${platform_shortname}/test.entitlements.plist"
+            DESTINATION "${__GlobalConfig_install_dir}/${platform_shortname}"
+        )
+        file(COPY "cmake/${platform_shortname}/test.entitlements.plist"
+            DESTINATION "${__GlobalConfig_build_dir}/${platform_shortname}"
+        )
+    elseif(IOS)
         qt_copy_or_install(FILES "cmake/ios/LaunchScreen.storyboard"
             DESTINATION "${__GlobalConfig_install_dir}/ios"
         )
@@ -425,16 +446,24 @@ if(APPLE)
 elseif(WASM)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/util/wasm/wasmtestrunner/qt-wasmtestrunner.py"
         "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/qt-wasmtestrunner.py" @ONLY)
-
     qt_install(PROGRAMS "${QT_BUILD_DIR}/${INSTALL_LIBEXECDIR}/qt-wasmtestrunner.py"
         DESTINATION "${INSTALL_LIBEXECDIR}")
 endif()
 
 # Install CI support files to libexec.
-qt_path_join(__qt_libexec_install_dir "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
-qt_copy_or_install(FILES coin/instructions/qmake/ensure_pro_file.cmake
-    DESTINATION "${__qt_libexec_install_dir}")
-qt_copy_or_install(PROGRAMS "util/testrunner/qt-testrunner.py"
-    DESTINATION "${__qt_libexec_install_dir}")
-qt_copy_or_install(PROGRAMS "util/testrunner/sanitizer-testrunner.py"
-    DESTINATION "${__qt_libexec_install_dir}")
+if(QT_INSTALL_CI_FILES)
+    qt_path_join(__qt_libexec_install_dir "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_copy_or_install(FILES coin/instructions/qmake/ensure_pro_file.cmake
+        DESTINATION "${__qt_libexec_install_dir}")
+    qt_copy_or_install(PROGRAMS "util/testrunner/qt-testrunner.py"
+        DESTINATION "${__qt_libexec_install_dir}")
+    qt_copy_or_install(PROGRAMS "util/testrunner/sanitizer-testrunner.py"
+        DESTINATION "${__qt_libexec_install_dir}")
+    qt_copy_or_install(PROGRAMS "util/json_schema/check_qt_module_json_schemas.py"
+        DESTINATION "${__qt_libexec_install_dir}")
+endif()
+
+# Install json schemas for the users as well
+qt_copy_or_install(FILES
+    "util/json_schema/modules.json"
+    DESTINATION "${INSTALL_QT_SHAREDIR}/json_schema/")

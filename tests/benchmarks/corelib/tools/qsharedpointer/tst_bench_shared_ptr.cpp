@@ -1,6 +1,6 @@
 // Copyright (C) 2021 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QObject>
 #include <QScopeGuard>
@@ -31,6 +31,14 @@ BOOST_NORETURN void boost::throw_exception(const std::exception &, const boost::
 #else
 #  define ONLY_IF_BOOST(x) QSKIP("This benchmark requires Boost.SharedPtr.")
 #endif
+
+class SomeQObjectType : public QObject
+{
+    Q_OBJECT
+public:
+    using QObject::QObject;
+    ~SomeQObjectType() override = default;
+};
 
 class tst_QSharedPointer : public QObject
 {
@@ -102,6 +110,72 @@ private:
 
         QBENCHMARK {
             [[maybe_unused]] auto copy = sp;
+        }
+    }
+
+private Q_SLOTS:
+    void constCast()
+    {
+        auto source = QSharedPointer<const QObject>::create();
+        QBENCHMARK {
+            auto copy = source.constCast<QObject>();
+            source = copy.constCast<const QObject>();
+        }
+    }
+    void constCast_rvalue()
+    {
+        auto source = QSharedPointer<const QObject>::create();
+        QBENCHMARK {
+            auto moved = std::move(source).constCast<QObject>();
+            source = std::move(moved).constCast<const QObject>();
+        }
+    }
+    void staticCast()
+    {
+        auto source = QSharedPointer<SomeQObjectType>::create();
+        QBENCHMARK {
+            auto copy = source.staticCast<QObject>();
+            source = copy.staticCast<SomeQObjectType>();
+        }
+    }
+    void staticCast_rvalue()
+    {
+        auto source = QSharedPointer<SomeQObjectType>::create();
+        QBENCHMARK {
+            auto moved = std::move(source).staticCast<QObject>();
+            source = std::move(moved).staticCast<SomeQObjectType>();
+        }
+    }
+    void dynamicCast()
+    {
+        auto source = QSharedPointer<SomeQObjectType>::create();
+        QBENCHMARK {
+            auto copy = source.dynamicCast<QObject>();
+            source = copy.dynamicCast<SomeQObjectType>();
+        }
+    }
+    void dynamicCast_rvalue()
+    {
+        auto source = QSharedPointer<SomeQObjectType>::create();
+        QBENCHMARK {
+            auto moved = std::move(source).dynamicCast<QObject>();
+            source = std::move(moved).dynamicCast<SomeQObjectType>();
+        }
+    }
+    void objectCast()
+    {
+        auto source = QSharedPointer<SomeQObjectType>::create();
+        QBENCHMARK {
+            auto copy = source.objectCast<QObject>();
+            source = copy.objectCast<SomeQObjectType>();
+        }
+    }
+    void objectCast_rvalue()
+    {
+        auto source = QSharedPointer<SomeQObjectType>::create();
+        QBENCHMARK {
+            auto moved = std::move(source).objectCast<QObject>();
+            source = std::move(moved).objectCast<SomeQObjectType>();
         }
     }
 };

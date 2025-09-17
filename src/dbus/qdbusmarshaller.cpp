@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdbusargument_p.h"
 #include "qdbusconnection.h"
@@ -120,7 +121,7 @@ inline void QDBusMarshaller::append(const QDBusObjectPath &arg)
 inline void QDBusMarshaller::append(const QDBusSignature &arg)
 {
     QByteArray data = arg.signature().toUtf8();
-    if (!ba && data.isEmpty()) {
+    if (!ba && data.isNull()) {
         error("Invalid signature passed in arguments"_L1);
     } else {
         const char *cdata = data.constData();

@@ -30,6 +30,7 @@
 #include <private/qsimd_p.h>
 
 #include <memory>
+#include <variant> // std::monostate
 
 QT_BEGIN_NAMESPACE
 
@@ -142,7 +143,7 @@ struct quint24 {
 
 void qBlendGradient(int count, const QT_FT_Span *spans, void *userData);
 void qBlendTexture(int count, const QT_FT_Span *spans, void *userData);
-#ifdef Q_PROCESSOR_X86
+#if defined(Q_PROCESSOR_X86) || defined(QT_COMPILER_SUPPORTS_LSX)
 extern void (*qt_memfill64)(quint64 *dest, quint64 value, qsizetype count);
 extern void (*qt_memfill32)(quint32 *dest, quint32 value, qsizetype count);
 #else
@@ -174,7 +175,6 @@ struct RadialGradientValues
     qreal dr;
     qreal sqrfr;
     qreal a;
-    qreal inv2a;
     bool extended;
 };
 
@@ -211,6 +211,7 @@ struct Operator
     CompositionFunctionFP funcFP;
 
     union {
+        std::monostate noGradient;
         LinearGradientValues linear;
         RadialGradientValues radial;
     };
@@ -394,7 +395,7 @@ const BlendType * QT_FASTCALL qt_fetch_radial_gradient_template(BlendType *buffe
         return buffer;
     }
 
-    const BlendType *b = buffer;
+    const BlendType *beginOfBuffer = buffer;
     qreal rx = data->m21 * (y + qreal(0.5))
                + data->dx + data->m11 * (x + qreal(0.5));
     qreal ry = data->m22 * (y + qreal(0.5))
@@ -402,11 +403,11 @@ const BlendType * QT_FASTCALL qt_fetch_radial_gradient_template(BlendType *buffe
     bool affine = !data->m13 && !data->m23;
 
     BlendType *end = buffer + length;
+    qreal inv_a = 1 / qreal(2 * op->radial.a);
+
     if (affine) {
         rx -= data->gradient.radial.focal.x;
         ry -= data->gradient.radial.focal.y;
-
-        qreal inv_a = 1 / qreal(2 * op->radial.a);
 
         const qreal delta_rx = data->m11;
         const qreal delta_ry = data->m12;
@@ -433,7 +434,11 @@ const BlendType * QT_FASTCALL qt_fetch_radial_gradient_template(BlendType *buffe
         qreal delta_det = (b_delta_b + delta_bb + 4 * op->radial.a * (rx_plus_ry + delta_rxrxryry)) * inv_a;
         const qreal delta_delta_det = (delta_b_delta_b + 4 * op->radial.a * delta_rx_plus_ry) * inv_a;
 
-        RadialFetchFunc::fetch(buffer, end, op, data, det, delta_det, delta_delta_det, b, delta_b);
+        if (std::isfinite(float(det)) && std::isfinite(float(delta_det))
+            && std::isfinite(float(delta_delta_det)))
+            RadialFetchFunc::fetch(buffer, end, op, data, det, delta_det, delta_delta_det, b, delta_b);
+        else
+            RadialFetchFunc::memfill(buffer, RadialFetchFunc::null(), length);
     } else {
         qreal rw = data->m23 * (y + qreal(0.5))
                    + data->m33 + data->m13 * (x + qreal(0.5));
@@ -452,8 +457,8 @@ const BlendType * QT_FASTCALL qt_fetch_radial_gradient_template(BlendType *buffe
                 if (det >= 0) {
                     qreal detSqrt = qSqrt(det);
 
-                    qreal s0 = (-b - detSqrt) * op->radial.inv2a;
-                    qreal s1 = (-b + detSqrt) * op->radial.inv2a;
+                    qreal s0 = (-b - detSqrt) * inv_a;
+                    qreal s1 = (-b + detSqrt) * inv_a;
 
                     qreal s = qMax(s0, s1);
 
@@ -472,7 +477,7 @@ const BlendType * QT_FASTCALL qt_fetch_radial_gradient_template(BlendType *buffe
         }
     }
 
-    return b;
+    return beginOfBuffer;
 }
 
 template <class Simd>

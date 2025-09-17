@@ -29,6 +29,8 @@
 #include <private/qhighdpiscaling_p.h>
 #include <qpa/qplatformscreen.h>
 
+using namespace std::chrono_literals;
+
 QT_BEGIN_NAMESPACE
 
 static QIcon messageIcon2qIcon(QSystemTrayIcon::MessageIcon icon)
@@ -61,7 +63,7 @@ static QIcon messageIcon2qIcon(QSystemTrayIcon::MessageIcon icon)
     called the \e{system tray} or \e{notification area}, where long-running
     applications can display icons and short messages.
 
-    \image system-tray.png The system tray on Windows XP.
+    \image system-tray.webp The system tray on Windows 10.
 
     The QSystemTrayIcon class can be used on the following platforms:
 
@@ -162,12 +164,16 @@ void QSystemTrayIcon::setContextMenu(QMenu *menu)
 {
     Q_D(QSystemTrayIcon);
     QMenu *oldMenu = d->menu.data();
+    if (oldMenu == menu)
+        return;
+
     d->menu = menu;
     d->updateMenu_sys();
-    if (oldMenu != menu && d->qpa_sys) {
+
+    if (d->qpa_sys) {
         // Show the QMenu-based menu for QPA plugins that do not provide native menus
         if (oldMenu && !oldMenu->platformMenu())
-            QObject::disconnect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested, menu, nullptr);
+            QObject::disconnect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested, oldMenu, nullptr);
         if (menu && !menu->platformMenu()) {
             QObject::connect(d->qpa_sys, &QPlatformSystemTrayIcon::contextMenuRequested,
                              menu,
@@ -456,7 +462,6 @@ QBalloonTip::QBalloonTip(const QIcon &icon, const QString &title,
                          const QString &message, QSystemTrayIcon *ti)
     : QWidget(nullptr, Qt::ToolTip),
       trayIcon(ti),
-      timerId(-1),
       showArrow(true)
 {
     setAttribute(Qt::WA_DeleteOnClose);
@@ -515,7 +520,7 @@ QBalloonTip::QBalloonTip(const QIcon &icon, const QString &title,
 #if QT_CONFIG(label)
     if (!icon.isNull()) {
         QLabel *iconLabel = new QLabel;
-        iconLabel->setPixmap(icon.pixmap(iconSize, iconSize));
+        iconLabel->setPixmap(icon.pixmap(QSize(iconSize, iconSize), devicePixelRatio()));
         iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         iconLabel->setMargin(2);
         layout->addWidget(iconLabel, 0, 0);
@@ -646,7 +651,7 @@ void QBalloonTip::balloon(const QPoint& pos, int msecs, bool showArrow)
     painter2.drawPath(path);
 
     if (msecs > 0)
-        timerId = startTimer(msecs);
+        timer.start(msecs * 1ms, this);
     show();
 }
 
@@ -659,8 +664,8 @@ void QBalloonTip::mousePressEvent(QMouseEvent *e)
 
 void QBalloonTip::timerEvent(QTimerEvent *e)
 {
-    if (e->timerId() == timerId) {
-        killTimer(timerId);
+    if (e->id() == timer.id()) {
+        timer.stop();
         if (!underMouse())
             close();
         return;

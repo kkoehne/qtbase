@@ -5,6 +5,7 @@
 #include <qvariant.h>
 #include <qmetatype.h>
 #include <qdatetime.h>
+#include <qloggingcategory.h>
 #include <qsqlerror.h>
 #include <qsqlfield.h>
 #include <qsqlindex.h>
@@ -30,12 +31,15 @@ Q_DECLARE_METATYPE(MimerStatement)
 
 QT_BEGIN_NAMESPACE
 
+Q_STATIC_LOGGING_CATEGORY(lcMimer, "qt.sql.mimer")
+
 enum class MimerColumnTypes {
     Binary,
     Clob,
     Blob,
     String,
     Int,
+    Numeric,
     Long,
     Float,
     Double,
@@ -221,7 +225,6 @@ static MimerColumnTypes mimerMapColumnTypes(int32_t t)
     case MIMER_TIMESTAMP:
         return MimerColumnTypes::Timestamp;
     case MIMER_INTERVAL_DAY:
-    case MIMER_DECIMAL:
     case MIMER_INTERVAL_DAY_TO_HOUR:
     case MIMER_INTERVAL_DAY_TO_MINUTE:
     case MIMER_INTERVAL_DAY_TO_SECOND:
@@ -241,6 +244,10 @@ static MimerColumnTypes mimerMapColumnTypes(int32_t t)
     case MIMER_UTF8:
     case MIMER_DEFAULT_DATATYPE:
         return MimerColumnTypes::String;
+    case MIMER_INTEGER:
+    case MIMER_DECIMAL:
+    case MIMER_FLOAT:
+        return MimerColumnTypes::Numeric;
     case MIMER_BOOLEAN:
         return MimerColumnTypes::Boolean;
     case MIMER_T_BIGINT:
@@ -248,19 +255,17 @@ static MimerColumnTypes mimerMapColumnTypes(int32_t t)
     case MIMER_NATIVE_BIGINT_NULLABLE:
     case MIMER_NATIVE_BIGINT:
         return MimerColumnTypes::Long;
-    case MIMER_T_FLOAT:
-    case MIMER_FLOAT:
-        return MimerColumnTypes::Float;
     case MIMER_NATIVE_REAL_NULLABLE:
     case MIMER_NATIVE_REAL:
     case MIMER_T_REAL:
+        return MimerColumnTypes::Float;
+    case MIMER_T_FLOAT:
     case MIMER_NATIVE_DOUBLE_NULLABLE:
     case MIMER_NATIVE_DOUBLE:
     case MIMER_T_DOUBLE:
         return MimerColumnTypes::Double;
     case MIMER_NATIVE_INTEGER:
     case MIMER_NATIVE_INTEGER_NULLABLE:
-    case MIMER_INTEGER:
     case MIMER_NATIVE_SMALLINT_NULLABLE:
     case MIMER_NATIVE_SMALLINT:
     case MIMER_T_INTEGER:
@@ -269,7 +274,7 @@ static MimerColumnTypes mimerMapColumnTypes(int32_t t)
     case MIMER_UUID:
         return MimerColumnTypes::Uuid;
     default:
-        qWarning() << "QMimerSQLDriver::mimerMapColumnTypes: Unknown data type: " << t;
+        qCWarning(lcMimer) << "QMimerSQLDriver::mimerMapColumnTypes: Unknown data type:" << t;
     }
     return MimerColumnTypes::Unknown;
 }
@@ -306,6 +311,8 @@ static QMetaType::Type qDecodeMSQLType(int32_t t)
     case MIMER_NCHAR_VARYING:
     case MIMER_UTF8:
     case MIMER_DEFAULT_DATATYPE:
+    case MIMER_INTEGER:
+    case MIMER_FLOAT:
         return QMetaType::QString;
     case MIMER_BOOLEAN:
         return QMetaType::Bool;
@@ -314,19 +321,18 @@ static QMetaType::Type qDecodeMSQLType(int32_t t)
     case MIMER_NATIVE_BIGINT_NULLABLE:
     case MIMER_NATIVE_BIGINT:
         return QMetaType::LongLong;
-    case MIMER_T_FLOAT:
-    case MIMER_FLOAT:
-        return QMetaType::Float;
     case MIMER_NATIVE_REAL_NULLABLE:
     case MIMER_NATIVE_REAL:
     case MIMER_T_REAL:
+        return QMetaType::Float;
+    case MIMER_T_FLOAT:
     case MIMER_NATIVE_DOUBLE_NULLABLE:
     case MIMER_NATIVE_DOUBLE:
     case MIMER_T_DOUBLE:
         return QMetaType::Double;
     case MIMER_NATIVE_INTEGER_NULLABLE:
     case MIMER_T_INTEGER:
-    case MIMER_INTEGER:
+    case MIMER_NATIVE_INTEGER:
         return QMetaType::Int;
     case MIMER_NATIVE_SMALLINT_NULLABLE:
     case MIMER_T_SMALLINT:
@@ -341,7 +347,7 @@ static QMetaType::Type qDecodeMSQLType(int32_t t)
     case MIMER_UUID:
         return QMetaType::QUuid;
     default:
-        qWarning() << "QMimerSQLDriver::qDecodeMSQLType: Unknown data type: " << t;
+        qCWarning(lcMimer) << "QMimerSQLDriver::qDecodeMSQLType: Unknown data type:" << t;
         return QMetaType::UnknownType;
     }
 }
@@ -407,7 +413,7 @@ static int32_t qLookupMimDataType(QStringView s)
     if (s == u"DOUBLE PRECISION")
         return MIMER_T_DOUBLE;
     if (s == u"INTEGER")
-        return MIMER_INTEGER;
+        return MIMER_T_INTEGER;
     if (s == u"SMALLINT")
         return MIMER_T_SMALLINT;
     if (s == u"DATE")
@@ -420,7 +426,7 @@ static int32_t qLookupMimDataType(QStringView s)
         return MIMER_UUID;
     if (s == u"USER-DEFINED")
         return MIMER_DEFAULT_DATATYPE;
-    qWarning() << "QMimerSQLDriver::qLookupMimDataType: Unhandled data type: " << s;
+    qCWarning(lcMimer) << "QMimerSQLDriver::qLookupMimDataType: Unhandled data type:" << s;
     return MIMER_DEFAULT_DATATYPE;
 }
 
@@ -604,7 +610,7 @@ QVariant QMimerSQLResult::data(int i)
                     genericError, QSqlError::StatementError, nullptr));
             return QVariant();
         }
-        mType = MimerParameterType(d->statementhandle, static_cast<std::int16_t>(i) + 1);
+        mType = MimerParameterType(d->statementhandle, static_cast<std::int16_t>(i + 1));
     } else {
         if (i >= MimerColumnCount(d->statementhandle)) {
             setLastError(qMakeError(
@@ -613,18 +619,18 @@ QVariant QMimerSQLResult::data(int i)
                     genericError, QSqlError::StatementError, nullptr));
             return QVariant();
         }
-        mType = MimerColumnType(d->statementhandle, static_cast<std::int16_t>(i) + 1);
+        mType = MimerColumnType(d->statementhandle, static_cast<std::int16_t>(i + 1));
     }
     const QMetaType::Type type = qDecodeMSQLType(mType);
     const MimerColumnTypes mimDataType = mimerMapColumnTypes(mType);
-    err = MimerIsNull(d->statementhandle, static_cast<std::int16_t>(i) + 1);
+    err = MimerIsNull(d->statementhandle, static_cast<std::int16_t>(i + 1));
     if (err > 0) {
         return QVariant(QMetaType(type), nullptr);
     } else {
         switch (mimDataType) {
         case MimerColumnTypes::Date: {
             wchar_t dateString_w[maxDateStringSize + 1];
-            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i) + 1, dateString_w,
+            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i + 1), dateString_w,
                                  sizeof(dateString_w) / sizeof(dateString_w[0]));
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(qMakeError(msgCouldNotGet("date", i),
@@ -635,7 +641,7 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Time: {
             wchar_t timeString_w[maxTimeStringSize + 1];
-            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i) + 1, timeString_w,
+            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i + 1), timeString_w,
                                  sizeof(timeString_w) / sizeof(timeString_w[0]));
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(qMakeError(msgCouldNotGet("time", i),
@@ -652,7 +658,7 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Timestamp: {
             wchar_t dateTimeString_w[maxTimestampStringSize + 1];
-            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i) + 1,
+            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i + 1),
                                  dateTimeString_w,
                                  sizeof(dateTimeString_w) / sizeof(dateTimeString_w[0]));
             if (!MIMER_SUCCEEDED(err)) {
@@ -671,7 +677,7 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Int: {
             int resInt;
-            err = MimerGetInt32(d->statementhandle, static_cast<std::int16_t>(i) + 1, &resInt);
+            err = MimerGetInt32(d->statementhandle, static_cast<std::int16_t>(i + 1), &resInt);
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(qMakeError(msgCouldNotGet("int32", i),
                                         err, QSqlError::StatementError, d->drv_d_func()));
@@ -681,16 +687,16 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Long: {
             int64_t resLongLong;
-            err = MimerGetInt64(d->statementhandle, static_cast<std::int16_t>(i) + 1, &resLongLong);
+            err = MimerGetInt64(d->statementhandle, static_cast<std::int16_t>(i + 1), &resLongLong);
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(qMakeError(msgCouldNotGet("int64", i),
                                         err, QSqlError::StatementError, d->drv_d_func()));
                 return QVariant(QMetaType(type), nullptr);
             }
-            return QString::number(resLongLong).toLongLong();
+            return (qlonglong)resLongLong;
         }
         case MimerColumnTypes::Boolean: {
-            err = MimerGetBoolean(d->statementhandle, static_cast<std::int16_t>(i) + 1);
+            err = MimerGetBoolean(d->statementhandle, static_cast<std::int16_t>(i + 1));
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(
                         qMakeError(msgCouldNotGet("boolean", i),
@@ -701,7 +707,7 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Float: {
             float resFloat;
-            err = MimerGetFloat(d->statementhandle, static_cast<std::int16_t>(i) + 1, &resFloat);
+            err = MimerGetFloat(d->statementhandle, static_cast<std::int16_t>(i + 1), &resFloat);
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(qMakeError(msgCouldNotGet("float", i),
                                         err, QSqlError::StatementError, d->drv_d_func()));
@@ -711,7 +717,7 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Double: {
             double resDouble;
-            err = MimerGetDouble(d->statementhandle, static_cast<std::int16_t>(i) + 1, &resDouble);
+            err = MimerGetDouble(d->statementhandle, static_cast<std::int16_t>(i + 1), &resDouble);
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(
                         qMakeError(msgCouldNotGet("double", i),
@@ -724,7 +730,7 @@ QVariant QMimerSQLResult::data(int i)
             case QSql::LowPrecisionInt64:
                 return static_cast<qint64>(resDouble);
             case QSql::LowPrecisionDouble:
-                return resDouble;
+                return static_cast<qreal>(resDouble);
             case QSql::HighPrecision:
                 return QString::number(resDouble, 'g', 17);
             }
@@ -733,10 +739,10 @@ QVariant QMimerSQLResult::data(int i)
         case MimerColumnTypes::Binary: {
             QByteArray byteArray;
             // Get size
-            err = MimerGetBinary(d->statementhandle, static_cast<std::int16_t>(i) + 1, NULL, 0);
+            err = MimerGetBinary(d->statementhandle, static_cast<std::int16_t>(i + 1), NULL, 0);
             if (MIMER_SUCCEEDED(err)) {
                 byteArray.resize(err);
-                err = MimerGetBinary(d->statementhandle, static_cast<std::int16_t>(i) + 1,
+                err = MimerGetBinary(d->statementhandle, static_cast<std::int16_t>(i + 1),
                                      byteArray.data(), err);
             }
             if (!MIMER_SUCCEEDED(err)) {
@@ -750,7 +756,7 @@ QVariant QMimerSQLResult::data(int i)
         case MimerColumnTypes::Blob: {
             QByteArray byteArray;
             size_t size;
-            err = MimerGetLob(d->statementhandle, static_cast<std::int16_t>(i) + 1, &size,
+            err = MimerGetLob(d->statementhandle, static_cast<std::int16_t>(i + 1), &size,
                               &d->lobhandle);
             if (MIMER_SUCCEEDED(err)) {
                 constexpr size_t maxSize = lobChunkMaxSizeFetch;
@@ -776,34 +782,36 @@ QVariant QMimerSQLResult::data(int i)
             }
             return byteArray;
         }
+        case MimerColumnTypes::Numeric:
         case MimerColumnTypes::String: {
             wchar_t resString_w[maxStackStringSize + 1];
             // Get size
-            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i) + 1, resString_w,
+            err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i + 1), resString_w,
                                  0);
             if (MIMER_SUCCEEDED(err)) {
                 int size = err;
                 if (err <= maxStackStringSize) { // For smaller strings, use a small buffer for
                                                  // efficiency
-                    err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i) + 1,
+                    err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i + 1),
                                          resString_w, maxStackStringSize + 1);
                     if (MIMER_SUCCEEDED(err))
                         return QString::fromWCharArray(resString_w);
                 } else { // For larger strings, dynamically allocate memory
                     QVarLengthArray<wchar_t> largeResString_w(size + 1);
-                    err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i) + 1,
+                    err = MimerGetString(d->statementhandle, static_cast<std::int16_t>(i + 1),
                                          largeResString_w.data(), size + 1);
                     if (MIMER_SUCCEEDED(err))
                         return QString::fromWCharArray(largeResString_w.data());
                 }
             }
-            setLastError(qMakeError(msgCouldNotGet("string", i),
-                                    err, QSqlError::StatementError, d->drv_d_func()));
+            setLastError(qMakeError(msgCouldNotGet(
+                        mimDataType == MimerColumnTypes::Numeric ? "numeric" : "string", i),
+                        err, QSqlError::StatementError, d->drv_d_func()));
             return QVariant(QMetaType(type), nullptr);
         }
         case MimerColumnTypes::Clob: {
             size_t size;
-            err = MimerGetLob(d->statementhandle, static_cast<std::int16_t>(i) + 1, &size,
+            err = MimerGetLob(d->statementhandle, static_cast<std::int16_t>(i + 1), &size,
                               &d->lobhandle);
             if (MIMER_SUCCEEDED(err)) {
                 constexpr size_t maxSize = lobChunkMaxSizeFetch;
@@ -831,13 +839,13 @@ QVariant QMimerSQLResult::data(int i)
         }
         case MimerColumnTypes::Uuid: {
             unsigned char uuidChar[16];
-            err = MimerGetUUID(d->statementhandle, static_cast<std::int16_t>(i) + 1, uuidChar);
+            err = MimerGetUUID(d->statementhandle, static_cast<std::int16_t>(i + 1), uuidChar);
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(qMakeError(msgCouldNotGet("UUID", i),
                                         err, QSqlError::StatementError, d->drv_d_func()));
                 return QVariant(QMetaType(type), nullptr);
             }
-            const QByteArray uuidByteArray = QByteArray(reinterpret_cast<char *>(uuidChar), 16);
+            const auto uuidByteArray = QByteArrayView(reinterpret_cast<char *>(uuidChar), 16);
             return QUuid::fromRfc4122(uuidByteArray);
         }
         case MimerColumnTypes::Unknown:
@@ -853,7 +861,7 @@ QVariant QMimerSQLResult::data(int i)
 bool QMimerSQLResult::isNull(int index)
 {
     Q_D(const QMimerSQLResult);
-    const int32_t rc = MimerIsNull(d->statementhandle, static_cast<std::int16_t>(index) + 1);
+    const int32_t rc = MimerIsNull(d->statementhandle, static_cast<std::int16_t>(index + 1));
     if (!MIMER_SUCCEEDED(rc)) {
         setLastError(qMakeError(
                 QCoreApplication::translate("QMimerSQLResult", "Could not check null, column %1")
@@ -906,12 +914,11 @@ QSqlRecord QMimerSQLResult::record() const
     const int colSize = MimerColumnCount(d->statementhandle);
     for (int i = 0; i < colSize; i++) {
         wchar_t colName_w[100];
-        MimerColumnName(d->statementhandle, static_cast<std::int16_t>(i) + 1, colName_w,
+        MimerColumnName(d->statementhandle, static_cast<std::int16_t>(i + 1), colName_w,
                         sizeof(colName_w) / sizeof(colName_w[0]));
         field.setName(QString::fromWCharArray(colName_w));
-        const int32_t mType = MimerColumnType(d->statementhandle, static_cast<std::int16_t>(i) + 1);
+        const int32_t mType = MimerColumnType(d->statementhandle, static_cast<std::int16_t>(i + 1));
         const QMetaType::Type type = qDecodeMSQLType(mType);
-        field.setSqlType(mType);
         field.setMetaType(QMetaType(type));
         field.setValue(QVariant(field.metaType()));
         // field.setPrecision(); Should be implemented once the Mimer API can give this
@@ -1077,8 +1084,7 @@ bool QMimerSQLResult::exec()
             break;
         }
         case MimerColumnTypes::Uuid: {
-            const QByteArray uuidArray =
-                    QByteArray::fromHex(val.toUuid().toString(QUuid::WithoutBraces).toLatin1());
+            const QByteArray uuidArray = val.toUuid().toRfc4122();
             const unsigned char *uuid =
                     reinterpret_cast<const unsigned char *>(uuidArray.constData());
             err = MimerSetUUID(d->statementhandle, i + 1, uuid);
@@ -1090,14 +1096,16 @@ bool QMimerSQLResult::exec()
             }
             break;
         }
+        case MimerColumnTypes::Numeric:
         case MimerColumnTypes::String: {
             QByteArray string_b = val.toString().trimmed().toUtf8();
             const char *string_u = string_b.constData();
             err = MimerSetString8(d->statementhandle, i + 1, string_u);
             if (!MIMER_SUCCEEDED(err)) {
                 setLastError(
-                        qMakeError(msgCouldNotSet("string", i),
-                                   err, QSqlError::StatementError, d->drv_d_func()));
+                        qMakeError(msgCouldNotSet(
+                            mimDataType == MimerColumnTypes::Numeric ? "numeric" : "string", i),
+                            err, QSqlError::StatementError, d->drv_d_func()));
                 return false;
             }
             break;
@@ -1143,7 +1151,7 @@ bool QMimerSQLResult::exec()
             break;
         }
         case MimerColumnTypes::Blob: {
-            QByteArray blobArr = val.toByteArray();
+            const QByteArray blobArr = val.toByteArray();
             const char *blobData = blobArr.constData();
             qsizetype size = blobArr.size();
             err = MimerSetLob(d->statementhandle, i + 1, size, &d->lobhandle);

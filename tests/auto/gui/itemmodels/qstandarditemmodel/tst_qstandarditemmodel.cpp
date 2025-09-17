@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -68,6 +68,7 @@ private slots:
     void insertRow();
     void insertRows();
     void insertRowsItems();
+    void insertRowsWithChildItems();
     void insertRowInHierarcy();
     void insertColumn_data();
     void insertColumn();
@@ -120,6 +121,7 @@ private slots:
     void taskQTBUG_45114_setItemData();
     void setItemPersistentIndex();
     void signalsOnTakeItem();
+    void takeChild();
     void createPersistentOnLayoutAboutToBeChanged();
 private:
     QStandardItemModel *m_model = nullptr;
@@ -294,6 +296,39 @@ void tst_QStandardItemModel::insertRowsItems()
         QCOMPARE(m->item(i)->model(), m_model);
     }
 }
+
+void tst_QStandardItemModel::insertRowsWithChildItems()
+{
+    QStandardItemModel model;
+    auto *top = new QStandardItem("top");
+    auto *mid = new QStandardItem("mid");
+    auto *btm = new QStandardItem("bottom");
+
+    model.appendRow(top);
+    mid->appendRow(btm);
+
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), nullptr);
+    QCOMPARE(btm->model(), nullptr);
+
+    top->appendRow(mid);
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), &model);
+    QCOMPARE(btm->model(), &model);
+
+    auto mid2 = top->takeChild(0);
+    top->removeRow(0);
+    QCOMPARE(mid, mid2);
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), nullptr);
+    QCOMPARE(btm->model(), nullptr);
+
+    top->appendRows({mid}); // other codepath than appendRow() above
+    QCOMPARE(top->model(), &model);
+    QCOMPARE(mid->model(), &model);
+    QCOMPARE(btm->model(), &model);
+}
+
 
 void tst_QStandardItemModel::insertRowInHierarcy()
 {
@@ -727,7 +762,7 @@ void tst_QStandardItemModel::data()
     const QMap<int, QVariant> itmData = m_model->itemData(m_model->index(0, 0));
     QCOMPARE(itmData.value(Qt::DisplayRole), QLatin1String("initialitem"));
     QCOMPARE(itmData.value(Qt::ToolTipRole), QLatin1String("tooltip"));
-    QVERIFY(!itmData.contains(Qt::UserRole - 1));
+    QVERIFY(!itmData.contains(Qt::StandardItemFlagsRole));
     QVERIFY(m_model->itemData(QModelIndex()).isEmpty());
 }
 
@@ -1402,6 +1437,7 @@ bool tst_QStandardItemModel::compareItems(QStandardItem *item1, QStandardItem *i
     return true;
 }
 
+#ifdef QT_BUILD_INTERNAL
 static QStandardItem *itemFromText(QStandardItem *parent, const QString &text)
 {
     QStandardItem *item = nullptr;
@@ -1428,7 +1464,6 @@ static QStandardItem *itemFromText(QStandardItem *parent, const QString &text)
     return item;
 }
 
-#ifdef QT_BUILD_INTERNAL
 static QModelIndex indexFromText(QStandardItemModel *model, const QString &text)
 {
     QStandardItem *item = itemFromText(model->invisibleRootItem(), text);
@@ -1442,9 +1477,6 @@ struct FriendlyTreeView : public QTreeView
     friend class tst_QStandardItemModel;
     Q_DECLARE_PRIVATE(QTreeView)
 };
-#endif
-
-#ifdef QT_BUILD_INTERNAL
 
 static void populateDragAndDropModel(QStandardItemModel &model, int nRow, int nCol)
 {
@@ -1613,15 +1645,21 @@ void tst_QStandardItemModel::removeRowsAndColumns()
 
     QList<QStandardItem *> row_taken = model.takeRow(6);
     QCOMPARE(row_taken.size(), col_list.size());
-    for (int c = 0; c < col_list.size(); c++)
-        QCOMPARE(row_taken[c]->text() , row_list[6] + QLatin1Char('x') + col_list[c]);
+    for (qsizetype c = 0; c < row_taken.size(); c++) {
+        auto item = row_taken.at(c);
+        QCOMPARE(item->text() , row_list[6] + QLatin1Char('x') + col_list[c]);
+        delete item;
+    }
     row_list.remove(6);
     VERIFY_MODEL
 
     QList<QStandardItem *> col_taken = model.takeColumn(10);
     QCOMPARE(col_taken.size(), row_list.size());
-    for (int r = 0; r < row_list.size(); r++)
-        QCOMPARE(col_taken[r]->text() , row_list[r] + QLatin1Char('x') + col_list[10]);
+    for (qsizetype r = 0; r < col_taken.size(); r++) {
+        auto item = col_taken.at(r);
+        QCOMPARE(item->text() , row_list[r] + QLatin1Char('x') + col_list[10]);
+        delete item;
+    }
     col_list.remove(10);
     VERIFY_MODEL
 }
@@ -1791,6 +1829,7 @@ void tst_QStandardItemModel::signalsOnTakeItem() // QTBUG-89145
     QCOMPARE(takenItem->model(), nullptr);
     QCOMPARE(takenItem->child(0, 0)->model(), nullptr);
     QCOMPARE(m.index(1, 0).data(), QVariant());
+    delete takenItem;
 }
 
 void tst_QStandardItemModel::createPersistentOnLayoutAboutToBeChanged() // QTBUG-93466
@@ -1827,6 +1866,37 @@ void tst_QStandardItemModel::createPersistentOnLayoutAboutToBeChanged() // QTBUG
     QCOMPARE(layoutAboutToBeChangedSpy.size(), 1);
     QCOMPARE(layoutChangedSpy.size(), 1);
 }
+
+void tst_QStandardItemModel::takeChild()  // QTBUG-117900
+{
+  {
+      // with model
+      QStandardItemModel model1;
+      QStandardItemModel model2;
+      QStandardItem base1("base1");
+      model1.setItem(0, 0, &base1);
+      QStandardItem base2("base2");
+      model2.setItem(0, 0, &base2);
+      auto item = new QStandardItem("item1");
+      item->appendRow(new QStandardItem("child"));
+      base1.appendRow(item);
+      base2.appendRow(base1.takeChild(0, 0));
+      QCOMPARE(base1.child(0, 0), nullptr);
+      QCOMPARE(base2.child(0, 0), item);
+  }
+  {
+      // without model
+      QStandardItem base1("base1");
+      QStandardItem base2("base2");
+      auto item = new QStandardItem("item1");
+      item->appendRow(new QStandardItem("child"));
+      base1.appendRow(item);
+      base2.appendRow(base1.takeChild(0, 0));
+      QCOMPARE(base1.child(0, 0), nullptr);
+      QCOMPARE(base2.child(0, 0), item);
+  }
+}
+
 
 QTEST_MAIN(tst_QStandardItemModel)
 #include "tst_qstandarditemmodel.moc"

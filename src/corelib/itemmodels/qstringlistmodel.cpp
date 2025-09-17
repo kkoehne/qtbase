@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 /*
     A simple model that uses a QStringList as its data source.
@@ -267,37 +268,44 @@ bool QStringListModel::removeRows(int row, int count, const QModelIndex &parent)
 */
 bool QStringListModel::moveRows(const QModelIndex &sourceParent, int sourceRow, int count, const QModelIndex &destinationParent, int destinationChild)
 {
-    if (sourceRow < 0
-        || sourceRow + count - 1 >= rowCount(sourceParent)
+    if (count <= 0
         || destinationChild < 0
-        || destinationChild > rowCount(destinationParent)
+        || sourceRow < 0
         || sourceRow == destinationChild
         || sourceRow == destinationChild - 1
-        || count <= 0
         || sourceParent.isValid()
         || destinationParent.isValid()) {
         return false;
     }
+
+    if (const auto rc = rowCount(); sourceRow + count - 1 >= rc || destinationChild > rc)
+        return false;
+
     if (!beginMoveRows(QModelIndex(), sourceRow, sourceRow + count - 1, QModelIndex(), destinationChild))
         return false;
 
-    int fromRow = sourceRow;
-    if (destinationChild < sourceRow)
-        fromRow += count - 1;
-    else
-        destinationChild--;
-    while (count--)
-        lst.move(fromRow, destinationChild);
+    // move [sourceRow, count) into destinationChild:
+    if (sourceRow < destinationChild) {
+        auto beg = lst.begin() + sourceRow;
+        auto end = beg + count;
+        auto to = lst.begin() + destinationChild;
+        std::rotate(beg, end, to);
+    } else {
+        auto to = lst.begin() + destinationChild;
+        auto beg = lst.begin() + sourceRow;
+        auto end = beg + count;
+        std::rotate(to, beg, end);
+    }
     endMoveRows();
     return true;
 }
 
-static bool ascendingLessThan(const QPair<QString, int> &s1, const QPair<QString, int> &s2)
+static bool ascendingLessThan(const std::pair<QString, int> &s1, const std::pair<QString, int> &s2)
 {
     return s1.first < s2.first;
 }
 
-static bool decendingLessThan(const QPair<QString, int> &s1, const QPair<QString, int> &s2)
+static bool decendingLessThan(const std::pair<QString, int> &s1, const std::pair<QString, int> &s2)
 {
     return s1.first > s2.first;
 }
@@ -309,11 +317,11 @@ void QStringListModel::sort(int, Qt::SortOrder order)
 {
     emit layoutAboutToBeChanged(QList<QPersistentModelIndex>(), VerticalSortHint);
 
-    QList<QPair<QString, int>> list;
+    QList<std::pair<QString, int>> list;
     const int lstCount = lst.size();
     list.reserve(lstCount);
     for (int i = 0; i < lstCount; ++i)
-        list.append(QPair<QString, int>(lst.at(i), i));
+        list.emplace_back(lst.at(i), i);
 
     if (order == Qt::AscendingOrder)
         std::sort(list.begin(), list.end(), ascendingLessThan);

@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 import { RunnerStatus, TestStatus } from './batchedtestrunner.js';
 
@@ -37,6 +37,7 @@ export class EmrunCommunication {
     // method increments the output index by 1.
     postOutput(output)
     {
+        output += "\n";
         if (this.#nextOutputBatch) {
             this.#nextOutputBatch += output;
         } else {
@@ -45,9 +46,9 @@ export class EmrunCommunication {
             {
                 window.setTimeout(() =>
                 {
-                    const toSend = this.#nextOutputBatch;
+                    const toSend = this.#nextOutputBatch.replace(/\n$/, '');
                     this.#nextOutputBatch = null;
-                    this.#post(`^out^${this.#indexOfMessage++}^${toSend}$`)
+                    this.#post(`^out^${this.#indexOfMessage++}^${toSend}`)
                         .finally(resolve);
                 }, EmrunCommunication.#BATCHING_DELAY);
             });

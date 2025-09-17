@@ -40,12 +40,11 @@ copy_file() {
 }
 
 copy_file "LICENSE.md" "LICENSE"
+copy_file "ChangeLog.md" "ChangeLog.md"
+copy_file "README.md" "README.md"
+copy_file "README.ijg" "README.ijg"
 
 FILES="
-   change.log
-   ChangeLog.md
-   README.md
-   README.ijg
    jconfig.h.in
    jconfigint.h.in
 
@@ -125,7 +124,7 @@ FILES="
    jmemnobs.c
    jmemsys.h
    jmorecfg.h
-   jpeg_nbits_table.h
+   jpeg_nbits.h
    jquant1.c
    jquant2.c
    jsamplecomp.h
@@ -136,16 +135,16 @@ FILES="
 "
 
 for i in $FILES; do
-    copy_file "$i" "src/$i"
+    copy_file "src/$i" "src/$i"
 done
-copy_file "jversion.h.in" "src/jversion.h"
+copy_file "src/jversion.h.in" "src/jversion.h"
 
 cyear=$(grep COPYRIGHT_YEAR $LIBJPEG_DIR/CMakeLists.txt | sed -e 's/.*"\(.*\)".*/\1/')
 sed -i -e "s/@COPYRIGHT_YEAR@/$cyear/" $TARGET_DIR/src/jversion.h
 
 sed -n -e 's/^[ ]*"//
            s/\(\\n\)*"[ ]*\\*$//
-           /JCOPYRIGHT\ /,/^[ ]*$/ {
+           /JCOPYRIGHT.\ /,/^[ ]*$/ {
                /Copyright/p
            }
           ' $TARGET_DIR/src/jversion.h > $TARGET_DIR/COPYRIGHT.txt

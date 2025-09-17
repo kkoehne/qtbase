@@ -1,6 +1,7 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2019 Mail.ru Group.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:sensitive reason:trivial-impl-only
 
 #ifndef QSTRINGMATCHER_H
 #define QSTRINGMATCHER_H
@@ -40,6 +41,9 @@ public:
     { return indexIn(QStringView(str, length), from); }
     qsizetype indexIn(QStringView str, qsizetype from = 0) const;
     QString pattern() const;
+    QStringView patternView() const noexcept
+    { return q_sv; }
+
     inline Qt::CaseSensitivity caseSensitivity() const { return q_cs; }
 
 private:

@@ -16,7 +16,6 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
-#include <QDebug>
 #include <QtWidgets/qwidget.h>
 #include <private/qwidget_p.h>
 #include <QtGui/qbackingstore.h>
@@ -26,8 +25,6 @@ QT_BEGIN_NAMESPACE
 class QPlatformTextureList;
 class QPlatformTextureListWatcher;
 class QWidgetRepaintManager;
-class QRhi;
-class QRhiSwapChain;
 
 class Q_WIDGETS_EXPORT QWidgetRepaintManager
 {
@@ -71,8 +68,6 @@ public:
     bool isDirty() const;
 
     bool bltRect(const QRect &rect, int dx, int dy, QWidget *widget);
-
-    QRhi *rhi() const;
 
 private:
     void updateLists(QWidget *widget);

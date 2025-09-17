@@ -7,10 +7,14 @@ qt_internal_add_plugin(QNetworkManagerNetworkInformationPlugin
     PLUGIN_TYPE networkinformation
     DEFAULT_IF LINUX
     SOURCES
+        qnetworkmanagernetworkinformationbackend.h
         qnetworkmanagernetworkinformationbackend.cpp
         qnetworkmanagerservice.h
         qnetworkmanagerservice.cpp
     LIBRARIES
         Qt::DBus
         Qt::NetworkPrivate
+    DEFINES
+        "QT_ENABLE_STRICT_MODE_UP_TO=QT_VERSION_CHECK(6,11,0)"
+        QT_NO_CAST_FROM_ASCII
 )

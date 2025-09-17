@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -563,6 +563,9 @@ void tst_QGlyphRun::boundingRect()
 
 void tst_QGlyphRun::mixedScripts()
 {
+    if (QFontDatabase::families(QFontDatabase::Korean).isEmpty())
+        QSKIP("This test requires support for Hangul text");
+
     QString s;
     s += QChar(0x31); // The character '1'
     s += QChar(0xbc14); // Hangul character

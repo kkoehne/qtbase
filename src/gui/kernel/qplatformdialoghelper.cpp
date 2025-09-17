@@ -8,10 +8,6 @@
 #if QT_CONFIG(regularexpression)
 #include <QtCore/QRegularExpression>
 #endif
-#if QT_CONFIG(settings)
-#include <QtCore/QSettings>
-#endif
-#include <QtCore/QSharedData>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
 #include <QtGui/QColor>
@@ -145,7 +141,7 @@ QVariant  QPlatformDialogHelper::defaultStyleHint(QPlatformDialogHelper::StyleHi
 
 // Font dialog
 
-class QFontDialogOptionsPrivate : public QSharedData
+class QFontDialogOptionsPrivate
 {
 public:
     QFontDialogOptionsPrivate() = default;
@@ -242,8 +238,6 @@ public:
     enum { CustomColorCount = 16, StandardColorCount = 6 * 8 };
 
     QColorDialogStaticData();
-    inline void readSettings();
-    inline void writeSettings() const;
 
     QRgb customRgb[CustomColorCount];
     QRgb standardRgb[StandardColorCount];
@@ -258,41 +252,18 @@ QColorDialogStaticData::QColorDialogStaticData() : customSet(false)
             for (int b = 0; b < 3; ++b)
                 standardRgb[i++] = qRgb(r * 255 / 3, g * 255 / 3, b * 255 / 2);
     std::fill(customRgb, customRgb + CustomColorCount, 0xffffffff);
-    readSettings();
-}
-
-void QColorDialogStaticData::readSettings()
-{
-#if QT_CONFIG(settings)
-    const QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
-    for (int i = 0; i < int(CustomColorCount); ++i) {
-        const QVariant v = settings.value("Qt/customColors/"_L1 + QString::number(i));
-        if (v.isValid())
-            customRgb[i] = v.toUInt();
-    }
-#endif
-}
-
-void QColorDialogStaticData::writeSettings() const
-{
-#if QT_CONFIG(settings)
-    if (customSet) {
-        const_cast<QColorDialogStaticData*>(this)->customSet = false;
-        QSettings settings(QSettings::UserScope, QStringLiteral("QtProject"));
-        for (int i = 0; i < int(CustomColorCount); ++i)
-            settings.setValue("Qt/customColors/"_L1 + QString::number(i), customRgb[i]);
-    }
-#endif
 }
 
 Q_GLOBAL_STATIC(QColorDialogStaticData, qColorDialogStaticData)
 
-class QColorDialogOptionsPrivate : public QSharedData
+class QColorDialogOptionsPrivate
 {
 public:
     QColorDialogOptionsPrivate() = default;
-    // Write out settings around destruction of dialogs
-    ~QColorDialogOptionsPrivate() { qColorDialogStaticData()->writeSettings(); }
+    QColorDialogOptionsPrivate(const QColorDialogOptionsPrivate &) = default;
+    QColorDialogOptionsPrivate(QColorDialogOptionsPrivate &&) = default;
+    QColorDialogOptionsPrivate &operator=(const QColorDialogOptionsPrivate &) = delete;
+    QColorDialogOptionsPrivate &operator=(QColorDialogOptionsPrivate &&) = delete;
 
     QColorDialogOptions::ColorDialogOptions options;
     QString windowTitle;
@@ -424,7 +395,7 @@ void QPlatformColorDialogHelper::setOptions(const QSharedPointer<QColorDialogOpt
 
 // File dialog
 
-class QFileDialogOptionsPrivate : public QSharedData
+class QFileDialogOptionsPrivate
 {
 public:
     QFileDialogOptions::FileDialogOptions options;
@@ -758,7 +729,7 @@ QStringList QPlatformFileDialogHelper::cleanFilterList(const QString &filter)
 
 // Message dialog
 
-class QMessageDialogOptionsPrivate : public QSharedData
+class QMessageDialogOptionsPrivate
 {
 public:
     QMessageDialogOptionsPrivate() :
@@ -778,6 +749,8 @@ public:
     QPixmap iconPixmap;
     QString checkBoxLabel;
     Qt::CheckState checkBoxState = Qt::Unchecked;
+    int defaultButtonId = 0;
+    int escapeButtonId = 0;
     QMessageDialogOptions::Options options;
 };
 
@@ -881,9 +854,9 @@ QPlatformDialogHelper::StandardButtons QMessageDialogOptions::standardButtons() 
 }
 
 int QMessageDialogOptions::addButton(const QString &label, QPlatformDialogHelper::ButtonRole role,
-                                     void *buttonImpl)
+                                     void *buttonImpl, int buttonId)
 {
-    const CustomButton b(d->nextCustomButtonId++, label, role, buttonImpl);
+    const CustomButton b(buttonId ? buttonId : d->nextCustomButtonId++, label, role, buttonImpl);
     d->customButtons.append(b);
     return b.id;
 }
@@ -901,6 +874,11 @@ void QMessageDialogOptions::removeButton(int id)
 const QList<QMessageDialogOptions::CustomButton> &QMessageDialogOptions::customButtons()
 {
     return d->customButtons;
+}
+
+void QMessageDialogOptions::clearCustomButtons()
+{
+    d->customButtons.clear();
 }
 
 const QMessageDialogOptions::CustomButton *QMessageDialogOptions::customButton(int id)
@@ -923,6 +901,26 @@ QString QMessageDialogOptions::checkBoxLabel() const
 Qt::CheckState QMessageDialogOptions::checkBoxState() const
 {
     return d->checkBoxState;
+}
+
+void QMessageDialogOptions::setDefaultButton(int id)
+{
+    d->defaultButtonId = id;
+}
+
+int QMessageDialogOptions::defaultButton() const
+{
+    return d->defaultButtonId;
+}
+
+void QMessageDialogOptions::setEscapeButton(int id)
+{
+    d->escapeButtonId = id;
+}
+
+int QMessageDialogOptions::escapeButton() const
+{
+    return d->escapeButtonId;
 }
 
 void QMessageDialogOptions::setOption(QMessageDialogOptions::Option option, bool on)

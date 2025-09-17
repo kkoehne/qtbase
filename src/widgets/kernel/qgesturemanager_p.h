@@ -21,6 +21,8 @@
 #include "private/qwidget_p.h"
 #include "qgesturerecognizer.h"
 
+#include <QtCore/qpointer.h>
+
 #ifndef QT_NO_GESTURES
 
 #include <functional>
@@ -47,7 +49,7 @@ public:
 
     enum InstanceCreation { ForceCreation, DontForceCreation };
 
-    static QGestureManager *instance(InstanceCreation ic = ForceCreation); // declared in qapplication.cpp
+    static QGestureManager *instance(InstanceCreation ic = ForceCreation); // implemented in qapplication.cpp
     static bool gesturePending(QObject *o);
 
     void cleanupCachedGestures(QObject *target, Qt::GestureType type);

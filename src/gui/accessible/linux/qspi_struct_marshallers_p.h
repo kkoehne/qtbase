@@ -18,7 +18,6 @@
 
 #include <QtGui/private/qtguiglobal_p.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qpair.h>
 #include <QtDBus/QDBusArgument>
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusObjectPath>
@@ -92,7 +91,7 @@ typedef QList<QSpiEventListener> QSpiEventListenerArray;
 QDBusArgument &operator<<(QDBusArgument &argument, const QSpiEventListener &action);
 const QDBusArgument &operator>>(const QDBusArgument &argument, QSpiEventListener &action);
 
-typedef QPair<unsigned int, QSpiObjectReferenceArray> QSpiRelationArrayEntry;
+typedef std::pair<unsigned int, QSpiObjectReferenceArray> QSpiRelationArrayEntry;
 typedef QList<QSpiRelationArrayEntry> QSpiRelationArray;
 
 //a(iisv)
@@ -136,6 +135,23 @@ Q_DECLARE_TYPEINFO(QSpiDeviceEvent, Q_RELOCATABLE_TYPE);
 QDBusArgument &operator<<(QDBusArgument &argument, const QSpiDeviceEvent &event);
 const QDBusArgument &operator>>(const QDBusArgument &argument, QSpiDeviceEvent &event);
 
+struct QSpiMatchRule
+{
+    QSpiUIntList states;
+    int stateMatchType;
+    QSpiAttributeSet attributes;
+    int attributeMatchType;
+    QSpiIntList roles;
+    int roleMatchType;
+    QStringList interfaces;
+    int interfaceMatchType;
+    bool invert;
+};
+Q_DECLARE_TYPEINFO(QSpiMatchRule, Q_RELOCATABLE_TYPE);
+
+QDBusArgument &operator<<(QDBusArgument &argument, const QSpiMatchRule &matchRule);
+const QDBusArgument &operator>>(const QDBusArgument &argument, QSpiMatchRule &matchRule);
+
 void qSpiInitializeStructTypes();
 
 QT_END_NAMESPACE
@@ -157,6 +173,7 @@ QT_DECL_METATYPE_EXTERN(QSpiTextRangeList, /* not exported */)
 QT_DECL_METATYPE_EXTERN(QSpiAttributeSet, /* not exported */)
 QT_DECL_METATYPE_EXTERN(QSpiAppUpdate, /* not exported */)
 QT_DECL_METATYPE_EXTERN(QSpiDeviceEvent, /* not exported */)
+QT_DECL_METATYPE_EXTERN(QSpiMatchRule, /* not exported */)
 
 // For qdbusxml2cpp-generated code
 QT_USE_NAMESPACE

@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:sensitive reason:trivial-impl-only
 
 #ifndef QLOCALE_H
 #define QLOCALE_H
@@ -36,6 +37,8 @@ class Q_CORE_EXPORT QLocale
     friend class QTextStreamPrivate;
 
 public:
+    static constexpr int DefaultTwoDigitBaseYear = 1900;
+
 // see qlocale_data_p.h for more info on generated data
 // GENERATED PART STARTS HERE
     enum Language : ushort {
@@ -380,6 +383,12 @@ public:
         Ligurian = 338,
         Rohingya = 339,
         Torwali = 340,
+        Anii = 341,
+        Kangri = 342,
+        Venetian = 343,
+        Kuvi = 344,
+        KaraKalpak = 345,
+        SwampyCree = 346,
 
         Afan = Oromo,
         Bengali = Bangla,
@@ -401,7 +410,7 @@ public:
         Uigur = Uyghur,
         Walamo = Wolaytta,
 
-        LastLanguage = Torwali
+        LastLanguage = SwampyCree
     };
 
     enum Script : ushort {
@@ -983,6 +992,20 @@ public:
     QString toString(ushort i) const { return toString(qulonglong(i)); }
     QString toString(int i) const { return toString(qlonglong(i)); }
     QString toString(uint i) const { return toString(qulonglong(i)); }
+    QString toString(qlonglong number, int fieldWidth, char32_t fillChar) const;
+    QString toString(qulonglong number, int fieldWidth, char32_t fillChar) const;
+    QString toString(int number, int fieldWidth, char32_t fillChar) const
+    { return toString(qlonglong(number), fieldWidth, fillChar); }
+    QString toString(uint number, int fieldWidth, char32_t fillChar) const
+    { return toString(qulonglong(number), fieldWidth, fillChar); }
+    QString toString(long number, int fieldWidth, char32_t fillChar) const
+    { return toString(qlonglong(number), fieldWidth, fillChar); }
+    QString toString(ulong(number), int fieldWidth, char32_t fillChar) const
+    { return toString(qulonglong(number), fieldWidth, fillChar); }
+    QString toString(short number, int fieldWidth, char32_t fillChar) const
+    { return toString(qlonglong(number), fieldWidth, fillChar); }
+    QString toString(ushort number, int fieldWidth, char32_t fillChar) const
+    { return toString(qulonglong(number), fieldWidth, fillChar); }
     QString toString(double f, char format = 'g', int precision = 6) const;
     QString toString(float f, char format = 'g', int precision = 6) const
     { return toString(double(f), format, precision); }
@@ -998,6 +1021,7 @@ public:
     QString toString(QDate date, FormatType format = LongFormat) const;
     QString toString(QTime time, FormatType format = LongFormat) const;
     QString toString(const QDateTime &dateTime, FormatType format = LongFormat) const;
+
     /* We can't pass a default for QCalendar (its declaration mentions
      * QLocale::FormatType, so it has to #include this header, which thus can't
      * #include its, so we can't instantiate QCalendar() as default). This
@@ -1011,18 +1035,39 @@ public:
     QString dateFormat(FormatType format = LongFormat) const;
     QString timeFormat(FormatType format = LongFormat) const;
     QString dateTimeFormat(FormatType format = LongFormat) const;
+    // QCalendar's header has to #include QLocale's, preventing the reverse, so
+    // QCalendar parameters can't have defaults here.
 #if QT_CONFIG(datestring)
-    QDate toDate(const QString &string, FormatType = LongFormat) const;
     QTime toTime(const QString &string, FormatType = LongFormat) const;
-    QDateTime toDateTime(const QString &string, FormatType format = LongFormat) const;
-    QDate toDate(const QString &string, const QString &format) const;
     QTime toTime(const QString &string, const QString &format) const;
+#  if QT_CORE_REMOVED_SINCE(6, 7)
+    QDate toDate(const QString &string, FormatType = LongFormat) const;
+    QDate toDate(const QString &string, const QString &format) const;
+    QDateTime toDateTime(const QString &string, FormatType format = LongFormat) const;
     QDateTime toDateTime(const QString &string, const QString &format) const;
     // Calendar-aware API
     QDate toDate(const QString &string, FormatType format, QCalendar cal) const;
-    QDateTime toDateTime(const QString &string, FormatType format, QCalendar cal) const;
     QDate toDate(const QString &string, const QString &format, QCalendar cal) const;
+    QDateTime toDateTime(const QString &string, FormatType format, QCalendar cal) const;
     QDateTime toDateTime(const QString &string, const QString &format, QCalendar cal) const;
+#  endif
+    QDate toDate(const QString &string, FormatType = LongFormat,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDate toDate(const QString &string, const QString &format,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, FormatType format = LongFormat,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, const QString &format,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
+    // Calendar-aware API
+    QDate toDate(const QString &string, FormatType format, QCalendar cal,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDate toDate(const QString &string, const QString &format, QCalendar cal,
+                 int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, FormatType format, QCalendar cal,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
+    QDateTime toDateTime(const QString &string, const QString &format, QCalendar cal,
+                         int baseYear = DefaultTwoDigitBaseYear) const;
 #endif
 
     QString decimalPoint() const;
@@ -1117,7 +1162,7 @@ public:
     static QString scriptToString(Script script);
     static void setDefault(const QLocale &locale);
 
-    static QLocale c() { return QLocale(C); }
+    static QLocale c() noexcept;
     static QLocale system();
 
     static QList<QLocale> matchingLocales(QLocale::Language language, QLocale::Script script,
@@ -1140,15 +1185,22 @@ public:
 
 private:
     QLocale(QLocalePrivate &dd);
-    bool equals(const QLocale &other) const;
+    bool equals(const QLocale &other) const noexcept;
     friend class QLocalePrivate;
     friend class QSystemLocale;
+    friend class QTimeZonePrivate;
     friend class QCalendarBackend;
     friend class QRomanCalendar;
     friend Q_CORE_EXPORT size_t qHash(const QLocale &key, size_t seed) noexcept;
 
-    friend bool operator==(const QLocale &lhs, const QLocale &rhs) { return lhs.equals(rhs); }
-    friend bool operator!=(const QLocale &lhs, const QLocale &rhs) { return !lhs.equals(rhs); }
+    friend bool comparesEqual(const QLocale &lhs, const QLocale &rhs) noexcept
+    {
+        return lhs.equals(rhs);
+    }
+    Q_DECLARE_EQUALITY_COMPARABLE(QLocale)
+
+    friend Q_CORE_EXPORT bool comparesEqual(const QLocale &lhs, Language rhs);
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QLocale, Language)
 
     QSharedDataPointer<QLocalePrivate> d;
 };

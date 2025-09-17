@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qdbusconnection.h"
 #include "qdbusconnection_p.h"
@@ -431,6 +432,9 @@ QDBusMessage QDBusConnection::call(const QDBusMessage &message, QDBus::CallMode 
 
     See the QDBusInterface::asyncCall() function for a more friendly way
     of placing calls.
+
+    \note Method calls to objects registered by the application itself are never
+    asynchronous due to implementation limitations.
 */
 QDBusPendingCall QDBusConnection::asyncCall(const QDBusMessage &message, int timeout) const
 {
@@ -870,7 +874,9 @@ QString QDBusConnection::name() const
 */
 QDBusConnection::ConnectionCapabilities QDBusConnection::connectionCapabilities() const
 {
-    return d ? d->connectionCapabilities() : ConnectionCapabilities();
+    if (!d)
+        return {};
+    return d->connectionCapabilities() & ~QDBusConnectionPrivate::InternalCapabilitiesMask;
 }
 
 /*!
@@ -1003,8 +1009,7 @@ QByteArray QDBusConnection::localMachineId()
 
 /*!
     \fn void QDBusConnection::swap(QDBusConnection &other)
-
-    Swaps this QDBusConnection instance with \a other.
+    \memberswap{connection}
 */
 
 QT_END_NAMESPACE

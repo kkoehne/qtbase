@@ -388,6 +388,20 @@ void QTextFormatPrivate::recalcFont() const
             case QTextFormat::FontKerning:
                 f.setKerning(props.at(i).value.toBool());
                 break;
+            case QTextFormat::FontFeatures:
+            {
+                const auto fontFeatures = props.at(i).value.value<QHash<QFont::Tag, quint32>>();
+                for (auto it = fontFeatures.constBegin(); it != fontFeatures.constEnd(); ++it)
+                    f.setFeature(it.key(), it.value());
+                break;
+            }
+            case QTextFormat::FontVariableAxes:
+            {
+                const auto fontVariableAxes = props.at(i).value.value<QHash<QFont::Tag, float>>();
+                for (auto it = fontVariableAxes.constBegin(); it != fontVariableAxes.constEnd(); ++it)
+                    f.setVariableAxis(it.key(), it.value());
+                break;
+            }
             default:
                 break;
             }
@@ -404,27 +418,37 @@ void QTextFormatPrivate::recalcFont() const
 Q_GUI_EXPORT QDataStream &operator<<(QDataStream &stream, const QTextFormat &fmt)
 {
     QMap<int, QVariant> properties = fmt.properties();
+    if (stream.version() < QDataStream::Qt_6_11) {
+        auto it = properties.constFind(QTextFormat::FontFeatures);
+        if (it != properties.cend())
+            properties.erase(it);
+
+        it = properties.constFind(QTextFormat::FontVariableAxes);
+        if (it != properties.cend())
+            properties.erase(it);
+    }
+
     if (stream.version() < QDataStream::Qt_6_0) {
-        auto it = properties.find(QTextFormat::FontLetterSpacingType);
-        if (it != properties.end()) {
+        auto it = properties.constFind(QTextFormat::FontLetterSpacingType);
+        if (it != properties.cend()) {
             properties[QTextFormat::OldFontLetterSpacingType] = it.value();
             properties.erase(it);
         }
 
-        it = properties.find(QTextFormat::FontStretch);
-        if (it != properties.end()) {
+        it = properties.constFind(QTextFormat::FontStretch);
+        if (it != properties.cend()) {
             properties[QTextFormat::OldFontStretch] = it.value();
             properties.erase(it);
         }
 
-        it = properties.find(QTextFormat::TextUnderlineColor);
-        if (it != properties.end()) {
+        it = properties.constFind(QTextFormat::TextUnderlineColor);
+        if (it != properties.cend()) {
             properties[QTextFormat::OldTextUnderlineColor] = it.value();
             properties.erase(it);
         }
 
-        it = properties.find(QTextFormat::FontFamilies);
-        if (it != properties.end()) {
+        it = properties.constFind(QTextFormat::FontFamilies);
+        if (it != properties.cend()) {
             properties[QTextFormat::OldFontFamily] = QVariant(it.value().toStringList().constFirst());
             properties.erase(it);
         }
@@ -447,14 +471,17 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextFormat &fmt)
     for (QMap<qint32, QVariant>::ConstIterator it = properties.constBegin();
          it != properties.constEnd(); ++it) {
         qint32 key = it.key();
-        if (key == QTextFormat::OldFontLetterSpacingType)
-            key = QTextFormat::FontLetterSpacingType;
-        else if (key == QTextFormat::OldFontStretch)
-            key = QTextFormat::FontStretch;
-        else if (key == QTextFormat::OldTextUnderlineColor)
-            key = QTextFormat::TextUnderlineColor;
-        else if (key == QTextFormat::OldFontFamily)
-            key = QTextFormat::FontFamilies;
+
+        if (stream.version() < QDataStream::Qt_6_0) {
+            if (key == QTextFormat::OldFontLetterSpacingType)
+                key = QTextFormat::FontLetterSpacingType;
+            else if (key == QTextFormat::OldFontStretch)
+                key = QTextFormat::FontStretch;
+            else if (key == QTextFormat::OldTextUnderlineColor)
+                key = QTextFormat::TextUnderlineColor;
+            else if (key == QTextFormat::OldFontFamily)
+                key = QTextFormat::FontFamilies;
+        }
         fmt.d->insertProperty(key, it.value());
     }
 
@@ -653,14 +680,20 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextTableCellFormat &
     \value FontKerning          Specifies whether the font has kerning turned on.
     \value FontHintingPreference Controls the use of hinting according to values
                                  of the QFont::HintingPreference enum.
+    \value FontFeatures [since 6.11] Assigns integer numbers to typographical features. See
+           \l{QFont::setFeature()} for additional information.
+    \value FontVariableAxes [since 6.11] Assigns floating point numbers to variable axes in variable
+           fonts. See \l{QFont::setVariableAxis()} for additional information.
 
     \omitvalue FirstFontProperty
     \omitvalue LastFontProperty
 
     \value TextUnderlineColor      Specifies the color to draw underlines, overlines and strikeouts.
-    \value TextVerticalAlignment
-    \value TextOutline
-    \value TextUnderlineStyle
+    \value TextVerticalAlignment   Specifies the type of text vertical alignment according to
+                                   the values of the QTextCharFormat::VerticalAlignment enum.
+    \value TextOutline             Specifies a \l QPen used to draw the text outline.
+    \value TextUnderlineStyle      Specifies the style of text underline according to
+                                   the values of the QTextCharFormat::UnderlineStyle enum.
     \value TextToolTip Specifies the (optional) tool tip to be displayed for a fragment of text.
     \value TextSuperScriptBaseline Specifies the baseline (in % of height) of superscript texts.
     \value TextSubScriptBaseline   Specifies the baseline (in % of height) of subscript texts.
@@ -745,6 +778,7 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &stream, QTextTableCellFormat &
     \value ImageWidth
     \value ImageHeight
     \value ImageQuality
+    \value ImageMaxWidth    This enum value has been added in Qt 6.8.
 
     Selection properties
 
@@ -911,9 +945,7 @@ QTextFormat &QTextFormat::operator=(const QTextFormat &rhs)
 /*!
     \fn void QTextFormat::swap(QTextFormat &other)
     \since 5.0
-
-    Swaps this text format with \a other. This function is very fast
-    and never fails.
+    \memberswap{text format}
 */
 
 /*!
@@ -1809,6 +1841,55 @@ void QTextCharFormat::setUnderlineStyle(UnderlineStyle style)
 */
 
 /*!
+    \since 6.11
+
+    Sets the typographical features of the text format's font to be \a fontFeatures.
+
+    \sa QFont::setFeature()
+*/
+void QTextCharFormat::setFontFeatures(const QHash<QFont::Tag, quint32> &fontFeatures)
+{
+    setProperty(FontFeatures, QVariant::fromValue(fontFeatures));
+}
+
+/*!
+    \since 6.11
+
+    Gets the typographical features of the text format's font.
+
+    \sa setFontFeatures()
+*/
+QHash<QFont::Tag, quint32> QTextCharFormat::fontFeatures() const
+{
+    return property(FontFeatures).value<QHash<QFont::Tag, quint32>>();
+}
+
+/*!
+    \since 6.11
+
+    Sets the variable axes of the text format's font to be \a fontVariableAxes.
+
+    \sa QFont::setVariableAxis()
+*/
+void QTextCharFormat::setFontVariableAxes(const QHash<QFont::Tag, float> &fontVariableAxes)
+{
+    setProperty(FontVariableAxes, QVariant::fromValue(fontVariableAxes));
+}
+
+/*!
+    \since 6.11
+
+    Gets the variable axes of the text format's font.
+
+    \sa setFontVariableAxes()
+*/
+QHash<QFont::Tag, float> QTextCharFormat::fontVariableAxes() const
+{
+    return property(FontVariableAxes).value<QHash<QFont::Tag, float>>();
+}
+
+
+/*!
     \fn QPen QTextCharFormat::textOutline() const
 
     Returns the pen used to draw the outlines of characters in this format.
@@ -2144,10 +2225,37 @@ void QTextCharFormat::setFont(const QFont &font, FontPropertiesInheritanceBehavi
         setFontHintingPreference(font.hintingPreference());
     if (mask & QFont::KerningResolved)
         setFontKerning(font.kerning());
+    if (mask & QFont::FeaturesResolved) {
+        const auto tags = font.featureTags();
+
+        QHash<QFont::Tag, quint32> fontFeatures;
+        for (QFont::Tag tag : tags)
+            fontFeatures.insert(tag, font.featureValue(tag));
+        setFontFeatures(fontFeatures);
+    }
+    if (mask & QFont::VariableAxesResolved) {
+        const auto tags = font.variableAxisTags();
+
+        QHash<QFont::Tag, float> fontVariableAxes;
+        for (QFont::Tag tag : tags)
+            fontVariableAxes.insert(tag, font.variableAxisValue(tag));
+        setFontVariableAxes(fontVariableAxes);
+    }
 }
 
 /*!
     Returns the font for this character format.
+
+    This function takes into account the format's font attributes (such as fontWeight()
+    and fontPointSize()) and resolves them on top of the default font, defined as follows.
+    If the format is part of a document, that is the document's default font.
+    Otherwise the properties are resolved on top of a default constructed QFont.
+
+    For example, if this format's font size hasn't been changed from the default font,
+    fontPointSize() returns 0, while \c {font().pointSize()} returns the actual
+    size used for drawing.
+
+    \sa QTextDocument::defaultFont()
 */
 QFont QTextCharFormat::font() const
 {
@@ -2242,13 +2350,8 @@ void QTextBlockFormat::setTabPositions(const QList<QTextOption::Tab> &tabs)
 {
     QList<QVariant> list;
     list.reserve(tabs.size());
-    QList<QTextOption::Tab>::ConstIterator iter = tabs.constBegin();
-    while (iter != tabs.constEnd()) {
-        QVariant v;
-        v.setValue(*iter);
-        list.append(v);
-        ++iter;
-    }
+    for (const auto &e : tabs)
+        list.append(QVariant::fromValue(e));
     setProperty(TabPositions, list);
 }
 
@@ -2264,13 +2367,10 @@ QList<QTextOption::Tab> QTextBlockFormat::tabPositions() const
     if (variant.isNull())
         return QList<QTextOption::Tab>();
     QList<QTextOption::Tab> answer;
-    QList<QVariant> variantsList = qvariant_cast<QList<QVariant> >(variant);
-    QList<QVariant>::Iterator iter = variantsList.begin();
+    const QList<QVariant> variantsList = qvariant_cast<QList<QVariant> >(variant);
     answer.reserve(variantsList.size());
-    while(iter != variantsList.end()) {
-        answer.append( qvariant_cast<QTextOption::Tab>(*iter));
-        ++iter;
-    }
+    for (const auto &e: variantsList)
+        answer.append(qvariant_cast<QTextOption::Tab>(e));
     return answer;
 }
 
@@ -3164,7 +3264,8 @@ QTextTableFormat::QTextTableFormat()
  : QTextFrameFormat()
 {
     setObjectType(TableObject);
-    setCellSpacing(2);
+    setCellPadding(4);
+    setBorderCollapse(true);
     setBorder(1);
 }
 
@@ -3297,7 +3398,7 @@ QTextTableFormat::QTextTableFormat(const QTextFormat &fmt)
     \fn void QTextTableFormat::setBorderCollapse(bool borderCollapse)
     \since 5.14
 
-    Enabling \a borderCollapse will have the following implications:
+    By default, \l borderCollapse() is \c true, which has the following implications:
     \list
     \li The borders and grid of the table will be rendered following the
         CSS table \c border-collapse: \c collapse rules
@@ -3314,9 +3415,11 @@ QTextTableFormat::QTextTableFormat(const QTextFormat &fmt)
         \endlist
     \endlist
 
-    With borderCollapse disabled, cell borders can still be styled
+    With \a borderCollapse set to \c false, cell borders can still be styled
     using QTextTableCellFormat but styling will be applied only within
     the cell's frame, which is probably not very useful in practice.
+
+    \note In Qt versions prior to 6.8, the default value was \c false.
 
     \sa setBorder(), setBorderBrush(), setBorderStyle()
     \sa QTextTableCellFormat
@@ -3326,7 +3429,7 @@ QTextTableFormat::QTextTableFormat(const QTextFormat &fmt)
     \fn bool QTextTableFormat::borderCollapse() const
     \since 5.14
 
-    Returns true if borderCollapse is enabled.
+    Returns \c true if table borders are to be collapsed. The default is \c true.
 
     \sa setBorderCollapse()
 */
@@ -3433,7 +3536,7 @@ QTextImageFormat::QTextImageFormat(const QTextFormat &fmt)
 
     Sets the \a width of the rectangle occupied by the image.
 
-    \sa width(), setHeight()
+    \sa width(), setHeight(), maximumWidth()
 */
 
 
@@ -3443,6 +3546,24 @@ QTextImageFormat::QTextImageFormat(const QTextFormat &fmt)
     Returns the width of the rectangle occupied by the image.
 
     \sa height(), setWidth()
+*/
+
+/*!
+    \fn void QTextImageFormat::setMaximumWidth(QTextLength maximumWidth)
+
+    Sets the \a maximumWidth of the rectangle occupied by the image. This
+    can be an absolute number or a percentage of the available document size.
+
+    \sa width(), setHeight()
+*/
+
+
+/*!
+    \fn QTextLength QTextImageFormat::maximumWidth() const
+
+    Returns the maximum width of the rectangle occupied by the image.
+
+    \sa width(), setMaximumWidth()
 */
 
 
@@ -4001,7 +4122,7 @@ bool QTextFormatCollection::hasFormatCached(const QTextFormat &format) const
 
 int QTextFormatCollection::objectFormatIndex(int objectIndex) const
 {
-    if (objectIndex == -1)
+    if (objectIndex == -1 || objectIndex >= objFormats.size())
         return -1;
     return objFormats.at(objectIndex);
 }

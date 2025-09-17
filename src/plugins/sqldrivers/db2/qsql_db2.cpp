@@ -168,18 +168,7 @@ static QString qDB2Warn(const QDB2DriverPrivate* d, QStringList *errorCodes = nu
 static QString qDB2Warn(const QDB2ResultPrivate* d, QStringList *errorCodes = nullptr)
 {
     int errorCode = 0;
-    QString error = qWarnDB2Handle(SQL_HANDLE_ENV, d->drv_d_func()->hEnv, &errorCode);
-    if (errorCodes && errorCode != 0) {
-        *errorCodes << QString::number(errorCode);
-        errorCode = 0;
-    }
-    if (!error.isEmpty())
-        error += u' ';
-    error += qWarnDB2Handle(SQL_HANDLE_DBC, d->drv_d_func()->hDbc, &errorCode);
-    if (errorCodes && errorCode != 0) {
-        *errorCodes << QString::number(errorCode);
-        errorCode = 0;
-    }
+    QString error = qDB2Warn(d->drv_d_func());
     if (!error.isEmpty())
         error += u' ';
     error += qWarnDB2Handle(SQL_HANDLE_STMT, d->hStmt, &errorCode);
@@ -188,34 +177,20 @@ static QString qDB2Warn(const QDB2ResultPrivate* d, QStringList *errorCodes = nu
     return error;
 }
 
-static void qSqlWarning(const QString& message, const QDB2DriverPrivate* d)
+template <typename T>
+static void qSqlWarning(const QString &message, const T *d)
 {
     qWarning("%s\tError: %s", message.toLocal8Bit().constData(),
                               qDB2Warn(d).toLocal8Bit().constData());
 }
 
-static void qSqlWarning(const QString& message, const QDB2ResultPrivate* d)
-{
-    qWarning("%s\tError: %s", message.toLocal8Bit().constData(),
-                              qDB2Warn(d).toLocal8Bit().constData());
-}
-
-static QSqlError qMakeError(const QString& err, QSqlError::ErrorType type,
-                            const QDB2DriverPrivate* p)
+template <typename T>
+static QSqlError qMakeError(const QString &err, QSqlError::ErrorType type,
+                            const T *p)
 {
     QStringList errorCodes;
     const QString error = qDB2Warn(p, &errorCodes);
-    return QSqlError(QStringLiteral("QDB2: ") + err, error, type,
-                     errorCodes.join(u';'));
-}
-
-static QSqlError qMakeError(const QString& err, QSqlError::ErrorType type,
-                            const QDB2ResultPrivate* p)
-{
-    QStringList errorCodes;
-    const QString error = qDB2Warn(p, &errorCodes);
-    return QSqlError(QStringLiteral("QDB2: ") + err, error, type,
-                     errorCodes.join(u';'));
+    return QSqlError("QDB2: "_L1 + err, error, type, errorCodes.join(u';'));
 }
 
 static QMetaType qDecodeDB2Type(SQLSMALLINT sqltype)
@@ -305,7 +280,6 @@ static QSqlField qMakeFieldInfo(const QDB2ResultPrivate* d, int i)
     // else required is unknown
     f.setLength(colSize == 0 ? -1 : int(colSize));
     f.setPrecision(colScale == 0 ? -1 : int(colScale));
-    f.setSqlType(int(colType));
     SQLTCHAR tableName[TABLENAMESIZE];
     SQLSMALLINT tableNameLen;
     r = SQLColAttribute(d->hStmt, i + 1, SQL_DESC_BASE_TABLE_NAME, tableName,
@@ -505,7 +479,6 @@ static QSqlField qMakeFieldInfo(const SQLHANDLE hStmt)
     // else we don't know.
     f.setLength(qGetIntData(hStmt, 6, isNull)); // column size
     f.setPrecision(qGetIntData(hStmt, 8, isNull)); // precision
-    f.setSqlType(type);
     return f;
 }
 

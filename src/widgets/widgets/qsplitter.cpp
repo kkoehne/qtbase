@@ -19,7 +19,6 @@
 #include "qvarlengtharray.h"
 #include "private/qlayoutengine_p.h"
 #include "private/qsplitter_p.h"
-#include "qtimer.h"
 #include "qdebug.h"
 
 #include <ctype.h>
@@ -709,7 +708,7 @@ void QSplitterPrivate::setSizes_helper(const QList<int> &sizes, bool clampNegati
 bool QSplitterPrivate::shouldShowWidget(const QWidget *w) const
 {
     Q_Q(const QSplitter);
-    return q->isVisible() && !(w->isHidden() && w->testAttribute(Qt::WA_WState_ExplicitShowHide));
+    return q->isVisible() && !QWidgetPrivate::get(w)->isExplicitlyHidden();
 }
 
 void QSplitterPrivate::setGeo(QSplitterLayoutStruct *sls, int p, int s, bool allowCollapse)
@@ -806,7 +805,7 @@ QSplitterLayoutStruct *QSplitterPrivate::findWidget(QWidget *w) const
 void QSplitterPrivate::insertWidget_helper(int index, QWidget *widget, bool show)
 {
     Q_Q(QSplitter);
-    QBoolBlocker b(blockChildAdd);
+    QScopedValueRollback b(blockChildAdd, true);
     const bool needShow = show && shouldShowWidget(widget);
     if (widget->parentWidget() != q)
         widget->setParent(q);
@@ -1146,7 +1145,7 @@ QWidget *QSplitter::replaceWidget(int index, QWidget *widget)
         return nullptr;
     }
 
-    QBoolBlocker b(d->blockChildAdd);
+    QScopedValueRollback b(d->blockChildAdd, true);
 
     const QRect geom = current->geometry();
     const bool wasHidden = current->isHidden();
@@ -1311,7 +1310,7 @@ void QSplitter::setRubberBand(int pos)
     const int rBord = 3; // customizable?
     int hw = handleWidth();
     if (!d->rubberBand) {
-        QBoolBlocker b(d->blockChildAdd);
+        QScopedValueRollback b(d->blockChildAdd, true);
         d->rubberBand = new QRubberBand(QRubberBand::Line, this);
         // For accessibility to identify this special widget.
         d->rubberBand->setObjectName("qt_rubberband"_L1);

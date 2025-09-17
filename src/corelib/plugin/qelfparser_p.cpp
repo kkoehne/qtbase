@@ -1,6 +1,7 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qelfparser_p.h"
 
@@ -35,7 +36,7 @@ static constexpr bool IncludeValidityChecks = true;
 #  define QELFPARSER_DEBUG
 #endif
 #if defined(QELFPARSER_DEBUG)
-static Q_LOGGING_CATEGORY(lcElfParser, "qt.core.plugin.elfparser")
+Q_STATIC_LOGGING_CATEGORY(lcElfParser, "qt.core.plugin.elfparser")
 #  define qEDebug       qCDebug(lcElfParser) << reinterpret_cast<const char16_t *>(error.errMsg->constData()) << ':'
 #else
 #  define qEDebug       if (false) {} else QNoDebug()
@@ -52,6 +53,10 @@ static Q_LOGGING_CATEGORY(lcElfParser, "qt.core.plugin.elfparser")
 #endif
 #ifndef PT_GNU_PROPERTY
 #  define PT_GNU_PROPERTY   0x6474e553
+#endif
+
+#ifndef PN_XNUM
+#  define PN_XNUM 0xffff
 #endif
 
 QT_WARNING_PUSH
@@ -695,7 +700,7 @@ static QLibraryScanResult scanSections(QByteArrayView data, const ErrorMaker &er
         // sections aren't allowed to extend past the end of the file, unless
         // they are NOBITS sections
         if (shdr->sh_type == SHT_NOBITS)
-            continue;;
+            continue;
         if (T::Off end; qAddOverflow(shdr->sh_offset, shdr->sh_size, &end)
                 || end > size_t(data.size())) {
             return error(QLibrary::tr("section contents extend past the end of the file"));

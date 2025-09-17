@@ -1,5 +1,5 @@
 // Copyright (C) 2023 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <string_view>
 
@@ -93,6 +93,18 @@ int main(int argc, char **argv)
         if (fd == -1)
             return EXIT_SUCCESS;
         fprintf(stderr, "Could open /dev/tty\n");
+        return EXIT_FAILURE;
+    }
+
+    if (cmd == "no-coredumps") {
+        struct rlimit corelimit;
+        if (getrlimit(RLIMIT_CORE, &corelimit) != 0) {
+            // this shouldn't happen, so just assume it worked
+            return EXIT_SUCCESS;
+        }
+        if (corelimit.rlim_cur == 0)
+            return EXIT_SUCCESS;
+        fprintf(stderr, "rlim_cur = %lx\n", (unsigned long)corelimit.rlim_cur);
         return EXIT_FAILURE;
     }
 

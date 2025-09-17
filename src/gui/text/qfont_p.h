@@ -17,12 +17,14 @@
 
 #include <QtGui/private/qtguiglobal_p.h>
 #include "QtGui/qfont.h"
+#include "QtCore/qbasictimer.h"
 #include "QtCore/qmap.h"
 #include "QtCore/qhash.h"
 #include "QtCore/qobject.h"
 #include "QtCore/qstringlist.h"
 #include <QtGui/qfontdatabase.h>
 #include "private/qfixed_p.h"
+#include "private/qfontdatabase_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -55,6 +57,7 @@ struct QFontDef
     QString styleName;
 
     QStringList fallBackFamilies;
+    QMap<QFont::Tag, float> variableAxisValues;
 
     qreal pointSize;
     qreal pixelSize;
@@ -85,6 +88,7 @@ struct QFontDef
                     && families == other.families
                     && styleName == other.styleName
                     && hintingPreference == other.hintingPreference
+                    && variableAxisValues == other.variableAxisValues
                           ;
     }
     inline bool operator<(const QFontDef &other) const
@@ -103,6 +107,22 @@ struct QFontDef
 
         if (ignorePitch != other.ignorePitch) return ignorePitch < other.ignorePitch;
         if (fixedPitch != other.fixedPitch) return fixedPitch < other.fixedPitch;
+        if (variableAxisValues != other.variableAxisValues) {
+            if (variableAxisValues.size() != other.variableAxisValues.size())
+                return variableAxisValues.size() < other.variableAxisValues.size();
+
+            {
+                auto it = variableAxisValues.constBegin();
+                auto jt = other.variableAxisValues.constBegin();
+                for (; it != variableAxisValues.constEnd(); ++it, ++jt) {
+                    if (it.key() != jt.key())
+                        return jt.key() < it.key();
+                    if (it.value() != jt.value())
+                        return jt.value() < it.value();
+                }
+            }
+        }
+
         return false;
     }
 };
@@ -120,7 +140,9 @@ inline size_t qHash(const QFontDef &fd, size_t seed = 0) noexcept
                       fd.fixedPitch,
                       fd.families,
                       fd.styleName,
-                      fd.hintingPreference);
+                      fd.hintingPreference,
+                      fd.variableAxisValues.keys(),
+                      fd.variableAxisValues.values());
 }
 
 class QFontEngineData
@@ -132,8 +154,7 @@ public:
     QAtomicInt ref;
     const int fontCacheId;
 
-    QFontEngine *engines[QChar::ScriptCount];
-
+    QFontEngine *engines[QFontDatabasePrivate::ScriptCount];
 private:
     Q_DISABLE_COPY_MOVE(QFontEngineData)
 };
@@ -164,7 +185,7 @@ public:
 
     QFixed letterSpacing;
     QFixed wordSpacing;
-    QHash<quint32, quint32> features;
+    QHash<QFont::Tag, quint32> features;
 
     mutable QFontPrivate *scFont;
     QFont smallCapsFont() const { return QFont(smallCapsFontPrivate()); }
@@ -179,8 +200,12 @@ public:
 
     static void detachButKeepEngineData(QFont *font);
 
-    void setFeature(quint32 tag, quint32 value);
-    void unsetFeature(quint32 tag);
+    void setFeature(QFont::Tag tag, quint32 value);
+    void unsetFeature(QFont::Tag tag);
+
+    void setVariableAxis(QFont::Tag tag, float value);
+    void unsetVariableAxis(QFont::Tag tag);
+    bool hasVariableAxis(QFont::Tag tag, float value) const;
 
 private:
     QFontPrivate &operator=(const QFontPrivate &) { return *this; }
@@ -264,7 +289,7 @@ private:
     uint current_timestamp;
     bool fast;
     const bool autoClean;
-    int timer_id;
+    QBasicTimer timer;
     const int m_id;
 };
 

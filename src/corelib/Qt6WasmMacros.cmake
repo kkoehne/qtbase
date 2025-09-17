@@ -56,18 +56,43 @@ function(_qt_internal_wasm_add_target_helpers target)
             configure_file("${WASM_BUILD_DIR}/libexec/util.js"
                            "${target_output_directory}/util.js" COPYONLY)
         else()
+            get_target_property(no_wasm_files ${target} NO_WASM_DEFAULT_FILES)
+
             if(target_output_directory)
                 set(_target_directory "${target_output_directory}")
             else()
                 set(_target_directory "${CMAKE_CURRENT_BINARY_DIR}")
             endif()
 
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/wasm_shell.html"
-                "${_target_directory}/${_target_output_name}.html")
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
-                ${_target_directory}/qtloader.js COPYONLY)
-            configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
-                ${_target_directory}/qtlogo.svg COPYONLY)
+            if (NOT no_wasm_files)
+                configure_file("${WASM_BUILD_DIR}/plugins/platforms/wasm_shell.html"
+                    "${_target_directory}/${_target_output_name}.html" @ONLY)
+                if(CMAKE_CONFIGURATION_TYPES) # if multiconfig generator
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${_target_directory}/${_target_output_name}.html"
+                            ${_target_directory}/$<CONFIG>/${_target_output_name}.html
+                    )
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
+                            ${_target_directory}/$<CONFIG>/qtloader.js
+                    )
+                    add_custom_command(
+                        TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
+                            ${_target_directory}/$<CONFIG>/qtlogo.svg
+                    )
+                else()
+                    configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtloader.js"
+                        ${_target_directory}/qtloader.js COPYONLY)
+                    configure_file("${WASM_BUILD_DIR}/plugins/platforms/qtlogo.svg"
+                        ${_target_directory}/qtlogo.svg COPYONLY)
+                endif()
+            endif()
         endif()
 
         if(QT_FEATURE_thread)
@@ -91,13 +116,27 @@ function(_qt_internal_wasm_add_target_helpers target)
         endif()
         target_link_options("${target}" PRIVATE "SHELL:-s INITIAL_MEMORY=${QT_WASM_INITIAL_MEMORY}")
 
+        # Set maximum memory size, either from user setting or to 4GB (the 32-bit maximum)
+        get_target_property(_tmp_maximumMemory "${target}" QT_WASM_MAXIMUM_MEMORY)
+        if(_tmp_maximumMemory)
+            set(QT_WASM_MAXIMUM_MEMORY "${_tmp_maximumMemory}")
+        elseif(NOT DEFINED QT_WASM_MAXIMUM_MEMORY)
+            if(QT_FEATURE_wasm_jspi)
+                # Work around Emscripten >2GB and JSPI compatibility issue.
+                set(QT_WASM_MAXIMUM_MEMORY "2GB")
+            else()
+                set(QT_WASM_MAXIMUM_MEMORY "4GB")
+            endif()
+        endif()
+        target_link_options("${target}" PRIVATE "SHELL:-s MAXIMUM_MEMORY=${QT_WASM_MAXIMUM_MEMORY}")
+
     endif()
 endfunction()
 
 function(_qt_internal_add_wasm_extra_exported_methods target)
     get_target_property(wasm_extra_exported_methods "${target}" QT_WASM_EXTRA_EXPORTED_METHODS)
 
-    set(wasm_default_exported_methods "UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS")
+    set(wasm_default_exported_methods "UTF16ToString,stringToUTF16,JSEvents,specialHTMLTargets,FS,callMain")
 
     if(NOT wasm_extra_exported_methods)
         set(wasm_extra_exported_methods ${QT_WASM_EXTRA_EXPORTED_METHODS})
@@ -113,10 +152,16 @@ function(_qt_internal_add_wasm_extra_exported_methods target)
             "SHELL:-s EXPORTED_RUNTIME_METHODS=${wasm_default_exported_methods}"
         )
     endif()
+    # TODO: Remove these flags when LLVM got fixed - QTBUG-131279
+    if(QT_FEATURE_thread)
+         target_link_options("${target}" PRIVATE
+                "SHELL:-s EXPORTED_FUNCTIONS=_main,__embind_initialize_bindings")
+    endif()
 endfunction()
 
 function(_qt_internal_set_wasm_export_name target)
     _qt_internal_wasm_export_name_for_target(export_name ${target})
+    target_link_options("${target}" PRIVATE "SHELL:-s MODULARIZE=1")
     target_link_options("${target}" PRIVATE "SHELL:-s EXPORT_NAME=${export_name}")
 endfunction()
 
@@ -125,7 +170,32 @@ function(_qt_internal_wasm_export_name_for_target out target)
     if(export_name)
         set(${out} "${export_name}" PARENT_SCOPE)
     else()
-        string(REGEX REPLACE "[^a-zA-Z0-9_]" "_" target "${target}")
-        set(${out} "${target}_entry" PARENT_SCOPE)
+        # Modify target name to remove characters which are not valid in
+        # JavaScript identifiers.
+
+        # Prefix leading digit with '_' (2dpaint -> _2dpaint)
+        if("${target}" MATCHES "^[0-9]")
+            set(targ "_${target}")
+        else()
+            set(targ "${target}")
+        endif()
+
+        # Replace remaining non-legal chars with '_' (target-foo -> target_foo)
+        string(REGEX REPLACE "[^a-zA-Z0-9_]" "_" targ "${targ}")
+
+        # Append "_entry" and return
+        set(${out} "${targ}_entry" PARENT_SCOPE)
     endif()
 endfunction()
+
+function(_qt_internal_set_wasm_embind_option target)
+    target_link_libraries("${target}" PRIVATE embind)
+endfunction()
+
+function(_qt_internal_finalize_wasm_app target)
+    _qt_internal_set_wasm_export_name("${target}")
+    _qt_internal_add_wasm_extra_exported_methods("${target}")
+    _qt_internal_wasm_add_target_helpers("${target}")
+    _qt_internal_set_wasm_embind_option("${target}")
+endfunction()
+

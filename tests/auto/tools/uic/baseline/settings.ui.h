@@ -49,26 +49,26 @@ public:
     {
         if (Dialog->objectName().isEmpty())
             Dialog->setObjectName("Dialog");
-        Dialog->resize(392, 176);
+        Dialog->resize(392, 182);
         verticalLayout = new QVBoxLayout(Dialog);
         verticalLayout->setObjectName("verticalLayout");
         hboxLayout = new QHBoxLayout();
         hboxLayout->setObjectName("hboxLayout");
         label = new QLabel(Dialog);
         label->setObjectName("label");
-        QSizePolicy sizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Maximum, QSizePolicy::Policy::Preferred);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(label->sizePolicy().hasHeightForWidth());
         label->setSizePolicy(sizePolicy);
         label->setMinimumSize(QSize(90, 0));
-        label->setAlignment(Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop);
+        label->setAlignment(Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop);
 
         hboxLayout->addWidget(label);
 
         deviceCombo = new QComboBox(Dialog);
         deviceCombo->setObjectName("deviceCombo");
-        QSizePolicy sizePolicy1(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(deviceCombo->sizePolicy().hasHeightForWidth());
@@ -86,7 +86,7 @@ public:
         sizePolicy.setHeightForWidth(label_6->sizePolicy().hasHeightForWidth());
         label_6->setSizePolicy(sizePolicy);
         label_6->setMinimumSize(QSize(90, 0));
-        label_6->setAlignment(Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop);
+        label_6->setAlignment(Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop);
 
         hboxLayout1->addWidget(label_6);
 
@@ -107,7 +107,7 @@ public:
         sizePolicy.setHeightForWidth(crossFadeLabel->sizePolicy().hasHeightForWidth());
         crossFadeLabel->setSizePolicy(sizePolicy);
         crossFadeLabel->setMinimumSize(QSize(90, 0));
-        crossFadeLabel->setAlignment(Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop);
+        crossFadeLabel->setAlignment(Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop);
 
         hboxLayout2->addWidget(crossFadeLabel);
 
@@ -122,8 +122,8 @@ public:
         crossFadeSlider->setSingleStep(1);
         crossFadeSlider->setPageStep(2);
         crossFadeSlider->setValue(0);
-        crossFadeSlider->setOrientation(Qt::Horizontal);
-        crossFadeSlider->setTickPosition(QSlider::TicksBelow);
+        crossFadeSlider->setOrientation(Qt::Orientation::Horizontal);
+        crossFadeSlider->setTickPosition(QSlider::TickPosition::TicksBelow);
 
         vboxLayout->addWidget(crossFadeSlider);
 
@@ -137,7 +137,7 @@ public:
 
         hboxLayout3->addWidget(label_3);
 
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout3->addItem(spacerItem);
 
@@ -147,7 +147,7 @@ public:
 
         hboxLayout3->addWidget(label_5);
 
-        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout3->addItem(spacerItem1);
 
@@ -168,8 +168,8 @@ public:
 
         buttonBox = new QDialogButtonBox(Dialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         verticalLayout->addWidget(buttonBox);
 

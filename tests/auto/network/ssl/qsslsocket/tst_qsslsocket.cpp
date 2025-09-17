@@ -1,6 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2014 Governikus GmbH & Co. KG.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 
@@ -42,6 +42,8 @@
 
 #include "private/qsslsocket_p.h"
 #include "private/qsslconfiguration_p.h"
+
+#include <memory>
 
 using namespace std::chrono_literals;
 
@@ -166,9 +168,7 @@ private slots:
     void protocol();
     void protocolServerSide_data();
     void protocolServerSide();
-#if QT_CONFIG(openssl)
     void serverCipherPreferences();
-#endif
     void setCaCertificates();
     void setLocalCertificate();
     void localCertificateChain();
@@ -1663,8 +1663,6 @@ void tst_QSslSocket::protocolServerSide()
     QCOMPARE(client.isEncrypted(), works);
 }
 
-#if QT_CONFIG(openssl)
-
 void tst_QSslSocket::serverCipherPreferences()
 {
     if (!isTestingOpenSsl)
@@ -1759,8 +1757,6 @@ void tst_QSslSocket::serverCipherPreferences()
     }
 }
 
-#endif // Feature 'openssl'.
-
 
 void tst_QSslSocket::setCaCertificates()
 {
@@ -1820,8 +1816,8 @@ void tst_QSslSocket::setLocalCertificateChain()
     QEventLoop loop;
     QTimer::singleShot(5000, &loop, SLOT(quit()));
 
-    const QScopedPointer<QSslSocket, QScopedPointerDeleteLater> client(new QSslSocket);
-    socket = client.data();
+    const std::unique_ptr<QSslSocket, QScopedPointerDeleteLater> client(new QSslSocket);
+    socket = client.get();
     connect(socket, SIGNAL(encrypted()), &loop, SLOT(quit()));
     connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), &loop, SLOT(quit()));
     connect(socket, SIGNAL(sslErrors(QList<QSslError>)), this, SLOT(ignoreErrorSlot()));
@@ -3287,7 +3283,7 @@ class SslServer4 : public QTcpServer
     Q_OBJECT
 public:
 
-    QScopedPointer<WebSocket> socket;
+    std::unique_ptr<WebSocket> socket;
 
 protected:
     void incomingConnection(qintptr socketDescriptor) override
@@ -3316,7 +3312,7 @@ void tst_QSslSocket::qtbug18498_peek()
         if (!--encryptedCounter)
             exitLoop();
     });
-    WebSocket *serversocket = server.socket.data();
+    WebSocket *serversocket = server.socket.get();
     connect(serversocket, &QSslSocket::encrypted, this, [&encryptedCounter](){
         if (!--encryptedCounter)
             exitLoop();
@@ -3358,13 +3354,13 @@ class SslServer5 : public QTcpServer
 {
     Q_OBJECT
 public:
-    SslServer5() : socket(0) {}
-    QSslSocket *socket;
+    SslServer5() {}
+    std::unique_ptr<QSslSocket> socket;
 
 protected:
     void incomingConnection(qintptr socketDescriptor) override
     {
-        socket =  new QSslSocket;
+        socket = std::make_unique<QSslSocket>();
         socket->setSocketDescriptor(socketDescriptor);
     }
 };
@@ -3377,12 +3373,12 @@ void tst_QSslSocket::qtbug18498_peek2()
 
     SslServer5 listener;
     QVERIFY(listener.listen(QHostAddress::Any));
-    QScopedPointer<QSslSocket> client(new QSslSocket);
+    std::unique_ptr<QSslSocket> client(new QSslSocket);
     client->connectToHost(QHostAddress::LocalHost, listener.serverPort());
     QVERIFY(client->waitForConnected(5000));
     QVERIFY(listener.waitForNewConnection(1000));
 
-    QScopedPointer<QSslSocket> server(listener.socket);
+    QSslSocket *server = listener.socket.get();
 
     QVERIFY(server->write("HELLO\r\n", 7));
     QTRY_COMPARE(client->bytesAvailable(), 7);
@@ -3516,9 +3512,10 @@ void tst_QSslSocket::dhServerCustomParamsNull()
     if (setProxy)
         return;
 
+    const QSslCipher cipherWithDH("DHE-RSA-AES256-SHA256");
     SslServer server;
-    server.ciphers = {QSslCipher("DHE-RSA-AES256-SHA"), QSslCipher("DHE-DSS-AES256-SHA")};
-    server.protocol = Test::TlsV1_0;
+    server.ciphers = {cipherWithDH};
+    server.protocol = QSsl::TlsV1_2;
 
     QSslConfiguration cfg = server.config;
     cfg.setDiffieHellmanParameters(QSslDiffieHellmanParameters());
@@ -3531,7 +3528,6 @@ void tst_QSslSocket::dhServerCustomParamsNull()
 
     QSslSocket client;
     QSslConfiguration config = client.sslConfiguration();
-    config.setProtocol(Test::TlsV1_0);
     client.setSslConfiguration(config);
     socket = &client;
     connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)), &loop, SLOT(quit()));
@@ -3542,7 +3538,8 @@ void tst_QSslSocket::dhServerCustomParamsNull()
 
     loop.exec();
 
-    QVERIFY(client.state() != QAbstractSocket::ConnectedState);
+    QCOMPARE(client.state(), QAbstractSocket::ConnectedState);
+    QCOMPARE(client.sessionCipher(), cipherWithDH);
 }
 
 void tst_QSslSocket::dhServerCustomParams()
@@ -3557,7 +3554,9 @@ void tst_QSslSocket::dhServerCustomParams()
         return;
 
     SslServer server;
-    server.ciphers = {QSslCipher("DHE-RSA-AES256-SHA"), QSslCipher("DHE-DSS-AES256-SHA")};
+    const QSslCipher cipherWithDH("DHE-RSA-AES256-SHA256");
+    server.ciphers = {cipherWithDH};
+    server.protocol = QSsl::TlsV1_2;
 
     QSslConfiguration cfg = server.config;
 
@@ -3587,7 +3586,8 @@ void tst_QSslSocket::dhServerCustomParams()
 
     loop.exec();
 
-    QVERIFY(client.state() == QAbstractSocket::ConnectedState);
+    QCOMPARE(client.state(), QAbstractSocket::ConnectedState);
+    QCOMPARE(client.sessionCipher(), cipherWithDH);
 }
 #endif // QT_CONFIG(openssl)
 

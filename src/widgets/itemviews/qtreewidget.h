@@ -227,6 +227,9 @@ class Q_WIDGETS_EXPORT QTreeWidget : public QTreeView
     Q_OBJECT
     Q_PROPERTY(int columnCount READ columnCount WRITE setColumnCount)
     Q_PROPERTY(int topLevelItemCount READ topLevelItemCount)
+#if QT_CONFIG(draganddrop)
+    Q_PROPERTY(Qt::DropActions supportedDragActions READ supportedDragActions WRITE setSupportedDragActions)
+#endif
 
     friend class QTreeModel;
     friend class QTreeWidgetItem;
@@ -288,6 +291,11 @@ public:
 
     void setSelectionModel(QItemSelectionModel *selectionModel) override;
 
+#if QT_CONFIG(draganddrop)
+    Qt::DropActions supportedDragActions() const;
+    void setSupportedDragActions(Qt::DropActions actions);
+#endif
+
 public Q_SLOTS:
     void scrollToItem(const QTreeWidgetItem *item,
                       QAbstractItemView::ScrollHint hint = EnsureVisible);
@@ -323,19 +331,6 @@ private:
 
     Q_DECLARE_PRIVATE(QTreeWidget)
     Q_DISABLE_COPY(QTreeWidget)
-
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemPressed(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemClicked(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemDoubleClicked(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemActivated(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemEntered(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemChanged(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemExpanded(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemCollapsed(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &current))
-    Q_PRIVATE_SLOT(d_func(), void _q_sort())
-    Q_PRIVATE_SLOT(d_func(), void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight))
-    Q_PRIVATE_SLOT(d_func(), void _q_selectionChanged(const QItemSelection &selected, const QItemSelection &deselected))
 };
 
 inline void QTreeWidget::removeItemWidget(QTreeWidgetItem *item, int column)

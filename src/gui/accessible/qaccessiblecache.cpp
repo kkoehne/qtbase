@@ -9,7 +9,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcAccessibilityCache, "qt.accessibility.cache");
+Q_STATIC_LOGGING_CATEGORY(lcAccessibilityCache, "qt.accessibility.cache");
 
 /*!
     \class QAccessibleCache
@@ -23,6 +23,10 @@ static void cleanupAccessibleCache()
 {
     delete accessibleCache;
     accessibleCache = nullptr;
+}
+
+QAccessibleObjectDestroyedEvent::~QAccessibleObjectDestroyedEvent()
+{
 }
 
 QAccessibleCache::~QAccessibleCache()
@@ -116,7 +120,7 @@ QAccessible::Id QAccessibleCache::insert(QObject *object, QAccessibleInterface *
     QObject *obj = iface->object();
     Q_ASSERT(object == obj);
     if (obj) {
-        objectToId.insert(obj, qMakePair(id, obj->metaObject()));
+        objectToId.insert(obj, std::pair(id, obj->metaObject()));
         connect(obj, &QObject::destroyed, this, &QAccessibleCache::objectDestroyed);
     }
     idToInterface.insert(id, iface);
@@ -159,6 +163,17 @@ void QAccessibleCache::objectDestroyed(QObject* obj)
     }
 }
 
+void QAccessibleCache::sendObjectDestroyedEvent(QObject *obj)
+{
+    for (auto pair : objectToId.values(obj)) {
+        QAccessible::Id id = pair.first;
+        Q_ASSERT_X(idToInterface.contains(id), "", "QObject with accessible interface deleted, where interface not in cache!");
+
+        QAccessibleObjectDestroyedEvent event(id);
+        QAccessible::updateAccessibility(&event);
+    }
+}
+
 void QAccessibleCache::deleteInterface(QAccessible::Id id, QObject *obj)
 {
     QAccessibleInterface *iface = idToInterface.take(id);
@@ -172,8 +187,8 @@ void QAccessibleCache::deleteInterface(QAccessible::Id id, QObject *obj)
         objectToId.remove(obj);
     delete iface;
 
-#ifdef Q_OS_MAC
-    removeCocoaElement(id);
+#ifdef Q_OS_APPLE
+    removeAccessibleElement(id);
 #endif
 }
 

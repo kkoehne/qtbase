@@ -1,7 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtCore/QString>
@@ -418,7 +416,7 @@ struct Deallocator
 
     ~Deallocator()
     {
-        Q_FOREACH (QArrayData *data, headers)
+        for (QArrayData *data : std::as_const(headers))
             QArrayData::deallocate(data, objectSize, alignment);
     }
 
@@ -1076,7 +1074,7 @@ void tst_QArrayData::arrayOpsExtra_data()
 
 void tst_QArrayData::arrayOpsExtra()
 {
-    QSKIP("Skipped while changing QArrayData operations.", SkipAll);
+    QSKIP("Skipped while changing QArrayData operations.");
     QFETCH(QArrayData::GrowthPosition, GrowthPosition);
     CountedObject::LeakChecker leakChecker; Q_UNUSED(leakChecker);
 
@@ -1116,8 +1114,7 @@ void tst_QArrayData::arrayOpsExtra()
 
     const auto cloneArrayDataPointer = [] (auto &dataPointer, size_t capacity) {
         using ArrayPointer = std::decay_t<decltype(dataPointer)>;
-        using Type = std::decay_t<typename ArrayPointer::parameter_type>;
-        ArrayPointer copy(QTypedArrayData<Type>::allocate(qsizetype(capacity)));
+        ArrayPointer copy{qsizetype(capacity)};
         copy->copyAppend(dataPointer.begin(), dataPointer.end());
         return copy;
     };
@@ -2037,7 +2034,7 @@ void tst_QArrayData::dataPointerAllocate()
     const auto createDataPointer = [] (qsizetype capacity, auto initValue) {
         using Type = std::decay_t<decltype(initValue)>;
         Q_UNUSED(initValue);
-        return QArrayDataPointer<Type>(QTypedArrayData<Type>::allocate(capacity));
+        return QArrayDataPointer<Type>(capacity);
     };
 
     const auto testRealloc = [&] (qsizetype capacity, qsizetype newSize, auto initValue) {
@@ -2453,7 +2450,7 @@ void tst_QArrayData::relocateWithExceptions()
     };
 
     const auto createDataPointer = [](qsizetype capacity, qsizetype initSize) {
-        QArrayDataPointer<ThrowingType> qadp(QTypedArrayData<ThrowingType>::allocate(capacity));
+        QArrayDataPointer<ThrowingType> qadp(capacity);
         qadp->appendInitialize(initSize);
         int i = 0;
         std::generate(qadp.begin(), qadp.end(), [&i]() { return ThrowingType(i++); });

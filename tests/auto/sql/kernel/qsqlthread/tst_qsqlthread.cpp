@@ -1,15 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
-#include <QTest>
+#include <QtTest/qtest.h>
 
+#include <QtCore/qatomic.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qdebug.h>
 
 #include "../qsqldatabase/tst_databases.h"
-
-#include <QtCore>
-#include <QtSql>
-#include "qdebug.h"
 
 QString qtest;
 // set this define if Oracle is built with threading support

@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef CONTROLLERWINDOW_H
 #define CONTROLLERWINDOW_H
@@ -35,7 +35,7 @@ private slots:
     void updateStateControl();
 
 private:
-    void updatePreview(QWindow *);
+    void updatePreview(PreviewWindow *);
     void updatePreview(QWidget *);
     void createTypeGroupBox();
     QCheckBox *createCheckBox(const QString &text);
@@ -43,7 +43,7 @@ private:
 
     QMainWindow *parentWindow;
 
-    QWindow *previewWindow;
+    PreviewWindow *previewWindow;
     PreviewWidget *previewWidget;
     PreviewDialog *previewDialog;
 
@@ -60,6 +60,8 @@ private:
     QRadioButton *previewDialogButton;
     QCheckBox *modalWindowCheckBox;
     QCheckBox *fixedSizeWindowCheckBox;
+    QCheckBox *safeAreaCheckBox;
+    QCheckBox *recreateCheckbox;
 };
 
 class LogWidget : public QPlainTextEdit

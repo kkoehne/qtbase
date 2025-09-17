@@ -81,7 +81,6 @@ Q_SIGNALS:
     \class QItemEditorFactory
     \brief The QItemEditorFactory class provides widgets for editing item data
     in views and delegates.
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
@@ -120,7 +119,7 @@ Q_SIGNALS:
 
     Additional editors can be registered with the registerEditor() function.
 
-    \sa QStyledItemDelegate, {Model/View Programming}, {Color Editor Factory Example}
+    \sa QStyledItemDelegate, {Model/View Programming}
 */
 
 /*!
@@ -336,7 +335,6 @@ void QItemEditorFactory::setDefaultFactory(QItemEditorFactory *factory)
     \class QItemEditorCreatorBase
     \brief The QItemEditorCreatorBase class provides an abstract base class that
     must be subclassed when implementing new item editor creators.
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
@@ -363,7 +361,7 @@ void QItemEditorFactory::setDefaultFactory(QItemEditorFactory *factory)
     to register widgets without the need to subclass QItemEditorCreatorBase.
 
     \sa QStandardItemEditorCreator, QItemEditorFactory,
-    {Model/View Programming}, {Color Editor Factory Example}
+    {Model/View Programming}
 */
 
 /*!
@@ -413,7 +411,6 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
            item editor creator bases without subclassing
            QItemEditorCreatorBase.
 
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
@@ -432,7 +429,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     property, you should use QStandardItemEditorCreator instead.
 
     \sa QItemEditorCreatorBase, QStandardItemEditorCreator,
-        QItemEditorFactory, {Color Editor Factory Example}
+        QItemEditorFactory
 */
 
 /*!
@@ -464,7 +461,6 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     possibility to register widgets without having to subclass
     QItemEditorCreatorBase.
 
-    \since 4.2
     \ingroup model-view
     \inmodule QtWidgets
 
@@ -488,7 +484,7 @@ QItemEditorCreatorBase::~QItemEditorCreatorBase()
     \snippet code/src_gui_itemviews_qitemeditorfactory.cpp 3
 
     \sa QItemEditorCreatorBase, QItemEditorCreator,
-        QItemEditorFactory, QStyledItemDelegate, {Color Editor Factory Example}
+        QItemEditorFactory, QStyledItemDelegate
 */
 
 /*!

@@ -253,6 +253,7 @@ tags
 *_resource.rc
 *.*#
 *.debug
+.cache
 
 # xemacs temporary files
 *.flc
@@ -328,9 +329,12 @@ wrapper.bat
 
 # cmake related artifacts
 /build*
+build/
 CMakeFiles
 CTestTestfile.cmake
 cmake_install.cmake
 *_autogen
 tst_*.xml
 CMakeUserPresets.json
+/.vs/
+/out/

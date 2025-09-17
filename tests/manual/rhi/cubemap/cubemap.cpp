@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "../shared/examplefw.h"
 #include "../shared/cube.h"
@@ -34,7 +34,7 @@ void Window::customInit()
     d.initialUpdates = m_r->nextResourceUpdateBatch();
     d.initialUpdates->uploadStaticBuffer(d.vbuf, cube);
 
-    QImage img = QImage(":/c.png").mirrored().convertToFormat(QImage::Format_RGBA8888);
+    QImage img = QImage(":/c.png").flipped().convertToFormat(QImage::Format_RGBA8888);
     // just use the same image for all faces for now
     QRhiTextureSubresourceUploadDescription subresDesc(img);
     QRhiTextureUploadDescription desc({

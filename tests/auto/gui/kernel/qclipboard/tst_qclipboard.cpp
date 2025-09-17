@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -9,6 +9,7 @@
 #include <QProcess>
 #endif
 #include <QtCore/QDebug>
+#include <QtCore/QElapsedTimer>
 #include <QtCore/QFileInfo>
 #include <QtCore/QDir>
 #include <QtCore/QVariant>
@@ -23,7 +24,10 @@
 #  include <QtGui/private/qguiapplication_p.h>
 #  include <QtGui/qwindowsmimeconverter.h>
 #  include <QtGui/qpa/qplatformintegration.h>
+#  include <QtCore/qt_windows.h>
 #endif
+
+using namespace Qt::StringLiterals;
 
 class tst_QClipboard : public QObject
 {
@@ -57,6 +61,10 @@ void tst_QClipboard::initTestCase()
 #endif
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
         QSKIP("Wayland: Manipulating the clipboard requires real input events. Can't auto test.");
+    if (qgetenv("XDG_CURRENT_DESKTOP").toLower().contains("ubuntu:gnome")
+        && QSysInfo::productVersion() == "24.04"_L1
+        && QSysInfo::prettyProductName() == "Ubuntu 24.04 LTS"_L1)
+        QSKIP("This hangs on Ubuntu 24.04(.0) GNOME/X11, see also QTBUG-129567.");
 }
 
 #if QT_CONFIG(clipboard)

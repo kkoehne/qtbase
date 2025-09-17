@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtWidgets>
 
@@ -246,12 +246,27 @@ public:
             }
         });
         controls->addWidget(subpixelAAButton);
-        controls->addStretch();
 
+        auto *trakButton = new QCheckBox("Tracking (trak)");
+        connect(trakButton, &QCheckBox::checkStateChanged, [&](auto state) {
+            for (TextRenderer *renderer : m_previews->findChildren<TextRenderer *>()) {
+                QFont font = renderer->font();
+                font.setFeature("trak", state == Qt::Checked);
+                renderer->setFont(font);
+            }
+        });
+        trakButton->checkStateChanged(trakButton->checkState());
+        controls->addWidget(trakButton);
+
+        controls->addStretch();
         mainLayout->addLayout(controls);
 
         mainLayout->setSizeConstraint(QLayout::SetFixedSize);
         setLayout(mainLayout);
+
+        // Enable emoji insertion shortcut on macOS
+        auto *menuBar = new QMenuBar(this);
+        menuBar->addMenu("Edit");
 
         setMode(TextRenderer::QtRendering);
         setFocusPolicy(Qt::StrongFocus);
@@ -261,7 +276,8 @@ public:
     void setMode(TextRenderer::RenderingMode mode)
     {
         s_mode = mode;
-        setWindowTitle(s_mode == TextRenderer::QtRendering ? "Qt" : "Native");
+        setWindowTitle((s_mode == TextRenderer::QtRendering ? "Qt" : "Native")
+            + QLatin1String(" (") + m_previews->font().family() + QLatin1String(")"));
 
         for (TextRenderer *renderer : m_previews->findChildren<TextRenderer *>())
             renderer->update();

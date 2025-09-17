@@ -47,8 +47,15 @@ public:
     }
 
     Q_NODISCARD_CTOR
-    explicit QArrayDataPointer(QPair<QTypedArrayData<T> *, T *> adata, qsizetype n = 0) noexcept
+    explicit QArrayDataPointer(std::pair<QTypedArrayData<T> *, T *> adata, qsizetype n = 0) noexcept
         : d(adata.first), ptr(adata.second), size(n)
+    {
+    }
+
+    Q_NODISCARD_CTOR explicit
+    QArrayDataPointer(qsizetype alloc, qsizetype n = 0,
+                      QArrayData::AllocationOption option = QArrayData::KeepSize)
+        : QArrayDataPointer(Data::allocate(alloc, option), n)
     {
     }
 
@@ -68,11 +75,10 @@ public:
 
     Q_NODISCARD_CTOR
     QArrayDataPointer(QArrayDataPointer &&other) noexcept
-        : d(other.d), ptr(other.ptr), size(other.size)
+        : d(std::exchange(other.d, nullptr)),
+          ptr(std::exchange(other.ptr, nullptr)),
+          size(std::exchange(other.size, 0))
     {
-        other.d = nullptr;
-        other.ptr = nullptr;
-        other.size = 0;
     }
 
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QArrayDataPointer)
@@ -101,11 +107,11 @@ public:
     {
         if (!deref()) {
             (*this)->destroyAll();
-            free(d);
+            Data::deallocate(d);
         }
     }
 
-    bool isNull() const noexcept
+    constexpr bool isNull() const noexcept
     {
         return !ptr;
     }
@@ -326,11 +332,11 @@ public:
         if constexpr (IsFwdIt) {
             const qsizetype n = std::distance(first, last);
             if (needsDetach() || n > constAllocatedCapacity()) {
-                QArrayDataPointer allocated(Data::allocate(detachCapacity(n)));
+                QArrayDataPointer allocated(detachCapacity(n));
                 swap(allocated);
             }
         } else if (needsDetach()) {
-            QArrayDataPointer allocated(Data::allocate(allocatedCapacity()));
+            QArrayDataPointer allocated(allocatedCapacity());
             swap(allocated);
             // We don't want to copy data that we know we'll overwrite
         }
@@ -406,12 +412,45 @@ public:
         size = dst - begin();
     }
 
+    QArrayDataPointer sliced(qsizetype pos, qsizetype n) const &
+    {
+        QArrayDataPointer result(n);
+        std::uninitialized_copy_n(begin() + pos, n, result.begin());
+        result.size = n;
+        return result;
+    }
+
+    QArrayDataPointer sliced(qsizetype pos, qsizetype n) &&
+    {
+        if (needsDetach())
+            return sliced(pos, n);
+        T *newBeginning = begin() + pos;
+        std::destroy(begin(), newBeginning);
+        std::destroy(newBeginning + n, end());
+        setBegin(newBeginning);
+        size = n;
+        return std::move(*this);
+    }
+
+    void appendInitialize(qsizetype newSize)
+    {
+        Q_ASSERT(this->isMutable());
+        Q_ASSERT(!this->isShared());
+        Q_ASSERT(newSize > this->size);
+        Q_ASSERT(newSize - this->size <= this->freeSpaceAtEnd());
+
+        T *const b = this->begin() + this->size;
+        T *const e = this->begin() + newSize;
+        q17::uninitialized_value_construct(b, e);
+        this->size = newSize;
+    }
+
     // forwards from QArrayData
     qsizetype allocatedCapacity() noexcept { return d ? d->allocatedCapacity() : 0; }
     qsizetype constAllocatedCapacity() const noexcept { return d ? d->constAllocatedCapacity() : 0; }
     void ref() noexcept { if (d) d->ref(); }
     bool deref() noexcept { return !d || d->deref(); }
-    bool isMutable() const noexcept { return d; }
+    bool isMutable() const noexcept { return d; } // Returns false if this object is fromRawData()
     bool isShared() const noexcept { return !d || d->isShared(); }
     bool isSharedWith(const QArrayDataPointer &other) const noexcept { return d && d == other.d; }
     bool needsDetach() const noexcept { return !d || d->needsDetach(); }

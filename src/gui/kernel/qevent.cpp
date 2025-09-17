@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qevent.h"
+
 #include "qcursor.h"
 #include "private/qguiapplication_p.h"
 #include "private/qinputdevice_p.h"
@@ -9,6 +10,7 @@
 #include "qpa/qplatformintegration.h"
 #include "private/qevent_p.h"
 #include "private/qeventpoint_p.h"
+
 #include "qfile.h"
 #include "qhashfunctions.h"
 #include "qmetaobject.h"
@@ -16,6 +18,7 @@
 #include "qevent_p.h"
 #include "qmath.h"
 #include "qloggingcategory.h"
+#include "qpointer.h"
 
 #if QT_CONFIG(draganddrop)
 #include <qpa/qplatformdrag.h>
@@ -949,7 +952,7 @@ Qt::MouseEventFlags QMouseEvent::flags() const
     Mouse events occur when a mouse cursor is moved into, out of, or within a
     widget, and if the widget has the Qt::WA_Hover attribute.
 
-    The function pos() gives the current cursor position, while oldPos() gives
+    The function position() gives the current cursor position, while oldPos() gives
     the old mouse position.
 
     There are a few similarities between the events QEvent::HoverEnter
@@ -1005,12 +1008,12 @@ Qt::MouseEventFlags QMouseEvent::flags() const
 
     Returns the previous position of the mouse cursor, relative to the widget
     that received the event. If there is no previous position, oldPos() will
-    return the same position as pos().
+    return the same position as position().
 
     On QEvent::HoverEnter events, this position will always be
     QPoint(-1, -1).
 
-    \sa pos()
+    \sa position()
 */
 
 /*!
@@ -1031,12 +1034,12 @@ Qt::MouseEventFlags QMouseEvent::flags() const
 
     Returns the previous position of the mouse cursor, relative to the widget
     that received the event. If there is no previous position, oldPosF() will
-    return the same position as posF().
+    return the same position as position().
 
     On QEvent::HoverEnter events, this position will always be
     QPointF(-1, -1).
 
-    \sa posF()
+    \sa position()
 */
 
 /*!
@@ -1904,14 +1907,65 @@ Q_IMPL_EVENT_COMMON(QIconDragEvent)
 
     \ingroup events
 
-    Context menu events are sent to widgets when a user performs
-    an action associated with opening a context menu.
-    The actions required to open context menus vary between platforms;
-    for example, on Windows, pressing the menu button or clicking the
-    right mouse button will cause this event to be sent.
+    A context menu event is sent when a user performs an action that should
+    open a contextual menu:
+    \list
+    \li clicking the right mouse button
+    \li pressing a dedicated keyboard menu key (if the keyboard has one,
+        such as the menu key on standard 104-key PC keyboards)
+    \li pressing some other keyboard shortcut (such as "Ctrl+Return" by
+        default on macOS 15 and newer)
+    \endlist
 
-    When this event occurs it is customary to show a QMenu with a
-    context menu, if this is relevant to the context.
+    The expected context menu should contain \l {QAction}{actions} that are
+    relevant to some content within the application (the "context"). In Qt, the
+    context is at least the particular \l {QWidget}{widget} or Qt Quick \l Item
+    that receives the QContextMenuEvent. If there is a selection, that should
+    probably be treated as the context. The context can be further refined
+    using \l QContextMenuEvent::pos() to pinpoint the content within the
+    widget, item or selection.
+
+    Widgets can override \l QWidget::contextMenuEvent() to handle this event.
+    Many widgets already do that, and have useful context menus by default.
+    Some widgets have a function such as
+    \l {QLineEdit::createStandardContextMenu()}{createStandardContextMenu()}
+    to populate the default set of actions into a \l QMenu, which can be
+    customized further in your subclass and then shown.
+
+    In Qt Quick, the event can be handled via the
+    \l {QtQuick.Controls::}{ContextMenu} attached property. Some
+    \l {QtQuick.Controls} Controls already provide context menus by default.
+
+    Unlike most synthetic events (such as a QMouseEvent that is sent only after
+    a QTouchEvent or QTabletEvent was not accepted), QContextMenuEvent is sent
+    regardless of whether the original mouse or key event was already handled
+    and \l {QEvent::isAccepted()}{accepted}. This is to accommodate the Windows
+    UI pattern of selecting some kind of items (icons, drawing elements, or
+    cells in an Item View) using the right mouse button (clicking or dragging),
+    and then getting a context menu as soon as you release the right mouse
+    button. (The actions on the menu are meant to apply to the selection.)
+    Therefore, on Windows the QContextMenuEvent is sent on mouse release; while
+    on other platforms, it's sent on press. Qt follows the
+    \l {QStyleHints::contextMenuTrigger()}{platform convention} by default.
+
+    There are also some Qt Quick Controls such as \l {QtQuick.Controls::}{Pane}
+    that accept mouse events, and nevertheless receive a QContextMenuEvent
+    after a mouse press or click.
+
+    If you prefer to support the press-drag-release UI pattern to open a
+    context menu on press, and drag over a menu item to select it on release,
+    you will need to do that by handling \l {QMouseEvent}{QMouseEvents} directly
+    (by overriding \l {QWidget::mousePressEvent()}{virtual functions} in
+    QWidget subclasses, or using \l TapHandler to open a \l Menu in Qt Quick);
+    and then the QContextMenuEvent will be redundant when the \l reason() is
+    \c Mouse. You should \l ignore() the event in that case; but you should
+    still ensure that the widget, custom control or application can respond to
+    a QContextMenuEvent that \l {reason()}{comes from} the platform-specific
+    keyboard shortcut.
+
+    When a QContextMenuEvent is \l {ignore()}{ignored}, Qt attempts to deliver
+    it to other widgets and/or Items under the \l {pos()}{position} (which
+    is usually translated from the cursor position).
 */
 
 #ifndef QT_NO_CONTEXTMENU
@@ -1964,6 +2018,9 @@ QContextMenuEvent::QContextMenuEvent(Reason reason, const QPoint &pos)
 
     Returns the position of the mouse pointer relative to the widget
     that received the event.
+
+    \note If the QContextMenuEvent did not come from the right mouse button,
+    \c pos() may be \l {QPoint::isNull()}{null}.
 
     \sa x(), y(), globalPos()
 */
@@ -2192,6 +2249,11 @@ QContextMenuEvent::QContextMenuEvent(Reason reason, const QPoint &pos)
     The start position specifies the new position and the length
     variable can be used to set a selection starting from that point.
     The value is unused.
+
+    \value MimeData
+    If set, the variant contains a QMimeData object representing the
+    committed text. The commitString() still provides the plain text
+    representation of the committed text.
 
     \sa Attribute
 */
@@ -3998,10 +4060,9 @@ static void formatTabletEvent(QDebug d, const QTabletEvent *e)
 
 QDebug operator<<(QDebug dbg, const QEventPoint *tp)
 {
-    if (!tp) {
-        dbg << "QEventPoint(0x0)";
-        return dbg;
-    }
+    if (!tp)
+        return dbg << "QEventPoint(0x0)";
+
     return operator<<(dbg, *tp);
 }
 
@@ -4041,10 +4102,9 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
 {
     QDebugStateSaver saver(dbg);
     dbg.nospace();
-    if (!e) {
-        dbg << "QEvent(this = 0x0)";
-        return dbg;
-    }
+    if (!e)
+        return dbg << "QEvent(0x0)";
+
     // More useful event output could be added here
     const QEvent::Type type = e->type();
     bool isMouse = false;
@@ -4074,6 +4134,7 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
         const Qt::MouseButtons buttons = spe->buttons();
         dbg << eventClassName(type) << '(';
         QtDebugUtils::formatQEnum(dbg, type);
+        dbg << " ts=" << spe->timestamp();
         if (isMouse) {
             if (type != QEvent::MouseMove && type != QEvent::NonClientAreaMouseMove) {
                 dbg << ' ';
@@ -4107,6 +4168,7 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
         dbg << "QWheelEvent(" << we->phase();
         if (!we->pixelDelta().isNull() || !we->angleDelta().isNull())
             dbg << ", pixelDelta=" << we->pixelDelta() << ", angleDelta=" << we->angleDelta();
+        dbg << " dev=" << we->device() << ')';
         dbg << ')';
     }
         break;
@@ -4125,6 +4187,10 @@ QDebug operator<<(QDebug dbg, const QEvent *e)
             dbg << ", text=" << ke->text();
         if (ke->isAutoRepeat())
             dbg << ", autorepeat, count=" << ke->count();
+        if (dbg.verbosity() > QDebug::DefaultVerbosity) {
+            dbg << ", nativeScanCode=" << ke->nativeScanCode();
+            dbg << ", nativeVirtualKey=" << ke->nativeVirtualKey();
+        }
         dbg << ')';
     }
         break;
@@ -4471,8 +4537,6 @@ Q_IMPL_EVENT_COMMON(QWindowStateChangeEvent)
 */
 
 /*!
-    \deprecated [6.2] Use another constructor.
-
     Constructs a QTouchEvent with the given \a eventType, \a device,
     \a touchPoints, and current keyboard \a modifiers at the time of the event.
 */
@@ -4752,7 +4816,63 @@ Q_IMPL_EVENT_COMMON(QApplicationStateChangeEvent)
     Returns the state of the application.
 */
 
+/*!
+    \class QChildWindowEvent
+    \inmodule QtGui
+    \since 6.7
+    \brief The QChildWindowEvent class contains event parameters for
+    child window changes.
+
+    \ingroup events
+
+    Child window events are sent to windows when children are
+    added or removed.
+
+    In both cases you can only rely on the child being a QWindow
+    — not any subclass thereof. This is because in the
+    QEvent::ChildWindowAdded case the subclass is not yet fully
+    constructed, and in the QEvent::ChildWindowRemoved case it
+    might have already been destructed.
+*/
+
+/*!
+    Constructs a child window event object of a particular \a type
+    for the \a childWindow.
+
+    \a type can be QEvent::ChildWindowAdded or QEvent::ChildWindowRemoved.
+
+    \sa child()
+*/
+QChildWindowEvent::QChildWindowEvent(Type type, QWindow *childWindow)
+    : QEvent(type), c(childWindow)
+{
+}
+
+Q_IMPL_EVENT_COMMON(QChildWindowEvent)
+
+/*!
+    \fn QWindow *QChildWindowEvent::child() const
+
+    Returns the child window that was added or removed.
+*/
+
 QMutableTouchEvent::~QMutableTouchEvent()
+    = default;
+
+/*! \internal
+    Add the given \a point.
+*/
+void QMutableTouchEvent::addPoint(QTouchEvent *e, const QEventPoint &point)
+{
+    e->m_points.append(point);
+    auto &added = e->m_points.last();
+    if (!added.device())
+        QMutableEventPoint::setDevice(added, e->pointingDevice());
+    e->m_touchPointStates |= point.state();
+}
+
+
+QMutableSinglePointEvent::~QMutableSinglePointEvent()
     = default;
 
 /*! \internal
@@ -4760,16 +4880,8 @@ QMutableTouchEvent::~QMutableTouchEvent()
 */
 void QMutableTouchEvent::addPoint(const QEventPoint &point)
 {
-    m_points.append(point);
-    auto &added = m_points.last();
-    if (!added.device())
-        QMutableEventPoint::setDevice(added, pointingDevice());
-    m_touchPointStates |= point.state();
+    addPoint(this, point);
 }
-
-
-QMutableSinglePointEvent::~QMutableSinglePointEvent()
-    = default;
 
 QT_END_NAMESPACE
 

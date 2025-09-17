@@ -13,11 +13,6 @@ class QSignalMapperPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QSignalMapper)
 public:
-    void _q_senderDestroyed()
-    {
-        Q_Q(QSignalMapper);
-        q->removeMappings(q->sender());
-    }
 
     template <class Signal, class Container>
     void emitMappedValue(QObject *sender, Signal signal, const Container &mappedValues)
@@ -79,9 +74,9 @@ public:
 
     The only function that we need to implement is the constructor:
 
-    \snippet qsignalmapper/buttonwidget.cpp 0
-    \snippet qsignalmapper/buttonwidget.cpp 1
-    \snippet qsignalmapper/buttonwidget.cpp 2
+    \snippet qsignalmapper/buttonwidget.cpp OpenCtor
+    \snippet qsignalmapper/buttonwidget.cpp OldNotation
+    \snippet qsignalmapper/buttonwidget.cpp CloseBrackets
 
     A list of texts is passed to the constructor. A signal mapper is
     constructed and for each text in the list a QPushButton is
@@ -97,7 +92,9 @@ public:
     slots. The example above can be rewritten simpler without QSignalMapper
     by connecting to a lambda function.
 
-    \snippet qsignalmapper/buttonwidget.cpp 3
+    \snippet qsignalmapper/buttonwidget.cpp OpenCtor
+    \snippet qsignalmapper/buttonwidget.cpp ModernNotation
+    \snippet qsignalmapper/buttonwidget.cpp CloseBrackets
 
     \sa QObject, QButtonGroup, QActionGroup
 */
@@ -129,7 +126,7 @@ void QSignalMapper::setMapping(QObject *sender, int id)
 {
     Q_D(QSignalMapper);
     d->intHash.insert(sender, id);
-    connect(sender, SIGNAL(destroyed()), this, SLOT(_q_senderDestroyed()));
+    connect(sender, &QObject::destroyed, this, &QSignalMapper::removeMappings);
 }
 
 /*!
@@ -142,7 +139,7 @@ void QSignalMapper::setMapping(QObject *sender, const QString &text)
 {
     Q_D(QSignalMapper);
     d->stringHash.insert(sender, text);
-    connect(sender, SIGNAL(destroyed()), this, SLOT(_q_senderDestroyed()));
+    connect(sender, &QObject::destroyed, this, &QSignalMapper::removeMappings);
 }
 
 /*!
@@ -155,7 +152,7 @@ void QSignalMapper::setMapping(QObject *sender, QObject *object)
 {
     Q_D(QSignalMapper);
     d->objectHash.insert(sender, object);
-    connect(sender, SIGNAL(destroyed()), this, SLOT(_q_senderDestroyed()));
+    connect(sender, &QObject::destroyed, this, &QSignalMapper::removeMappings);
 }
 
 /*!

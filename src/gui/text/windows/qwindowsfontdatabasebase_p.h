@@ -29,6 +29,10 @@
 
 QT_BEGIN_NAMESPACE
 
+#if QT_CONFIG(directwrite)
+    class QCustomFontFileLoader;
+#endif
+
 class QWindowsFontEngineData
 {
     Q_DISABLE_COPY_MOVE(QWindowsFontEngineData)
@@ -56,6 +60,8 @@ public:
     QFontEngine *fontEngine(const QFontDef &fontDef, void *handle) override;
     QFontEngine *fontEngine(const QByteArray &fontData, qreal pixelSize, QFont::HintingPreference hintingPreference) override;
 
+    void invalidate() override;
+
     static int defaultVerticalDPI();
 
     static QSharedPointer<QWindowsFontEngineData> data();
@@ -69,6 +75,7 @@ public:
 
     static QString familyForStyleHint(QFont::StyleHint styleHint);
     static QStringList extraTryFontsForFamily(const QString &family);
+    static QStringList familiesForScript(QFontDatabasePrivate::ExtendedScript script);
 
     class FontTable{};
     class EmbeddedFont
@@ -91,11 +98,18 @@ public:
 protected:
 
 #if QT_CONFIG(directwrite)
-    IDWriteFontFace *createDirectWriteFace(const QByteArray &fontData) const;
+    QList<IDWriteFontFace *> createDirectWriteFaces(const QByteArray &fontData,
+                                                    const QString &filename,
+                                                    bool queryVariations = true) const;
+    IDWriteFontFace *createDirectWriteFace(const QByteArray &fontData);
 #endif
 
 private:
     static bool init(QSharedPointer<QWindowsFontEngineData> data);
+
+#if QT_CONFIG(directwrite)
+    mutable std::unique_ptr<QCustomFontFileLoader> m_fontFileLoader;
+#endif
 };
 
 QT_END_NAMESPACE

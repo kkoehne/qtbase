@@ -74,6 +74,7 @@ struct Q_AUTOTEST_EXPORT QDockAreaLayoutItem
     uint flags;
 #ifndef QT_NO_DEBUG_STREAM
     friend Q_AUTOTEST_EXPORT QDebug operator<<(QDebug dbg, const QDockAreaLayoutItem &item);
+    friend Q_AUTOTEST_EXPORT QDebug operator<<(QDebug dbg, const QDockAreaLayoutItem *item);
 #endif
 };
 
@@ -107,6 +108,7 @@ public:
     QList<int> gapIndex(const QPoint &pos, bool nestingEnabled,
                             TabMode tabMode) const;
     void remove(const QList<int> &path);
+    void remove(QWidget *widget);
     void unnest(int index);
     void split(int index, Qt::Orientation orientation, QLayoutItem *dockWidgetItem);
 #if QT_CONFIG(tabbar)
@@ -141,8 +143,9 @@ public:
     int next(int idx) const;
     int prev(int idx) const;
 
-    QList<int> indexOf(QWidget *widget) const;
+    QList<int> indexOf(const QWidget *widget) const;
     QList<int> indexOfPlaceHolder(const QString &objectName) const;
+    std::unique_ptr<QLayoutItem> takeWidgetItem(QWidget *widget);
 
     QDockWidget *apply(bool animate);
 
@@ -154,6 +157,7 @@ public:
 
     QLayoutItem *itemAt(int *x, int index) const;
     QLayoutItem *takeAt(int *x, int index);
+    void add(QWidget *widget);
     void deleteAllLayoutItems();
 
     QMainWindowLayout *mainWindowLayout() const;
@@ -214,7 +218,7 @@ public:
     bool restoreState(QDataStream &stream, const QList<QDockWidget*> &widgets, bool testing = false);
 
     QList<int> indexOfPlaceHolder(const QString &objectName) const;
-    QList<int> indexOf(QWidget *dockWidget) const;
+    QList<int> indexOf(const QWidget *dockWidget) const;
     QList<int> gapIndex(const QPoint &pos, bool disallowTabs) const;
     QList<int> findSeparator(const QPoint &pos) const;
 

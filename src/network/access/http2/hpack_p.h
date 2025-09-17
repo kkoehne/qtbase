@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef HPACK_P_H
 #define HPACK_P_H
@@ -17,9 +18,10 @@
 
 #include "hpacktable_p.h"
 
-#include <QtCore/qglobal.h>
+#include <QtCore/qurl.h>
 
 #include <vector>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,13 +32,15 @@ namespace HPack
 
 using HttpHeader = std::vector<HeaderField>;
 HeaderSize header_size(const HttpHeader &header);
-
+struct BitPattern;
 class Q_AUTOTEST_EXPORT Encoder
 {
 public:
     Encoder(quint32 maxTableSize, bool compressStrings);
 
     quint32 dynamicTableSize() const;
+    quint32 dynamicTableCapacity() const;
+    quint32 maxDynamicTableCapacity() const;
 
     bool encodeRequest(class BitOStream &outputStream,
                        const HttpHeader &header);
@@ -64,13 +68,13 @@ private:
 
 
     bool encodeLiteralField(BitOStream &outputStream,
-                            const struct BitPattern &fieldType,
+                            BitPattern fieldType,
                             quint32 nameIndex,
                             const QByteArray &value,
                             bool withCompression);
 
     bool encodeLiteralField(BitOStream &outputStream,
-                            const BitPattern &fieldType,
+                            BitPattern fieldType,
                             const QByteArray &name,
                             const QByteArray &value,
                             bool withCompression);
@@ -92,6 +96,8 @@ public:
     }
 
     quint32 dynamicTableSize() const;
+    quint32 dynamicTableCapacity() const;
+    quint32 maxDynamicTableCapacity() const;
 
     void setMaxDynamicTableSize(quint32 size);
 
@@ -99,10 +105,10 @@ private:
 
     bool decodeIndexedField(BitIStream &inputStream);
     bool decodeSizeUpdate(BitIStream &inputStream);
-    bool decodeLiteralField(const BitPattern &fieldType,
+    bool decodeLiteralField(BitPattern fieldType,
                             BitIStream &inputStream);
 
-    bool processDecodedField(const BitPattern &fieldType,
+    bool processDecodedField(BitPattern fieldType,
                              const QByteArray &name,
                              const QByteArray &value);
 
@@ -112,6 +118,7 @@ private:
     FieldLookupTable lookupTable;
 };
 
+std::optional<QUrl> makePromiseKeyUrl(const HttpHeader &requestHeader);
 }
 
 QT_END_NAMESPACE

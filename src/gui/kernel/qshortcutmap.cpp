@@ -17,7 +17,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcShortcutMap, "qt.gui.shortcutmap")
+Q_STATIC_LOGGING_CATEGORY(lcShortcutMap, "qt.gui.shortcutmap")
 
 /* \internal
     Entry data for QShortcutMap
@@ -202,7 +202,7 @@ int QShortcutMap::setShortcutEnabled(bool enable, int id, QObject *owner, const 
     int i = d->shortcuts.size()-1;
     while (i>=0)
     {
-        QShortcutEntry entry = d->shortcuts.at(i);
+        const QShortcutEntry &entry = d->shortcuts.at(i);
         if ((allOwners || entry.owner == owner)
             && (allIds || entry.id == id)
             && (allKeys || entry.keySequence == keySequence)) {
@@ -493,7 +493,7 @@ void QShortcutMap::clearSequence(QList<QKeySequence> &ksl)
 void QShortcutMap::createNewSequences(QKeyEvent *e, QList<QKeySequence> &ksl, int ignoredModifiers)
 {
     Q_D(QShortcutMap);
-    QList<int> possibleKeys = QKeyMapper::possibleKeys(e);
+    QList<QKeyCombination> possibleKeys = QKeyMapper::possibleKeys(e);
     qCDebug(lcShortcutMap) << "Creating new sequences for" << e
         << "with ignoredModifiers=" << Qt::KeyboardModifiers(ignoredModifiers);
     int pkTotal = possibleKeys.size();
@@ -522,7 +522,8 @@ void QShortcutMap::createNewSequences(QKeyEvent *e, QList<QKeySequence> &ksl, in
                 curKsl.setKey(QKeyCombination::fromCombined(0), 2);
                 curKsl.setKey(QKeyCombination::fromCombined(0), 3);
             }
-            curKsl.setKey(QKeyCombination::fromCombined(possibleKeys.at(pkNum) & ~ignoredModifiers), index);
+            const int key = possibleKeys.at(pkNum).toCombined();
+            curKsl.setKey(QKeyCombination::fromCombined(key & ~ignoredModifiers), index);
         }
     }
 }

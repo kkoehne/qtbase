@@ -190,7 +190,7 @@ Symbols Preprocessor::tokenize(const QByteArray& input, int lineNum, Preprocesso
 
                         const QByteArray newString
                                 = '\"'
-                                + symbols.constLast().unquotedLexem()
+                                + symbols.constLast().unquotedLexemView()
                                 + input.mid(lexem - begin + 1, data - lexem - 2)
                                 + '\"';
                         symbols.last() = Symbol(symbols.constLast().lineNum,
@@ -214,7 +214,9 @@ Symbols Preprocessor::tokenize(const QByteArray& input, int lineNum, Preprocesso
                     data -= 2;
                     break;
                 case DIGIT:
-                    while (isAsciiDigit(*data) || *data == '\'')
+                    {
+                    bool hasSeenTokenSeparator = false;;
+                    while (isAsciiDigit(*data) || (hasSeenTokenSeparator = *data == '\''))
                         ++data;
                     if (!*data || *data != '.') {
                         token = INTEGER_LITERAL;
@@ -223,15 +225,22 @@ Symbols Preprocessor::tokenize(const QByteArray& input, int lineNum, Preprocesso
                              || *data == 'b' || *data == 'B')
                             && *lexem == '0') {
                             ++data;
-                            while (isHexDigit(*data) || *data == '\'')
+                            while (isHexDigit(*data) || (hasSeenTokenSeparator = *data == '\''))
                                 ++data;
                         } else if (*data == 'L') // TODO: handle other suffixes
                             ++data;
+                        if (!hasSeenTokenSeparator) {
+                            while (is_ident_char(*data)) {
+                                ++data;
+                                token = IDENTIFIER;
+                            }
+                        }
                         break;
                     }
                     token = FLOATING_LITERAL;
                     ++data;
                     Q_FALLTHROUGH();
+                    }
                 case FLOATING_LITERAL:
                     while (isAsciiDigit(*data) || *data == '\'')
                         ++data;
@@ -501,11 +510,12 @@ void Preprocessor::macroExpand(Symbols *into, Preprocessor *that, const Symbols 
                                   int lineNum, bool one, const QSet<QByteArray> &excludeSymbols)
 {
     SymbolStack symbols;
+    symbols.reserve(8);
     SafeSymbols sf;
     sf.symbols = toExpand;
     sf.index = index;
     sf.excludedSymbols = excludeSymbols;
-    symbols.push(sf);
+    symbols.push(std::move(sf));
 
     if (toExpand.isEmpty())
         return;
@@ -524,7 +534,7 @@ void Preprocessor::macroExpand(Symbols *into, Preprocessor *that, const Symbols 
             sf.symbols = newSyms;
             sf.index = 0;
             sf.expandedMacro = macro;
-            symbols.push(sf);
+            symbols.push(std::move(sf));
         }
         if (!symbols.hasNext() || (one && symbols.size() == 1))
                 break;
@@ -640,7 +650,7 @@ Symbols Preprocessor::macroExpandIdentifier(Preprocessor *that, SymbolStack &sym
                 const Symbols &arg = arguments.at(index);
                 QByteArray stringified;
                 for (const Symbol &sym : arg)
-                    stringified += sym.lexem();
+                    stringified += sym.lexemView();
 
                 stringified.replace('"', "\\\"");
                 stringified.prepend('"');
@@ -697,17 +707,57 @@ void Preprocessor::substituteUntilNewline(Symbols &substituted)
             macroExpand(&substituted, this, symbols, index, symbol().lineNum, true);
         } else if (token == PP_DEFINED) {
             bool braces = test(PP_LPAREN);
-            next(PP_IDENTIFIER);
-            Symbol definedOrNotDefined = symbol();
-            definedOrNotDefined.token = macros.contains(definedOrNotDefined)? PP_MOC_TRUE : PP_MOC_FALSE;
-            substituted += definedOrNotDefined;
+            if (test(PP_HAS_INCLUDE)) {
+                // __has_include is always supported
+                Symbol definedOrNotDefined = symbol();
+                definedOrNotDefined.token = PP_MOC_TRUE;
+                substituted += definedOrNotDefined;
+            } else {
+                next(PP_IDENTIFIER);
+                Symbol definedOrNotDefined = symbol();
+                definedOrNotDefined.token = macros.contains(definedOrNotDefined)? PP_MOC_TRUE : PP_MOC_FALSE;
+                substituted += definedOrNotDefined;
+            }
             if (braces)
                 test(PP_RPAREN);
             continue;
         } else if (token == PP_NEWLINE) {
             substituted += symbol();
             break;
-        } else {
+        } else if (token == PP_HAS_INCLUDE) {
+            next(LPAREN);
+            Token tok = next(); // quote or LANGLE
+            bool usesAngleInclude = false;
+            QByteArray includeAsString;
+            Symbols innerSymbols;
+            if (tok == PP_LANGLE) {
+                usesAngleInclude = true;
+                next();
+                do {
+                    Symbol currentSymbol  = symbol();
+                    includeAsString += currentSymbol.lexem();
+                    if (currentSymbol.token == PP_IDENTIFIER)
+                        macroExpand(&innerSymbols, this, symbols, index, symbol().lineNum, true);
+                    else
+                        innerSymbols.append(currentSymbol);
+                } while (next() != PP_RANGLE);
+            } else {
+                includeAsString = unquotedLexem();
+            }
+            next(RPAREN);
+            const QByteArray &relative  = usesAngleInclude ? QByteArray() : currentFilenames.top();
+            bool result = !resolveInclude(includeAsString, relative).isNull();
+            if (usesAngleInclude && !result) {
+                // try with expansion
+                includeAsString = {};
+                for (const auto &innerSymbol: innerSymbols)
+                    includeAsString.append(innerSymbol.lexem());
+                result = !resolveInclude(includeAsString, relative).isNull();
+            }
+            Symbol definedOrNotDefined = symbol();
+            definedOrNotDefined.token = result ? PP_MOC_TRUE : PP_MOC_FALSE;
+            substituted += definedOrNotDefined;
+        } else  {
             substituted += symbol();
         }
     }
@@ -917,9 +967,8 @@ int PP_Expression::primary_expression()
         test(PP_RPAREN);
     } else {
         next();
-        const QByteArray &lex = lexem();
-        auto lexView = QByteArrayView(lex);
-        if (lex.endsWith('L'))
+        auto lexView = lexemView();
+        if (lexView.endsWith('L'))
             lexView.chop(1);
         value = lexView.toInt(nullptr, 0);
     }
@@ -954,34 +1003,69 @@ static QByteArray readOrMapFile(QFile *file)
     return rawInput ? QByteArray::fromRawData(rawInput, size) : file->readAll();
 }
 
-static void mergeStringLiterals(Symbols *_symbols)
+void Symbol::mergeStringLiteral(const Symbol &next)
 {
-    Symbols &symbols = *_symbols;
-    for (Symbols::iterator i = symbols.begin(); i != symbols.end(); ++i) {
-        if (i->token == STRING_LITERAL) {
-            Symbols::Iterator mergeSymbol = i;
-            qsizetype literalsLength = mergeSymbol->len;
-            while (++i != symbols.end() && i->token == STRING_LITERAL)
-                literalsLength += i->len - 2; // no quotes
+    Q_ASSERT(len >= 2); // at least `""`
+    Q_ASSERT(from + len <= lex.size());
+    Q_ASSERT(next.len >= 2); // at least `""`
+    Q_ASSERT(next.from + next.len <= next.lex.size());
 
-            if (literalsLength != mergeSymbol->len) {
-                QByteArray mergeSymbolOriginalLexem = mergeSymbol->unquotedLexem();
-                QByteArray &mergeSymbolLexem = mergeSymbol->lex;
-                mergeSymbolLexem.resize(0);
-                mergeSymbolLexem.reserve(literalsLength);
-                mergeSymbolLexem.append('"');
-                mergeSymbolLexem.append(mergeSymbolOriginalLexem);
-                for (Symbols::iterator j = mergeSymbol + 1; j != i; ++j)
-                    mergeSymbolLexem.append(j->lex.constData() + j->from + 1, j->len - 2); // append j->unquotedLexem()
-                mergeSymbolLexem.append('"');
-                mergeSymbol->len = mergeSymbol->lex.size();
-                mergeSymbol->from = 0;
-                i = symbols.erase(mergeSymbol + 1, i);
+    if (len != lex.size()) {
+        // "rubbish" around lexem() in `lex`: clean up (`lex` may be the whole file)
+        QByteArray l = lexemView().chopped(1) % next.lexemView().sliced(1);
+        lex = std::move(l); // lexemView() aliases `lex`; only clobber it now
+        from = 0;
+    } else {
+        // like QByteArray::append(), but dealing with the "" around each lexem:
+        const auto unquoted = next.unquotedLexemView();
+        lex.insert(from + len - 1, // before closing `"`
+                   unquoted);
+    }
+    len = lex.size();
+}
+
+static void mergeStringLiterals(Symbols &symbols)
+{
+    // like std::unique, but merges instead of skips adjacent STRING_LITERALs:
+
+    const auto mergeable = [](const Symbol &lhs, const Symbol &rhs) {
+        return lhs.token == STRING_LITERAL && rhs.token == STRING_LITERAL;
+    };
+
+    auto end = symbols.end();
+    auto it = std::adjacent_find(symbols.begin(), symbols.end(), mergeable);
+    if (it == end) // none found
+        return;
+
+    // we know `it`, `it + 1` are both STRING_LITERAL (adjacent_find post-condition)
+    // in particular: it + 1 < end
+
+    auto dst = it;
+    auto lit = dst;
+    ++it;
+    lit->mergeStringLiteral(*it);
+
+    while (++it != end) {
+        // Loop Invariants:
+        // - [begin(), dst] is already processed
+        // - `lit` is the last string literal
+        //   - we can merge if lit == dst
+        // - [it, end[ still to be checked
+        if (it->token == STRING_LITERAL) {
+            if (lit == dst) {            // can merge
+                lit->mergeStringLiteral(*it);
+            } else {                     // can't merge: not adjacent to previous STRING_LITERAL
+                *++dst = std::move(*it);
+                lit = dst;               // remember that this was a literal
             }
-            if (i == symbols.end())
-                break;
+        } else {
+            *++dst = std::move(*it);
         }
     }
+
+    ++dst;
+
+    symbols.erase(dst, end);
 }
 
 static QByteArray searchIncludePaths(const QList<Parser::IncludePath> &includepaths,
@@ -1070,7 +1154,7 @@ void Preprocessor::preprocess(const QByteArray &filename, Symbols &preprocessed)
             QByteArray include;
             bool local = false;
             if (test(PP_STRING_LITERAL)) {
-                local = lexem().startsWith('\"');
+                local = lexemView().startsWith('\"');
                 include = unquotedLexem();
             } else
                 continue;
@@ -1250,7 +1334,7 @@ Symbols Preprocessor::preprocessed(const QByteArray &filename, QFile *file)
     // and calculating an average when running moc over FOSS projects.
     result.reserve(file->size() / 300000);
     preprocess(filename, result);
-    mergeStringLiterals(&result);
+    mergeStringLiterals(result);
 
 #if 0
     for (int j = 0; j < result.size(); ++j)
@@ -1272,7 +1356,7 @@ void Preprocessor::parseDefineArguments(Macro *m)
         if (t == PP_RPAREN)
             break;
         if (t != PP_IDENTIFIER) {
-            QByteArray l = lexem();
+            QByteArrayView l = lexemView();
             if (l == "...") {
                 m->isVariadic = true;
                 arguments += Symbol(symbol().lineNum, PP_IDENTIFIER, "__VA_ARGS__");
@@ -1296,7 +1380,7 @@ void Preprocessor::parseDefineArguments(Macro *m)
             break;
         if (t == PP_COMMA)
             continue;
-        if (lexem() == "...") {
+        if (lexemView() == "...") {
             //GCC extension:    #define FOO(x, y...) x(y)
             // The last argument was already parsed. Just mark the macro as variadic.
             m->isVariadic = true;

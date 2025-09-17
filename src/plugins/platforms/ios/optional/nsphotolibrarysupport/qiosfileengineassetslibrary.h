@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QIOSFILEENGINEASSETSLIBRARY_H
 #define QIOSFILEENGINEASSETSLIBRARY_H
@@ -29,8 +30,8 @@ public:
     void setFileName(const QString &file) override;
 
 #ifndef QT_NO_FILESYSTEMITERATOR
-    Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames) override;
-    Iterator *endEntryList() override;
+    IteratorUniquePtr beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                                     const QStringList &filterNames) override;
 #endif
 
     void setError(QFile::FileError error, const QString &str) { QAbstractFileEngine::setError(error, str); }

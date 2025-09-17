@@ -1,5 +1,5 @@
 // Copyright (C) 2022 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef WINDOW_H
 #define WINDOW_H
@@ -16,7 +16,9 @@ public:
     void releaseSwapChain();
 
 protected:
+#if QT_CONFIG(vulkan)
     QVulkanInstance instance;
+#endif
     std::unique_ptr<QOffscreenSurface> m_fallbackSurface;
     std::unique_ptr<QRhi> m_rhi;
     std::unique_ptr<QRhiSwapChain> m_sc;

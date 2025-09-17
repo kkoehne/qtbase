@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include "qgraphicsanchorlayout_p.h"
 
 #include <QtWidgets/qwidget.h>
@@ -27,7 +25,7 @@ using namespace Qt::StringLiterals;
 // we use a tighter limit for the variables range.
 const qreal g_offset = (sizeof(qreal) == sizeof(double)) ? QWIDGETSIZE_MAX : QWIDGETSIZE_MAX / 32;
 
-QGraphicsAnchorPrivate::QGraphicsAnchorPrivate(int version)
+QGraphicsAnchorPrivate::QGraphicsAnchorPrivate(decltype(QObjectPrivateVersion) version)
     : QObjectPrivate(version), layoutPrivate(nullptr), data(nullptr),
       sizePolicy(QSizePolicy::Fixed), preferredSize(0),
       hasSize(true)
@@ -380,9 +378,9 @@ bool ParallelAnchorData::calculateSizeHints()
      0 is at Preferred
      1 is at Maximum
 */
-static QPair<QGraphicsAnchorLayoutPrivate::Interval, qreal> getFactor(qreal value, qreal min,
-                                                                      qreal minPref, qreal pref,
-                                                                      qreal maxPref, qreal max)
+static std::pair<QGraphicsAnchorLayoutPrivate::Interval, qreal> getFactor(qreal value, qreal min,
+                                                                          qreal minPref, qreal pref,
+                                                                          qreal maxPref, qreal max)
 {
     QGraphicsAnchorLayoutPrivate::Interval interval;
     qreal lower;
@@ -413,10 +411,10 @@ static QPair<QGraphicsAnchorLayoutPrivate::Interval, qreal> getFactor(qreal valu
         progress = (value - lower) / (upper - lower);
     }
 
-    return qMakePair(interval, progress);
+    return std::pair(interval, progress);
 }
 
-static qreal interpolate(const QPair<QGraphicsAnchorLayoutPrivate::Interval, qreal> &factor,
+static qreal interpolate(const std::pair<QGraphicsAnchorLayoutPrivate::Interval, qreal> &factor,
                          qreal min, qreal minPref, qreal pref, qreal maxPref, qreal max)
 {
     qreal lower = 0;
@@ -449,11 +447,11 @@ void SequentialAnchorData::updateChildrenSizes()
     // Band here refers if the value is in the Minimum To Preferred
     // band (the lower band) or the Preferred To Maximum (the upper band).
 
-    const QPair<QGraphicsAnchorLayoutPrivate::Interval, qreal> minFactor =
+    const std::pair<QGraphicsAnchorLayoutPrivate::Interval, qreal> minFactor =
         getFactor(sizeAtMinimum, minSize, minPrefSize, prefSize, maxPrefSize, maxSize);
-    const QPair<QGraphicsAnchorLayoutPrivate::Interval, qreal> prefFactor =
+    const std::pair<QGraphicsAnchorLayoutPrivate::Interval, qreal> prefFactor =
         getFactor(sizeAtPreferred, minSize, minPrefSize, prefSize, maxPrefSize, maxSize);
-    const QPair<QGraphicsAnchorLayoutPrivate::Interval, qreal> maxFactor =
+    const std::pair<QGraphicsAnchorLayoutPrivate::Interval, qreal> maxFactor =
         getFactor(sizeAtMaximum, minSize, minPrefSize, prefSize, maxPrefSize, maxSize);
 
     // XXX This is not safe if Vertex simplification takes place after the sequential
@@ -461,9 +459,7 @@ void SequentialAnchorData::updateChildrenSizes()
     // "from" or "to", that _contains_ one of them.
     AnchorVertex *prev = from;
 
-    for (int i = 0; i < m_edges.size(); ++i) {
-        AnchorData *e = m_edges.at(i);
-
+    for (AnchorData *e : m_edges) {
         const bool edgeIsForward = (e->from == prev);
         if (edgeIsForward) {
             e->sizeAtMinimum = interpolate(minFactor, e->minSize, e->minPrefSize,
@@ -498,9 +494,7 @@ void SequentialAnchorData::calculateSizeHints()
 
     AnchorVertex *prev = from;
 
-    for (int i = 0; i < m_edges.size(); ++i) {
-        AnchorData *edge = m_edges.at(i);
-
+    for (AnchorData *edge : m_edges) {
         const bool edgeIsForward = (edge->from == prev);
         if (edgeIsForward) {
             minSize += edge->minSize;
@@ -534,12 +528,10 @@ void AnchorData::dump(int indent) {
         p->firstEdge->dump(indent+2);
         p->secondEdge->dump(indent+2);
     } else if (type == Sequential) {
-        SequentialAnchorData *s = static_cast<SequentialAnchorData *>(this);
-        int kids = s->m_edges.count();
-        qDebug("%*s type: sequential(%d):", indent, "", kids);
-        for (int i = 0; i < kids; ++i) {
-            s->m_edges.at(i)->dump(indent+2);
-        }
+        const auto *s = static_cast<SequentialAnchorData *>(this);
+        qDebug("%*s type: sequential(%lld):", indent, "", qint64(s->m_edges.size()));
+        for (AnchorData *e : s->m_edges)
+            e->dump(indent + 2);
     } else {
         qDebug("%*s type: Normal:", indent, "");
     }
@@ -990,14 +982,14 @@ bool QGraphicsAnchorLayoutPrivate::simplifyGraphIteration(Qt::Orientation orient
     Graph<AnchorVertex, AnchorData> &g = graph[orientation];
 
     QSet<AnchorVertex *> visited;
-    QStack<QPair<AnchorVertex *, AnchorVertex *> > stack;
-    stack.push(qMakePair(static_cast<AnchorVertex *>(nullptr), layoutFirstVertex[orientation]));
+    QStack<std::pair<AnchorVertex *, AnchorVertex *> > stack;
+    stack.push(std::pair(static_cast<AnchorVertex *>(nullptr), layoutFirstVertex[orientation]));
     QList<AnchorVertex *> candidates;
 
     // Walk depth-first, in the stack we store start of the candidate sequence (beforeSequence)
     // and the vertex to be visited.
     while (!stack.isEmpty()) {
-        QPair<AnchorVertex *, AnchorVertex *> pair = stack.pop();
+        std::pair<AnchorVertex *, AnchorVertex *> pair = stack.pop();
         AnchorVertex *beforeSequence = pair.first;
         AnchorVertex *v = pair.second;
 
@@ -1073,9 +1065,9 @@ bool QGraphicsAnchorLayoutPrivate::simplifyGraphIteration(Qt::Orientation orient
             // vertex. If it's not an end of sequence, we keep the original 'before' vertex,
             // since we are keeping the candidates list.
             if (endOfSequence)
-                stack.push(qMakePair(v, next));
+                stack.push(std::pair(v, next));
             else
-                stack.push(qMakePair(beforeSequence, next));
+                stack.push(std::pair(beforeSequence, next));
         }
 
         visited.insert(v);
@@ -1155,12 +1147,10 @@ void QGraphicsAnchorLayoutPrivate::restoreSimplifiedAnchor(AnchorData *edge)
         g.createEdge(edge->from, edge->to, edge);
 
     } else if (edge->type == AnchorData::Sequential) {
-        SequentialAnchorData *sequence = static_cast<SequentialAnchorData *>(edge);
+        const auto *sequence = static_cast<SequentialAnchorData *>(edge);
 
-        for (int i = 0; i < sequence->m_edges.size(); ++i) {
-            AnchorData *data = sequence->m_edges.at(i);
+        for (AnchorData *data : sequence->m_edges)
             restoreSimplifiedAnchor(data);
-        }
 
         delete sequence;
 
@@ -1222,7 +1212,7 @@ void QGraphicsAnchorLayoutPrivate::restoreSimplifiedGraph(Qt::Orientation orient
 
     // Restore anchor simplification
     Graph<AnchorVertex, AnchorData> &g = graph[orientation];
-    QList<QPair<AnchorVertex *, AnchorVertex *>> connections = g.connections();
+    QList<std::pair<AnchorVertex *, AnchorVertex *>> connections = g.connections();
     for (int i = 0; i < connections.size(); ++i) {
         AnchorVertex *v1 = connections.at(i).first;
         AnchorVertex *v2 = connections.at(i).second;
@@ -1774,12 +1764,12 @@ void QGraphicsAnchorLayoutPrivate::removeAnchor(AnchorVertex *firstVertex,
     bool keepFirstItem = false;
     bool keepSecondItem = false;
 
-    QPair<AnchorVertex *, int> v;
+    std::pair<AnchorVertex *, int> v;
     int refcount = -1;
 
     if (firstItem != q) {
         for (int i = Qt::AnchorLeft; i <= Qt::AnchorBottom; ++i) {
-            v = m_vertexList.value(qMakePair(firstItem, static_cast<Qt::AnchorPoint>(i)));
+            v = m_vertexList.value(std::pair(firstItem, static_cast<Qt::AnchorPoint>(i)));
             if (v.first) {
                 if (i == Qt::AnchorHorizontalCenter || i == Qt::AnchorVerticalCenter)
                     refcount = 2;
@@ -1797,7 +1787,7 @@ void QGraphicsAnchorLayoutPrivate::removeAnchor(AnchorVertex *firstVertex,
 
     if (secondItem != q) {
         for (int i = Qt::AnchorLeft; i <= Qt::AnchorBottom; ++i) {
-            v = m_vertexList.value(qMakePair(secondItem, static_cast<Qt::AnchorPoint>(i)));
+            v = m_vertexList.value(std::pair(secondItem, static_cast<Qt::AnchorPoint>(i)));
             if (v.first) {
                 if (i == Qt::AnchorHorizontalCenter || i == Qt::AnchorVerticalCenter)
                     refcount = 2;
@@ -1845,8 +1835,8 @@ void QGraphicsAnchorLayoutPrivate::removeAnchor_helper(AnchorVertex *v1, AnchorV
 AnchorVertex *QGraphicsAnchorLayoutPrivate::addInternalVertex(QGraphicsLayoutItem *item,
                                                               Qt::AnchorPoint edge)
 {
-    QPair<QGraphicsLayoutItem *, Qt::AnchorPoint> pair(item, edge);
-    QPair<AnchorVertex *, int> v = m_vertexList.value(pair);
+    std::pair<QGraphicsLayoutItem *, Qt::AnchorPoint> pair(item, edge);
+    std::pair<AnchorVertex *, int> v = m_vertexList.value(pair);
 
     if (!v.first) {
         Q_ASSERT(v.second == 0);
@@ -1866,8 +1856,8 @@ AnchorVertex *QGraphicsAnchorLayoutPrivate::addInternalVertex(QGraphicsLayoutIte
 void QGraphicsAnchorLayoutPrivate::removeInternalVertex(QGraphicsLayoutItem *item,
                                                         Qt::AnchorPoint edge)
 {
-    QPair<QGraphicsLayoutItem *, Qt::AnchorPoint> pair(item, edge);
-    QPair<AnchorVertex *, int> v = m_vertexList.value(pair);
+    std::pair<QGraphicsLayoutItem *, Qt::AnchorPoint> pair(item, edge);
+    std::pair<AnchorVertex *, int> v = m_vertexList.value(pair);
 
     if (!v.first) {
         qWarning("This item with this edge is not in the graph");
@@ -2244,7 +2234,7 @@ bool QGraphicsAnchorLayoutPrivate::calculateNonTrunk(const QList<QSimplexConstra
 void QGraphicsAnchorLayoutPrivate::refreshAllSizeHints(Qt::Orientation orientation)
 {
     Graph<AnchorVertex, AnchorData> &g = graph[orientation];
-    QList<QPair<AnchorVertex *, AnchorVertex *>> vertices = g.connections();
+    QList<std::pair<AnchorVertex *, AnchorVertex *>> vertices = g.connections();
 
     QLayoutStyleInfo styleInf = styleInfo();
     for (int i = 0; i < vertices.size(); ++i) {
@@ -2265,7 +2255,7 @@ void QGraphicsAnchorLayoutPrivate::refreshAllSizeHints(Qt::Orientation orientati
  */
 void QGraphicsAnchorLayoutPrivate::findPaths(Qt::Orientation orientation)
 {
-    QQueue<QPair<AnchorVertex *, AnchorVertex *> > queue;
+    QQueue<std::pair<AnchorVertex *, AnchorVertex *> > queue;
 
     QSet<AnchorData *> visited;
 
@@ -2275,10 +2265,10 @@ void QGraphicsAnchorLayoutPrivate::findPaths(Qt::Orientation orientation)
 
     const auto adjacentVertices = graph[orientation].adjacentVertices(root);
     for (AnchorVertex *v : adjacentVertices)
-        queue.enqueue(qMakePair(root, v));
+        queue.enqueue(std::pair(root, v));
 
     while(!queue.isEmpty()) {
-        QPair<AnchorVertex *, AnchorVertex *>  pair = queue.dequeue();
+        std::pair<AnchorVertex *, AnchorVertex *>  pair = queue.dequeue();
         AnchorData *edge = graph[orientation].edgeData(pair.first, pair.second);
 
         if (visited.contains(edge))
@@ -2296,7 +2286,7 @@ void QGraphicsAnchorLayoutPrivate::findPaths(Qt::Orientation orientation)
 
         const auto adjacentVertices = graph[orientation].adjacentVertices(pair.second);
         for (AnchorVertex *v : adjacentVertices)
-            queue.enqueue(qMakePair(pair.second, v));
+            queue.enqueue(std::pair(pair.second, v));
     }
 
     // We will walk through every reachable items (non-float) store them in a temporary set.
@@ -2337,7 +2327,7 @@ void QGraphicsAnchorLayoutPrivate::constraintsFromPaths(Qt::Orientation orientat
 void QGraphicsAnchorLayoutPrivate::updateAnchorSizes(Qt::Orientation orientation)
 {
     Graph<AnchorVertex, AnchorData> &g = graph[orientation];
-    const QList<QPair<AnchorVertex *, AnchorVertex *>> &vertices = g.connections();
+    const QList<std::pair<AnchorVertex *, AnchorVertex *>> &vertices = g.connections();
 
     for (int i = 0; i < vertices.size(); ++i) {
         AnchorData *ad = g.edgeData(vertices.at(i).first, vertices.at(i).second);
@@ -2556,7 +2546,7 @@ void QGraphicsAnchorLayoutPrivate::identifyNonFloatItems_helper(const AnchorData
             nonFloatingItemsIdentifiedSoFar->insert(ad->item);
         break;
     case AnchorData::Sequential:
-        foreach (const AnchorData *d, static_cast<const SequentialAnchorData *>(ad)->m_edges)
+        for (const AnchorData *d : static_cast<const SequentialAnchorData *>(ad)->m_edges)
             identifyNonFloatItems_helper(d, nonFloatingItemsIdentifiedSoFar);
         break;
     case AnchorData::Parallel:
@@ -2632,7 +2622,7 @@ void QGraphicsAnchorLayoutPrivate::setItemsGeometries(const QRectF &geom)
 */
 void QGraphicsAnchorLayoutPrivate::calculateVertexPositions(Qt::Orientation orientation)
 {
-    QQueue<QPair<AnchorVertex *, AnchorVertex *> > queue;
+    QQueue<std::pair<AnchorVertex *, AnchorVertex *> > queue;
     QSet<AnchorVertex *> visited;
 
     // Get root vertex
@@ -2644,14 +2634,14 @@ void QGraphicsAnchorLayoutPrivate::calculateVertexPositions(Qt::Orientation orie
     // Add initial edges to the queue
     const auto adjacentVertices = graph[orientation].adjacentVertices(root);
     for (AnchorVertex *v : adjacentVertices)
-        queue.enqueue(qMakePair(root, v));
+        queue.enqueue(std::pair(root, v));
 
     // Do initial calculation required by "interpolateEdge()"
     setupEdgesInterpolation(orientation);
 
     // Traverse the graph and calculate vertex positions
     while (!queue.isEmpty()) {
-        QPair<AnchorVertex *, AnchorVertex *> pair = queue.dequeue();
+        std::pair<AnchorVertex *, AnchorVertex *> pair = queue.dequeue();
         AnchorData *edge = graph[orientation].edgeData(pair.first, pair.second);
 
         if (visited.contains(pair.second))
@@ -2663,7 +2653,7 @@ void QGraphicsAnchorLayoutPrivate::calculateVertexPositions(Qt::Orientation orie
         QList<AnchorVertex *> adjacents = graph[orientation].adjacentVertices(pair.second);
         for (int i = 0; i < adjacents.size(); ++i) {
             if (!visited.contains(adjacents.at(i)))
-                queue.enqueue(qMakePair(pair.second, adjacents.at(i)));
+                queue.enqueue(std::pair(pair.second, adjacents.at(i)));
         }
     }
 }
@@ -2683,7 +2673,7 @@ void QGraphicsAnchorLayoutPrivate::setupEdgesInterpolation(
     qreal current;
     current = (orientation == Qt::Horizontal) ? q->contentsRect().width() : q->contentsRect().height();
 
-    QPair<Interval, qreal> result;
+    std::pair<Interval, qreal> result;
     result = getFactor(current,
                        sizeHints[orientation][Qt::MinimumSize],
                        sizeHints[orientation][Qt::PreferredSize],
@@ -2713,8 +2703,8 @@ void QGraphicsAnchorLayoutPrivate::setupEdgesInterpolation(
 void QGraphicsAnchorLayoutPrivate::interpolateEdge(AnchorVertex *base, AnchorData *edge)
 {
     const Qt::Orientation orientation = edge->isVertical ? Qt::Vertical : Qt::Horizontal;
-    const QPair<Interval, qreal> factor(interpolationInterval[orientation],
-                                        interpolationProgress[orientation]);
+    const std::pair<Interval, qreal> factor(interpolationInterval[orientation],
+                                            interpolationProgress[orientation]);
 
     qreal edgeDistance = interpolate(factor, edge->sizeAtMinimum, edge->sizeAtPreferred,
                                      edge->sizeAtPreferred, edge->sizeAtPreferred,
@@ -2771,10 +2761,14 @@ bool QGraphicsAnchorLayoutPrivate::solveMinMax(const QList<QSimplexConstraint *>
 }
 
 enum slackType { Grower = -1, Shrinker = 1 };
-static QPair<QSimplexVariable *, QSimplexConstraint *> createSlack(QSimplexConstraint *sizeConstraint,
-                                                                   qreal interval, slackType type)
+static auto createSlack(QSimplexConstraint *sizeConstraint, qreal interval, slackType type)
 {
-    QSimplexVariable *slack = new QSimplexVariable;
+    struct R {
+        QConcreteSimplexVariable *slack;
+        QSimplexConstraint *limit;
+    };
+
+    auto slack = new QConcreteSimplexVariable;
     sizeConstraint->variables.insert(slack, type);
 
     QSimplexConstraint *limit = new QSimplexConstraint;
@@ -2782,14 +2776,14 @@ static QPair<QSimplexVariable *, QSimplexConstraint *> createSlack(QSimplexConst
     limit->ratio = QSimplexConstraint::LessOrEqual;
     limit->constant = interval;
 
-    return qMakePair(slack, limit);
+    return R{slack, limit};
 }
 
 bool QGraphicsAnchorLayoutPrivate::solvePreferred(const QList<QSimplexConstraint *> &constraints,
                                                   const QList<AnchorData *> &variables)
 {
     QList<QSimplexConstraint *> preferredConstraints;
-    QList<QSimplexVariable *> preferredVariables;
+    QList<QConcreteSimplexVariable *> preferredVariables;
     QSimplexConstraint objective;
 
     // Fill the objective coefficients for this variable. In the
@@ -2825,48 +2819,47 @@ bool QGraphicsAnchorLayoutPrivate::solvePreferred(const QList<QSimplexConstraint
         sizeConstraint->constant = ad->prefSize + g_offset;
 
         // Can easily shrink
-        QPair<QSimplexVariable *, QSimplexConstraint *> slack;
         const qreal softShrinkInterval = ad->prefSize - ad->minPrefSize;
         if (softShrinkInterval) {
-            slack = createSlack(sizeConstraint, softShrinkInterval, Shrinker);
-            preferredVariables += slack.first;
-            preferredConstraints += slack.second;
+            auto r = createSlack(sizeConstraint, softShrinkInterval, Shrinker);
+            preferredVariables += r.slack;
+            preferredConstraints += r.limit;
 
             // Add to objective with ratio == 1 (soft)
-            objective.variables.insert(slack.first, 1.0);
+            objective.variables.insert(r.slack, 1.0);
         }
 
         // Can easily grow
         const qreal softGrowInterval = ad->maxPrefSize - ad->prefSize;
         if (softGrowInterval) {
-            slack = createSlack(sizeConstraint, softGrowInterval, Grower);
-            preferredVariables += slack.first;
-            preferredConstraints += slack.second;
+            auto r = createSlack(sizeConstraint, softGrowInterval, Grower);
+            preferredVariables += r.slack;
+            preferredConstraints += r.limit;
 
             // Add to objective with ratio == 1 (soft)
-            objective.variables.insert(slack.first, 1.0);
+            objective.variables.insert(r.slack, 1.0);
         }
 
         // Can shrink if really necessary
         const qreal hardShrinkInterval = ad->minPrefSize - ad->minSize;
         if (hardShrinkInterval) {
-            slack = createSlack(sizeConstraint, hardShrinkInterval, Shrinker);
-            preferredVariables += slack.first;
-            preferredConstraints += slack.second;
+            auto r = createSlack(sizeConstraint, hardShrinkInterval, Shrinker);
+            preferredVariables += r.slack;
+            preferredConstraints += r.limit;
 
             // Add to objective with ratio == N (hard)
-            objective.variables.insert(slack.first, variables.size());
+            objective.variables.insert(r.slack, variables.size());
         }
 
         // Can grow if really necessary
         const qreal hardGrowInterval = ad->maxSize - ad->maxPrefSize;
         if (hardGrowInterval) {
-            slack = createSlack(sizeConstraint, hardGrowInterval, Grower);
-            preferredVariables += slack.first;
-            preferredConstraints += slack.second;
+            auto r = createSlack(sizeConstraint, hardGrowInterval, Grower);
+            preferredVariables += r.slack;
+            preferredConstraints += r.limit;
 
             // Add to objective with ratio == N (hard)
-            objective.variables.insert(slack.first, variables.size());
+            objective.variables.insert(r.slack, variables.size());
         }
     }
 

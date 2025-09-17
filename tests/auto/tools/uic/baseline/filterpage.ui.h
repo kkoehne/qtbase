@@ -43,7 +43,7 @@ public:
     {
         if (FilterPage->objectName().isEmpty())
             FilterPage->setObjectName("FilterPage");
-        FilterPage->resize(419, 243);
+        FilterPage->resize(518, 243);
         gridLayout = new QGridLayout(FilterPage);
         gridLayout->setObjectName("gridLayout");
         label = new QLabel(FilterPage);
@@ -76,22 +76,22 @@ public:
 
         gridLayout1->addWidget(removeButton, 1, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout1->addItem(spacerItem, 2, 1, 1, 1);
 
 
         gridLayout->addWidget(groupBox, 4, 0, 1, 1);
 
-        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem1, 0, 0, 1, 1);
 
-        spacerItem2 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem2 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout->addItem(spacerItem2, 5, 0, 1, 1);
 
-        spacerItem3 = new QSpacerItem(20, 10, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem3 = new QSpacerItem(20, 10, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem3, 3, 0, 1, 1);
 

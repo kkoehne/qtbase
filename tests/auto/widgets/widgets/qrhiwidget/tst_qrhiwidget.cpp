@@ -1,5 +1,5 @@
 // Copyright (C) 2023 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtWidgets/QRhiWidget>
 #include <QtGui/QPainter>
@@ -31,8 +31,8 @@ private slots:
     void simple();
     void msaa_data();
     void msaa();
-    void explicitSize_data();
-    void explicitSize();
+    void fixedSize_data();
+    void fixedSize();
     void autoRt_data();
     void autoRt();
     void reparent_data();
@@ -80,19 +80,19 @@ void tst_QRhiWidget::testData()
     }
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     QRhiMetalInitParams metalInitParams;
     if (QRhi::probe(QRhi::Metal, &metalInitParams))
         QTest::newRow("Metal") << QRhiWidget::Api::Metal;
 #endif
 
 #ifdef Q_OS_WIN
-    QTest::newRow("D3D11") << QRhiWidget::Api::D3D11;
+    QTest::newRow("D3D11") << QRhiWidget::Api::Direct3D11;
     // D3D12 needs to be probed too due to being disabled if the SDK headers
     // are too old (clang, mingw).
     QRhiD3D12InitParams d3d12InitParams;
     if (QRhi::probe(QRhi::D3D12, &d3d12InitParams))
-        QTest::newRow("D3D12") << QRhiWidget::Api::D3D12;
+        QTest::newRow("D3D12") << QRhiWidget::Api::Direct3D12;
 #endif
 }
 
@@ -221,6 +221,8 @@ public:
     std::unique_ptr<QRhiGraphicsPipeline> m_pipeline;
     QRhiTextureRenderTarget *m_rt = nullptr;   // used when autoRenderTarget is off
     QRhiRenderPassDescriptor *m_rp = nullptr;  // used when autoRenderTarget is off
+
+    friend class tst_QRhiWidget;
 };
 
 void SimpleRhiWidget::initialize(QRhiCommandBuffer *cb)
@@ -343,7 +345,7 @@ void tst_QRhiWidget::simple()
     QCOMPARE(errorSpy.count(), 0);
 
     QCOMPARE(rhiWidget->sampleCount(), 1);
-    QCOMPARE(rhiWidget->textureFormat(), QRhiWidget::TextureFormat::RGBA8);
+    QCOMPARE(rhiWidget->colorBufferFormat(), QRhiWidget::TextureFormat::RGBA8);
     QVERIFY(rhiWidget->isAutoRenderTargetEnabled());
 
     // Pull out the QRhiTexture (we know colorTexture() and rhi() and friends
@@ -368,10 +370,10 @@ void tst_QRhiWidget::simple()
     case QRhiWidget::Api::Vulkan:
         QCOMPARE(rhi->backend(), QRhi::Vulkan);
         break;
-    case QRhiWidget::Api::D3D11:
+    case QRhiWidget::Api::Direct3D11:
         QCOMPARE(rhi->backend(), QRhi::D3D11);
         break;
-    case QRhiWidget::Api::D3D12:
+    case QRhiWidget::Api::Direct3D12:
         QCOMPARE(rhi->backend(), QRhi::D3D12);
         break;
     case QRhiWidget::Api::Null:
@@ -396,7 +398,7 @@ void tst_QRhiWidget::simple()
                             readResult.pixelSize.width(), readResult.pixelSize.height(),
                             QImage::Format_RGBA8888);
         if (rhi->isYUpInFramebuffer())
-            resultOne = wrapperImage.mirrored();
+            resultOne = wrapperImage.flipped();
         else
             resultOne = wrapperImage.copy();
 
@@ -458,7 +460,7 @@ void tst_QRhiWidget::msaa()
     QCOMPARE(errorSpy.count(), 0);
 
     QCOMPARE(rhiWidget->sampleCount(), 4);
-    QCOMPARE(rhiWidget->textureFormat(), QRhiWidget::TextureFormat::RGBA8);
+    QCOMPARE(rhiWidget->colorBufferFormat(), QRhiWidget::TextureFormat::RGBA8);
     QVERIFY(!rhiWidget->colorTexture());
     QVERIFY(rhiWidget->msaaColorBuffer());
     QVERIFY(rhiWidget->depthStencilBuffer());
@@ -479,7 +481,7 @@ void tst_QRhiWidget::msaa()
                             QImage::Format_RGBA8888);
         QImage result;
         if (rhi->isYUpInFramebuffer())
-            result = wrapperImage.mirrored();
+            result = wrapperImage.flipped();
         else
             result = wrapperImage.copy();
 
@@ -511,12 +513,12 @@ void tst_QRhiWidget::msaa()
     QVERIFY(rhiWidget->msaaColorBuffer());
 }
 
-void tst_QRhiWidget::explicitSize_data()
+void tst_QRhiWidget::fixedSize_data()
 {
     testData();
 }
 
-void tst_QRhiWidget::explicitSize()
+void tst_QRhiWidget::fixedSize()
 {
     QFETCH(QRhiWidget::Api, api);
 
@@ -528,7 +530,7 @@ void tst_QRhiWidget::explicitSize()
     QVBoxLayout *layout = new QVBoxLayout;
     layout->addWidget(rhiWidget);
 
-    rhiWidget->setExplicitSize(QSize(320, 200));
+    rhiWidget->setFixedColorBufferSize(QSize(320, 200));
 
     QWidget w;
     w.setLayout(layout);
@@ -548,7 +550,7 @@ void tst_QRhiWidget::explicitSize()
     QVERIFY(!rhiWidget->resolveTexture());
 
     frameSpy.clear();
-    rhiWidget->setExplicitSize(640, 480); // should also trigger update()
+    rhiWidget->setFixedColorBufferSize(640, 480); // should also trigger update()
     QTRY_VERIFY(frameSpy.count() > 0);
 
     QVERIFY(rhiWidget->colorTexture());
@@ -557,7 +559,7 @@ void tst_QRhiWidget::explicitSize()
     QCOMPARE(rhiWidget->depthStencilBuffer()->pixelSize(), QSize(640, 480));
 
     frameSpy.clear();
-    rhiWidget->setExplicitSize(QSize());
+    rhiWidget->setFixedColorBufferSize(QSize());
     QTRY_VERIFY(frameSpy.count() > 0);
 
     QVERIFY(rhiWidget->colorTexture());
@@ -607,7 +609,7 @@ void tst_QRhiWidget::autoRt()
 
     frameSpy.clear();
     // do something that triggers creating a new backing texture
-    rhiWidget->setExplicitSize(QSize(320, 200));
+    rhiWidget->setFixedColorBufferSize(QSize(320, 200));
     QTRY_VERIFY(frameSpy.count() > 0);
 
     QVERIFY(rhiWidget->colorTexture());
@@ -629,12 +631,19 @@ void tst_QRhiWidget::reparent()
     QWidget *windowOne = new QWidget;
     windowOne->resize(1280, 720);
 
-    SimpleRhiWidget *rhiWidget = new SimpleRhiWidget(1, windowOne);
+    SimpleRhiWidget *rhiWidget = new SimpleRhiWidget(1);
     rhiWidget->setApi(api);
     rhiWidget->resize(800, 600);
     QSignalSpy frameSpy(rhiWidget, &QRhiWidget::frameSubmitted);
     QSignalSpy errorSpy(rhiWidget, &QRhiWidget::renderFailed);
 
+    rhiWidget->show();
+    QVERIFY(QTest::qWaitForWindowExposed(rhiWidget));
+    QTRY_VERIFY(frameSpy.count() > 0);
+    QCOMPARE(errorSpy.count(), 0);
+
+    frameSpy.clear();
+    rhiWidget->setParent(windowOne);
     windowOne->show();
     QVERIFY(QTest::qWaitForWindowExposed(windowOne));
     QTRY_VERIFY(frameSpy.count() > 0);
@@ -717,7 +726,7 @@ void tst_QRhiWidget::grabFramebufferWhileStillInvisible()
                             readResult.pixelSize.width(), readResult.pixelSize.height(),
                             QImage::Format_RGBA8888);
         if (w.rhi()->isYUpInFramebuffer())
-            image = wrapperImage.mirrored();
+            image = wrapperImage.flipped();
         else
             image = wrapperImage.copy();
         QRgb c = image.pixel(image.width() / 2, image.height() / 2);
@@ -801,7 +810,7 @@ void tst_QRhiWidget::mirror()
                             QImage::Format_RGBA8888);
         QImage image;
         if (rhi->isYUpInFramebuffer())
-            image = wrapperImage.mirrored();
+            image = wrapperImage.flipped();
         else
             image = wrapperImage.copy();
 

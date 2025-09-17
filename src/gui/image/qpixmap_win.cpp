@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qbitmap.h"
 #include "qpixmap.h"
@@ -48,7 +49,8 @@ static inline void initBitMapInfoHeader(int width, int height, bool topToBottom,
     bih->biBitCount    = WORD(bitCount);
     bih->biCompression = compression;
      // scan lines are word-aligned (unless RLE)
-    const DWORD bytesPerLine = pad4(DWORD(width) * bitCount / 8);
+    const DWORD bytesPerLine = bitCount == 1 ? pad4(DWORD(qCeil(width / 8.0)))
+                                             : pad4(DWORD(width) * bitCount / 8);
     bih->biSizeImage   = bytesPerLine * DWORD(height);
 }
 
@@ -164,7 +166,7 @@ static QImage copyImageData(const BITMAPINFOHEADER &header, const RGBQUAD *color
         Q_ASSERT(DWORD(image.sizeInBytes()) == header.biSizeImage);
         memcpy(image.bits(), data, header.biSizeImage);
         if (format == QImage::Format_RGB888)
-            image = image.rgbSwapped();
+            image = std::move(image).rgbSwapped();
         break;
     default:
         Q_UNREACHABLE();
@@ -305,6 +307,7 @@ HBITMAP qt_imageToWinHBITMAP(const QImage &imageIn, int hbitmapFormat)
         return nullptr;
     }
     if (!pixels) {
+        DeleteObject(bitmap);
         qErrnoWarning("%s, did not allocate pixel data", __FUNCTION__);
         return nullptr;
     }

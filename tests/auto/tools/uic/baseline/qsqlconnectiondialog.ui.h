@@ -56,7 +56,7 @@ public:
     {
         if (QSqlConnectionDialogUi->objectName().isEmpty())
             QSqlConnectionDialogUi->setObjectName("QSqlConnectionDialogUi");
-        QSqlConnectionDialogUi->resize(315, 302);
+        QSqlConnectionDialogUi->resize(321, 343);
         vboxLayout = new QVBoxLayout(QSqlConnectionDialogUi);
 #ifndef Q_OS_MAC
         vboxLayout->setSpacing(6);
@@ -93,8 +93,8 @@ public:
 
         portSpinBox = new QSpinBox(connGroupBox);
         portSpinBox->setObjectName("portSpinBox");
-        portSpinBox->setMaximum(65535);
         portSpinBox->setMinimum(-1);
+        portSpinBox->setMaximum(65535);
         portSpinBox->setValue(-1);
 
         gridLayout->addWidget(portSpinBox, 5, 1, 1, 1);
@@ -106,7 +106,7 @@ public:
 
         editPassword = new QLineEdit(connGroupBox);
         editPassword->setObjectName("editPassword");
-        editPassword->setEchoMode(QLineEdit::Password);
+        editPassword->setEchoMode(QLineEdit::EchoMode::Password);
 
         gridLayout->addWidget(editPassword, 3, 1, 1, 1);
 
@@ -144,7 +144,7 @@ public:
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
         hboxLayout->setObjectName("hboxLayout");
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
@@ -162,7 +162,7 @@ public:
 #endif
         hboxLayout1->setContentsMargins(0, 0, 0, 0);
         hboxLayout1->setObjectName("hboxLayout1");
-        spacerItem1 = new QSpacerItem(20, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem1 = new QSpacerItem(20, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout1->addItem(spacerItem1);
 

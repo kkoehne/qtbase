@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qssl_p.h"
 #include "qsslconfiguration.h"
@@ -105,6 +106,12 @@ const char QSslConfiguration::NextProtocolHttp1_1[] = "http/1.1";
 */
 
 /*!
+    \variable QSslConfiguration::ALPNProtocolHTTP2
+    \brief The value used for negotiating HTTP 2 during the Application-Layer
+    Protocol Negotiation.
+*/
+
+/*!
     Constructs an empty SSL configuration. This configuration contains
     no valid settings and the state will be empty. isNull() will
     return true after this constructor is called.
@@ -146,9 +153,7 @@ QSslConfiguration &QSslConfiguration::operator=(const QSslConfiguration &other)
 /*!
     \fn void QSslConfiguration::swap(QSslConfiguration &other)
     \since 5.0
-
-    Swaps this SSL configuration instance with \a other. This function
-    is very fast and never fails.
+    \memberswap{SSL configuration instance}
 */
 
 /*!
@@ -577,10 +582,7 @@ void QSslConfiguration::setCiphers(const QList<QSslCipher> &ciphers)
 
     Sets the cryptographic cipher suite for this configuration to \a ciphers,
     which is a colon-separated list of cipher suite names. The ciphers are listed
-    in order of preference, starting with the most preferred cipher. For example:
-
-    \snippet code/src_network_ssl_qsslconfiguration.cpp 1
-
+    in order of preference, starting with the most preferred cipher.
     Each cipher name in \a ciphers must be the name of a cipher in the
     list returned by supportedCiphers().  Restricting the cipher suite
     must be done before the handshake phase, where the session cipher
@@ -938,6 +940,9 @@ QSslDiffieHellmanParameters QSslConfiguration::diffieHellmanParameters() const
 
     If no Diffie-Hellman parameters have been set, the QSslConfiguration object
     defaults to using the 2048-bit MODP group from RFC 3526.
+
+    Since 6.7 you can provide an empty Diffie-Hellman parameter to use auto selection
+    (see SSL_CTX_set_dh_auto of openssl) if the tls backend supports it.
 
     \note The default parameters may change in future Qt versions.
     Please check the documentation of the \e{exact Qt version} that you

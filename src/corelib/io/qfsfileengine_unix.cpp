@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qplatformdefs.h"
 #include "private/qabstractfileengine_p.h"
@@ -160,9 +161,9 @@ bool QFSFileEnginePrivate::nativeSyncToDisk()
     Q_Q(QFSFileEngine);
     int ret;
 #if defined(_POSIX_SYNCHRONIZED_IO) && _POSIX_SYNCHRONIZED_IO > 0
-    EINTR_LOOP(ret, fdatasync(nativeHandle()));
+    QT_EINTR_LOOP(ret, fdatasync(nativeHandle()));
 #else
-    EINTR_LOOP(ret, fsync(nativeHandle()));
+    QT_EINTR_LOOP(ret, fsync(nativeHandle()));
 #endif
     if (ret != 0)
         q->setError(QFile::WriteError, qt_error_string(errno));
@@ -294,11 +295,6 @@ qint64 QFSFileEnginePrivate::nativeSize() const
     return sizeFdFh();
 }
 
-bool QFSFileEngine::caseSensitive() const
-{
-    return true;
-}
-
 QString QFSFileEngine::currentPath(const QString &)
 {
     return QFileSystemEngine::currentPath().filePath();
@@ -308,7 +304,7 @@ QString QFSFileEngine::currentPath(const QString &)
 QFileInfoList QFSFileEngine::drives()
 {
     QFileInfoList ret;
-    ret.append(QFileInfo(rootPath()));
+    ret.append(QFileInfo(QFileSystemEngine::rootPath()));
     return ret;
 }
 
@@ -525,7 +521,7 @@ bool QFSFileEngine::setSize(qint64 size)
     return ret;
 }
 
-bool QFSFileEngine::setFileTime(const QDateTime &newDate, FileTime time)
+bool QFSFileEngine::setFileTime(const QDateTime &newDate, QFile::FileTime time)
 {
     Q_D(QFSFileEngine);
 
@@ -565,11 +561,11 @@ uchar *QFSFileEnginePrivate::map(qint64 offset, qint64 size, QFile::MemoryMapFla
     }
 
     if (offset < 0 || offset > maxFileOffset
-            || size < 0 || quint64(size) > quint64(size_t(-1))) {
+        || size <= 0
+        || quint64(size) > quint64(size_t(-1))) {
         q->setError(QFile::UnspecifiedError, qt_error_string(EINVAL));
         return nullptr;
     }
-
     // If we know the mapping will extend beyond EOF, fail early to avoid
     // undefined behavior. Otherwise, let mmap have its say.
     if (doStat(QFileSystemMetaData::SizeAttribute)
@@ -653,15 +649,18 @@ bool QFSFileEnginePrivate::unmap(uchar *ptr)
 /*!
     \reimp
 */
-bool QFSFileEngine::cloneTo(QAbstractFileEngine *target)
+QAbstractFileEngine::TriStateResult QFSFileEngine::cloneTo(QAbstractFileEngine *target)
 {
     Q_D(QFSFileEngine);
     if ((target->fileFlags(LocalDiskFlag) & LocalDiskFlag) == 0)
-        return false;
+        return TriStateResult::NotSupported;
 
     int srcfd = d->nativeHandle();
     int dstfd = target->handle();
-    return QFileSystemEngine::cloneFile(srcfd, dstfd, d->metaData);
+    TriStateResult r = QFileSystemEngine::cloneFile(srcfd, dstfd, d->metaData);
+    if (r == TriStateResult::Failed)
+        setError(QFile::CopyError, qt_error_string(errno));
+    return r;
 }
 
 QT_END_NAMESPACE

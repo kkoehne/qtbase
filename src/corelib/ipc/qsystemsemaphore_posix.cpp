@@ -3,6 +3,7 @@
 // Copyright (C) 2015 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Tobias Koenig <tobias.koenig@kdab.com>
 // Copyright (C) 2022 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsystemsemaphore.h"
 #include "qsystemsemaphore_p.h"
@@ -20,9 +21,9 @@
 #ifdef Q_OS_UNIX
 #  include "private/qcore_unix_p.h"
 #else
-#define EINTR_LOOP_VAL(var, val, cmd)       \
+#  define QT_EINTR_LOOP_VAL(var, val, cmd)       \
     (void)var; var = cmd
-#define EINTR_LOOP(var, cmd)    EINTR_LOOP_VAL(var, -1, cmd)
+#  define QT_EINTR_LOOP(var, cmd)    QT_EINTR_LOOP_VAL(var, -1, cmd)
 #endif
 
 // OpenBSD 4.2 doesn't define EIDRM, see BUGS section:
@@ -126,6 +127,12 @@ bool QSystemSemaphorePosix::modifySemaphore(QSystemSemaphorePrivate *self, int c
         int cnt = count;
         do {
             if (::sem_post(semaphore) == -1) {
+#if defined(Q_OS_VXWORKS)
+                if (errno == EINVAL) {
+                    semaphore = SEM_FAILED;
+                    return modifySemaphore(self, cnt);
+                }
+#endif
                 self->setUnixErrorString("QSystemSemaphore::modifySemaphore (sem_post)"_L1);
 #if defined QSYSTEMSEMAPHORE_DEBUG
                 qDebug("QSystemSemaphorePosix::modify sem_post failed %d %d", count, errno);
@@ -133,7 +140,7 @@ bool QSystemSemaphorePosix::modifySemaphore(QSystemSemaphorePrivate *self, int c
                 // rollback changes to preserve the SysV semaphore behavior
                 for ( ; cnt < count; ++cnt) {
                     int res;
-                    EINTR_LOOP(res, ::sem_wait(semaphore));
+                    QT_EINTR_LOOP(res, ::sem_wait(semaphore));
                 }
                 return false;
             }
@@ -141,7 +148,7 @@ bool QSystemSemaphorePosix::modifySemaphore(QSystemSemaphorePrivate *self, int c
         } while (cnt > 0);
     } else {
         int res;
-        EINTR_LOOP(res, ::sem_wait(semaphore));
+        QT_EINTR_LOOP(res, ::sem_wait(semaphore));
         if (res == -1) {
             // If the semaphore was removed be nice and create it and then modifySemaphore again
             if (errno == EINVAL || errno == EIDRM) {

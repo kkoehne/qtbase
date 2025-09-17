@@ -1,6 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2022 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QTestEventLoop>
@@ -16,12 +16,17 @@
 #include <QtCore/QDebug>
 #include <QtCore/QMetaType>
 #include <QtCore/QScopeGuard>
+#include <QtCore/qoperatingsystemversion.h>
 #include <QtNetwork/QHostInfo>
 
 #include <qplatformdefs.h>
 #ifdef Q_OS_UNIX
 #  include <private/qcore_unix_p.h>
+#  include <sys/resource.h>
 #  include <sys/wait.h>
+#endif
+#ifdef Q_OS_WIN
+#  include <winerror.h>
 #endif
 
 #include <QtTest/private/qemulationdetector_p.h>
@@ -48,10 +53,13 @@ private slots:
     void constructing();
     void simpleStart();
     void startCommand();
+    void startCommandEmptyString();
     void startWithOpen();
     void startWithOldOpen();
     void execute();
     void startDetached();
+    void simpleStartFail_data();
+    void simpleStartFail();
     void crashTest();
     void crashTest2();
     void echoTest_data();
@@ -88,8 +96,11 @@ private slots:
     void environmentIsSorted();
     void spaceInName();
     void setStandardInputFile();
+    void setStandardInputFileFailure();
     void setStandardOutputFile_data();
     void setStandardOutputFile();
+    void setStandardOutputFileFailure_data() { setStandardOutputFile_data(); }
+    void setStandardOutputFileFailure();
     void setStandardOutputFileNullDevice();
     void setStandardOutputFileAndWaitForBytesWritten();
     void setStandardOutputProcess_data();
@@ -99,8 +110,8 @@ private slots:
     void switchReadChannels();
     void discardUnwantedOutput();
     void setWorkingDirectory();
+    void setNonExistentWorkingDirectory_data();
     void setNonExistentWorkingDirectory();
-    void detachedSetNonExistentWorkingDirectory();
 
     void exitStatus_data();
     void exitStatus();
@@ -168,6 +179,8 @@ protected slots:
     void waitForBytesWrittenInABytesWrittenSlotSlot();
 
 private:
+    QString nonExistentFileName = u"/this/file/cant/exist/hopefully"_s;
+
     qint64 bytesAvailable;
     QTemporaryDir m_temporaryDir;
     bool haveWorkingVFork = false;
@@ -294,6 +307,25 @@ void tst_QProcess::startCommand()
     QCOMPARE(actual, expected);
 }
 
+void tst_QProcess::startCommandEmptyString()
+{
+    static const char warningMsg[] =
+            "QProcess::startCommand: empty or whitespace-only command was provided";
+    QProcess process;
+
+    QTest::ignoreMessage(QtWarningMsg, warningMsg);
+    process.startCommand("");
+    QVERIFY(!process.waitForStarted());
+
+    QTest::ignoreMessage(QtWarningMsg, warningMsg);
+    process.startCommand("   ");
+    QVERIFY(!process.waitForStarted());
+
+    QTest::ignoreMessage(QtWarningMsg, warningMsg);
+    process.startCommand("\t\n");
+    QVERIFY(!process.waitForStarted());
+}
+
 void tst_QProcess::startWithOpen()
 {
     QProcess p;
@@ -341,6 +373,67 @@ void tst_QProcess::startDetached()
     QVERIFY(QProcess::startDetached("testProcessNormal/testProcessNormal",
                                     QStringList() << "arg1" << "arg2"));
     QCOMPARE(QProcess::startDetached("nonexistingexe"), false);
+}
+
+void tst_QProcess::simpleStartFail_data()
+{
+    QTest::addColumn<bool>("detached");
+    QTest::addColumn<bool>("unixCloseFileDescriptors");
+
+    QTest::addRow("normal") << false << false;
+    QTest::addRow("detached") << true << false;
+
+#ifdef Q_OS_UNIX
+    // make sure UnixProcessFlag::CloseFileDescriptors doesn't affect our
+    // error reporting
+    QTest::addRow("normal+closefds") << false << true;
+    QTest::addRow("detached+closefds") << true << true;
+#endif
+}
+
+void tst_QProcess::simpleStartFail()
+{
+    // for more complex and stressful cases, see the other failToStart* tests
+    QFETCH(bool, detached);
+    QProcess process;
+
+#ifdef Q_OS_UNIX
+    QFETCH(bool, unixCloseFileDescriptors);
+    if (unixCloseFileDescriptors)
+        process.setUnixProcessParameters(QProcess::UnixProcessFlag::CloseFileDescriptors);
+#endif
+
+    QSignalSpy stateSpy(&process, &QProcess::stateChanged);
+    QSignalSpy errorOccurredSpy(&process, &QProcess::errorOccurred);
+
+    process.setProgram(nonExistentFileName);
+
+    if (detached) {
+        qint64 pid = -1;
+        QVERIFY(!process.startDetached(&pid));
+        QCOMPARE(pid, -1);
+    } else {
+        process.start();
+        QVERIFY(!process.waitForFinished());
+
+        QCOMPARE(stateSpy.size(), 2);
+        QCOMPARE(stateSpy[0][0].value<QProcess::ProcessState>(), QProcess::Starting);
+        QCOMPARE(stateSpy[1][0].value<QProcess::ProcessState>(), QProcess::NotRunning);
+    }
+
+    QCOMPARE(errorOccurredSpy.size(), 1);
+    QCOMPARE(process.error(), QProcess::FailedToStart);
+    QCOMPARE_NE(process.errorString(), "Unknown error");
+
+#ifdef Q_OS_UNIX
+    QVERIFY2(process.errorString().contains(": execve: "), process.errorString().toLocal8Bit());
+    int errorcode = ENOENT;
+#else
+    // value happens to match ENOENT, but that's a coincidence
+    int errorcode = ERROR_FILE_NOT_FOUND;
+#endif
+    QVERIFY2(process.errorString().contains(qt_error_string(errorcode)),
+             process.errorString().toLocal8Bit());
 }
 
 void tst_QProcess::readFromProcess()
@@ -1465,8 +1558,25 @@ void tst_QProcess::createProcessArgumentsModifier()
 static constexpr int sigs[] = { SIGABRT, SIGILL, SIGSEGV };
 struct DisableCrashLogger
 {
+#if defined(RLIMIT_CORE)
     // disable core dumps too
-    tst_QProcessCrash::NoCoreDumps disableCoreDumps {};
+    struct NoCoreDumps {
+        struct rlimit rlim;
+        NoCoreDumps()
+        {
+            if (getrlimit(RLIMIT_CORE, &rlim) == 0 && rlim.rlim_cur != 0) {
+                struct rlimit newrlim = rlim;
+                newrlim.rlim_cur = 0;
+                setrlimit(RLIMIT_CORE, &newrlim);
+            }
+        }
+        ~NoCoreDumps()
+        {
+            setrlimit(RLIMIT_CORE, &rlim);
+        }
+    } disableCoreDumps;
+#endif // RLIMIT_CORE
+
     std::array<struct sigaction, std::size(sigs)> oldhandlers;
     DisableCrashLogger()
     {
@@ -1483,6 +1593,9 @@ struct DisableCrashLogger
     }
 };
 
+QT_BEGIN_NAMESPACE
+Q_AUTOTEST_EXPORT bool _qprocessUsingVfork() noexcept;
+QT_END_NAMESPACE
 static constexpr char messageFromChildProcess[] = "Message from the child process";
 static_assert(std::char_traits<char>::length(messageFromChildProcess) <= PIPE_BUF);
 static void childProcessModifier(int fd)
@@ -1494,17 +1607,28 @@ static void childProcessModifier(int fd)
 void tst_QProcess::setChildProcessModifier_data()
 {
     QTest::addColumn<bool>("detached");
-    QTest::newRow("normal") << false;
-    QTest::newRow("detached") << true;
+    QTest::addColumn<bool>("useVfork");
+    QTest::newRow("normal") << false << false;
+    QTest::newRow("detached") << true << false;
+
+#ifdef QT_BUILD_INTERNAL
+    if (_qprocessUsingVfork()) {
+        QTest::newRow("normal-vfork") << false << true;
+        QTest::newRow("detached-vfork") << true << true;
+    }
+#endif
 }
 
 void tst_QProcess::setChildProcessModifier()
 {
     QFETCH(bool, detached);
+    QFETCH(bool, useVfork);
     int pipes[2] = { -1 , -1 };
     QVERIFY(qt_safe_pipe(pipes) == 0);
 
     QProcess process;
+    if (useVfork)
+        process.setUnixProcessParameters(QProcess::UnixProcessFlag::UseVFork);
     process.setChildProcessModifier([pipes]() {
         ::childProcessModifier(pipes[1]);
     });
@@ -1537,7 +1661,11 @@ void tst_QProcess::failChildProcessModifier()
             "Implementation detail: the length of the message is limited");
 
     QFETCH(bool, detached);
+    QFETCH(bool, useVfork);
+
     QProcess process;
+    if (useVfork)
+        process.setUnixProcessParameters(QProcess::UnixProcessFlag::UseVFork);
     process.setChildProcessModifier([&process]() {
         process.failChildProcessModifier(failureMsg, EPERM);
     });
@@ -1615,9 +1743,6 @@ void tst_QProcess::terminateInChildProcessModifier()
     QFETCH(QProcess::ExitStatus, exitStatus);
     QFETCH(bool, stderrIsEmpty);
 
-    // temporarily disable QTest's crash logger
-    DisableCrashLogger disableCrashLogging;
-
     // testForwardingHelper prints to both stdout and stderr, so if we fail to
     // fail we should be able to tell too
     QProcess process;
@@ -1637,18 +1762,24 @@ void tst_QProcess::terminateInChildProcessModifier()
     QCOMPARE(process.readAllStandardOutput(), QByteArray());
 
     // some environments print extra stuff to stderr when we crash
-#ifndef Q_OS_QNX
-    if (!QTestPrivate::isRunningArmOnX86()) {
-        QByteArray standardError = process.readAllStandardError();
-        QVERIFY2(standardError.isEmpty() == stderrIsEmpty,
-                 "stderr was: " + standardError);
+
+#if defined(Q_OS_QNX)
+    return;
+#elif defined(Q_OS_MACOS)
+    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSequoia) {
+        if (qEnvironmentVariableIsSet("SWIFT_BACKTRACE"))
+            return; // Swift's crash reporting is printed to stderr
     }
+#else
+    if (QTestPrivate::isRunningArmOnX86())
+        return;
 #endif
+
+    QByteArray standardError = process.readAllStandardError();
+    QVERIFY2(standardError.isEmpty() == stderrIsEmpty,
+             "stderr was: " + standardError);
 }
 
-QT_BEGIN_NAMESPACE
-Q_AUTOTEST_EXPORT bool _qprocessUsingVfork() noexcept;
-QT_END_NAMESPACE
 void tst_QProcess::raiseInChildProcessModifier()
 {
 #ifdef QT_BUILD_INTERNAL
@@ -1675,7 +1806,7 @@ void tst_QProcess::raiseInChildProcessModifier()
             sa.sa_flags = SA_RESETHAND;
             sa.sa_handler = [](int) {
                 static const char msg[] = "SIGUSR1 handler was run";
-                write(STDERR_FILENO, msg, strlen(msg));
+                (void)write(STDERR_FILENO, msg, strlen(msg));
                 raise(SIGUSR1);     // re-raise
             };
             sigaction(SIGUSR1, &sa, nullptr);
@@ -1734,6 +1865,7 @@ void tst_QProcess::unixProcessParameters_data()
     addRow("file-descriptors", P::CloseFileDescriptors);
     addRow("setsid", P::CreateNewSession);
     addRow("reset-ids", P::ResetIds);
+    addRow("no-coredumps", P::DisableCoreDumps);
 
     // On FreeBSD, we need to be session leader to disconnect from the CTTY
     addRow("noctty", P::DisconnectControllingTerminal | P::CreateNewSession);
@@ -1748,6 +1880,7 @@ void tst_QProcess::unixProcessParameters()
     struct Scope {
         int devnull;
         struct sigaction old_sigusr1, old_sigpipe;
+        struct rlimit old_corelimit = {};
         Scope()
         {
             int fd = open("/dev/null", O_RDONLY);
@@ -1766,6 +1899,13 @@ void tst_QProcess::unixProcessParameters()
             sigset_t *set = &act.sa_mask;               // reuse this sigset_t
             sigaddset(set, SIGUSR2);
             sigprocmask(SIG_BLOCK, set, nullptr);
+
+            if (getrlimit(RLIMIT_CORE, &old_corelimit) == 0 && old_corelimit.rlim_max) {
+                struct rlimit new_corelimit = old_corelimit;
+                new_corelimit.rlim_cur = new_corelimit.rlim_max;
+                if (setrlimit(RLIMIT_CORE, &new_corelimit) != 0)
+                    old_corelimit = {};
+            }
         }
         ~Scope()
         {
@@ -1782,6 +1922,9 @@ void tst_QProcess::unixProcessParameters()
             sigset_t *set = &old_sigusr1.sa_mask;       // reuse this sigset_t
             sigaddset(set, SIGUSR2);
             sigprocmask(SIG_BLOCK, set, nullptr);
+
+            if (old_corelimit.rlim_max)
+                setrlimit(RLIMIT_CORE, &old_corelimit);
         }
     } scope;
 
@@ -1795,6 +1938,11 @@ void tst_QProcess::unixProcessParameters()
             qInfo("Process has no controlling terminal; this test will do nothing");
             close(fd);
         }
+    }
+
+    if (params.flags & QProcess::UnixProcessFlag::DisableCoreDumps
+            && scope.old_corelimit.rlim_max == 0) {
+        QSKIP("Cannot raise the core size limit (hard limit is set to zero)");
     }
 
     QProcess process;
@@ -1857,8 +2005,8 @@ void tst_QProcess::unixProcessParametersAndChildModifier()
         process.setChildProcessModifier([=, &vforkControl] {
             const char *pgidmsg = "PGID mismatch. ";
             if (getpgrp() != oldpgid)
-                write(pipes[1], pgidmsg, strlen(pgidmsg));
-            write(pipes[1], message, strlen(message));
+                (void)write(pipes[1], pgidmsg, strlen(pgidmsg));
+            (void)write(pipes[1], message, strlen(message));
             vforkControl.storeRelaxed(1);
         });
         auto flags = QProcess::UnixProcessFlag::CloseFileDescriptors |
@@ -2319,12 +2467,21 @@ void tst_QProcess::setStandardInputFile()
     QProcess process;
     QFile file(m_temporaryDir.path() + QLatin1String("/data-sif"));
 
+    QSignalSpy stateSpy(&process, &QProcess::stateChanged);
+    QSignalSpy errorOccurredSpy(&process, &QProcess::errorOccurred);
+
     QVERIFY(file.open(QIODevice::WriteOnly));
     file.write(data, sizeof data);
     file.close();
 
     process.setStandardInputFile(file.fileName());
     process.start("testProcessEcho/testProcessEcho");
+    QVERIFY(process.waitForStarted());
+    QCOMPARE(errorOccurredSpy.size(), 0);
+    QCOMPARE(stateSpy.size(), 2);
+    QCOMPARE(stateSpy[0][0].value<QProcess::ProcessState>(), QProcess::Starting);
+    QCOMPARE(stateSpy[1][0].value<QProcess::ProcessState>(), QProcess::Running);
+    stateSpy.clear();
 
     QVERIFY(process.waitForFinished());
     QCOMPARE(process.exitStatus(), QProcess::NormalExit);
@@ -2341,31 +2498,50 @@ void tst_QProcess::setStandardInputFile()
     QCOMPARE(all.size(), 0);
 }
 
+void tst_QProcess::setStandardInputFileFailure()
+{
+    QProcess process;
+    process.setStandardInputFile(nonExistentFileName);
+
+    QSignalSpy stateSpy(&process, &QProcess::stateChanged);
+    QSignalSpy errorOccurredSpy(&process, &QProcess::errorOccurred);
+
+    process.start("testProcessEcho/testProcessEcho");
+    QVERIFY(!process.waitForStarted());
+
+    QCOMPARE(errorOccurredSpy.size(), 1);
+    QCOMPARE(errorOccurredSpy[0][0].value<QProcess::ProcessError>(), QProcess::FailedToStart);
+
+    QCOMPARE(stateSpy.size(), 2);
+    QCOMPARE(stateSpy[0][0].value<QProcess::ProcessState>(), QProcess::Starting);
+    QCOMPARE(stateSpy[1][0].value<QProcess::ProcessState>(), QProcess::NotRunning);
+}
+
 void tst_QProcess::setStandardOutputFile_data()
 {
-    QTest::addColumn<int>("channelToTest");
-    QTest::addColumn<int>("_channelMode");
+    QTest::addColumn<QProcess::ProcessChannel>("channelToTest");
+    QTest::addColumn<QProcess::ProcessChannelMode>("channelMode");
     QTest::addColumn<bool>("append");
 
-    QTest::newRow("stdout-truncate") << int(QProcess::StandardOutput)
-                                     << int(QProcess::SeparateChannels)
+    QTest::newRow("stdout-truncate") << QProcess::StandardOutput
+                                     << QProcess::SeparateChannels
                                      << false;
-    QTest::newRow("stdout-append") << int(QProcess::StandardOutput)
-                                   << int(QProcess::SeparateChannels)
+    QTest::newRow("stdout-append") << QProcess::StandardOutput
+                                   << QProcess::SeparateChannels
                                    << true;
 
-    QTest::newRow("stderr-truncate") << int(QProcess::StandardError)
-                                     << int(QProcess::SeparateChannels)
+    QTest::newRow("stderr-truncate") << QProcess::StandardError
+                                     << QProcess::SeparateChannels
                                      << false;
-    QTest::newRow("stderr-append") << int(QProcess::StandardError)
-                                   << int(QProcess::SeparateChannels)
+    QTest::newRow("stderr-append") << QProcess::StandardError
+                                   << QProcess::SeparateChannels
                                    << true;
 
-    QTest::newRow("merged-truncate") << int(QProcess::StandardOutput)
-                                     << int(QProcess::MergedChannels)
+    QTest::newRow("merged-truncate") << QProcess::StandardOutput
+                                     << QProcess::MergedChannels
                                      << false;
-    QTest::newRow("merged-append") << int(QProcess::StandardOutput)
-                                   << int(QProcess::MergedChannels)
+    QTest::newRow("merged-append") << QProcess::StandardOutput
+                                   << QProcess::MergedChannels
                                    << true;
 }
 
@@ -2374,11 +2550,10 @@ void tst_QProcess::setStandardOutputFile()
     static const char data[] = "Original data. ";
     static const char testdata[] = "Test data.";
 
-    QFETCH(int, channelToTest);
-    QFETCH(int, _channelMode);
+    QFETCH(QProcess::ProcessChannel, channelToTest);
+    QFETCH(QProcess::ProcessChannelMode, channelMode);
     QFETCH(bool, append);
 
-    QProcess::ProcessChannelMode channelMode = QProcess::ProcessChannelMode(_channelMode);
     QIODevice::OpenMode mode = append ? QIODevice::Append : QIODevice::Truncate;
 
     // create the destination file with data
@@ -2395,7 +2570,17 @@ void tst_QProcess::setStandardOutputFile()
     else
         process.setStandardErrorFile(file.fileName(), mode);
 
+    QSignalSpy stateSpy(&process, &QProcess::stateChanged);
+    QSignalSpy errorOccurredSpy(&process, &QProcess::errorOccurred);
+
     process.start("testProcessEcho2/testProcessEcho2");
+    QVERIFY(process.waitForStarted());
+    QCOMPARE(errorOccurredSpy.size(), 0);
+    QCOMPARE(stateSpy.size(), 2);
+    QCOMPARE(stateSpy[0][0].value<QProcess::ProcessState>(), QProcess::Starting);
+    QCOMPARE(stateSpy[1][0].value<QProcess::ProcessState>(), QProcess::Running);
+    stateSpy.clear();
+
     process.write(testdata, sizeof testdata);
     QVERIFY(process.waitForFinished());
     QCOMPARE(process.exitStatus(), QProcess::NormalExit);
@@ -2418,6 +2603,34 @@ void tst_QProcess::setStandardOutputFile()
     }
 
     QCOMPARE(all.size(), expectedsize);
+}
+
+void tst_QProcess::setStandardOutputFileFailure()
+{
+    QFETCH(QProcess::ProcessChannel, channelToTest);
+    QFETCH(QProcess::ProcessChannelMode, channelMode);
+    QFETCH(bool, append);
+
+    QIODevice::OpenMode mode = append ? QIODevice::Append : QIODevice::Truncate;
+
+    // run the process
+    QProcess process;
+    process.setProcessChannelMode(channelMode);
+    if (channelToTest == QProcess::StandardOutput)
+        process.setStandardOutputFile(nonExistentFileName, mode);
+    else
+        process.setStandardErrorFile(nonExistentFileName, mode);
+
+    QSignalSpy stateSpy(&process, &QProcess::stateChanged);
+    QSignalSpy errorOccurredSpy(&process, &QProcess::errorOccurred);
+
+    process.start("testProcessEcho2/testProcessEcho2");
+    QVERIFY(!process.waitForStarted());
+    QCOMPARE(errorOccurredSpy.size(), 1);
+    QCOMPARE(errorOccurredSpy[0][0].value<QProcess::ProcessError>(), QProcess::FailedToStart);
+    QCOMPARE(stateSpy.size(), 2);
+    QCOMPARE(stateSpy[0][0].value<QProcess::ProcessState>(), QProcess::Starting);
+    QCOMPARE(stateSpy[1][0].value<QProcess::ProcessState>(), QProcess::NotRunning);
 }
 
 void tst_QProcess::setStandardOutputFileNullDevice()
@@ -2678,7 +2891,7 @@ void tst_QProcess::discardUnwantedOutput()
 void tst_QProcess::setWorkingDirectory()
 {
     QProcess process;
-    process.setWorkingDirectory("test");
+    process.setWorkingDirectory(m_temporaryDir.path());
 
     // use absolute path because on Windows, the executable is relative to the parent's CWD
     // while on Unix with fork it's relative to the child's (with posix_spawn, it could be either).
@@ -2689,43 +2902,58 @@ void tst_QProcess::setWorkingDirectory()
     QCOMPARE(process.exitCode(), 0);
 
     QByteArray workingDir = process.readAllStandardOutput();
-    QCOMPARE(QDir("test").canonicalPath(), QDir(workingDir.constData()).canonicalPath());
+    QCOMPARE(QDir(m_temporaryDir.path()).canonicalPath(), QDir(workingDir.constData()).canonicalPath());
+}
+
+void tst_QProcess::setNonExistentWorkingDirectory_data()
+{
+    simpleStartFail_data();
 }
 
 void tst_QProcess::setNonExistentWorkingDirectory()
 {
+    QFETCH(bool, detached);
     QProcess process;
-    process.setWorkingDirectory("this/directory/should/not/exist/for/sure");
-
-    // use absolute path because on Windows, the executable is relative to the parent's CWD
-    // while on Unix with fork it's relative to the child's (with posix_spawn, it could be either).
-    process.start(QFileInfo("testSetWorkingDirectory/testSetWorkingDirectory").absoluteFilePath());
-    QVERIFY(!process.waitForFinished());
-    QCOMPARE(int(process.error()), int(QProcess::FailedToStart));
+    process.setWorkingDirectory(nonExistentFileName);
 
 #ifdef Q_OS_UNIX
-    QVERIFY2(process.errorString().startsWith("chdir:"), process.errorString().toLocal8Bit());
+    QFETCH(bool, unixCloseFileDescriptors);
+    if (unixCloseFileDescriptors)
+        process.setUnixProcessParameters(QProcess::UnixProcessFlag::CloseFileDescriptors);
 #endif
-}
 
-void tst_QProcess::detachedSetNonExistentWorkingDirectory()
-{
-    QProcess process;
-    process.setWorkingDirectory("this/directory/should/not/exist/for/sure");
+    QSignalSpy stateSpy(&process, &QProcess::stateChanged);
+    QSignalSpy errorOccurredSpy(&process, &QProcess::errorOccurred);
 
     // use absolute path because on Windows, the executable is relative to the parent's CWD
     // while on Unix with fork it's relative to the child's (with posix_spawn, it could be either).
     process.setProgram(QFileInfo("testSetWorkingDirectory/testSetWorkingDirectory").absoluteFilePath());
 
-    qint64 pid = -1;
-    QVERIFY(!process.startDetached(&pid));
-    QCOMPARE(pid, -1);
+    if (detached) {
+        qint64 pid = -1;
+        QVERIFY(!process.startDetached(&pid));
+        QCOMPARE(pid, -1);
+    } else {
+        process.start();
+        QVERIFY(!process.waitForFinished());
+
+        QCOMPARE(stateSpy.size(), 2);
+        QCOMPARE(stateSpy[0][0].value<QProcess::ProcessState>(), QProcess::Starting);
+        QCOMPARE(stateSpy[1][0].value<QProcess::ProcessState>(), QProcess::NotRunning);
+    }
+
+    QCOMPARE(errorOccurredSpy.size(), 1);
     QCOMPARE(process.error(), QProcess::FailedToStart);
-    QVERIFY(process.errorString() != "Unknown error");
+    QCOMPARE_NE(process.errorString(), "Unknown error");
 
 #ifdef Q_OS_UNIX
-    QVERIFY2(process.errorString().startsWith("chdir:"), process.errorString().toLocal8Bit());
+    QVERIFY2(process.errorString().contains(": chdir: "), process.errorString().toLocal8Bit());
+    int errorcode = ENOENT;
+#else
+    int errorcode = ERROR_DIRECTORY;
 #endif
+    QVERIFY2(process.errorString().contains(qt_error_string(errorcode)),
+             process.errorString().toLocal8Bit());
 }
 
 void tst_QProcess::startFinishStartFinish()
@@ -2862,23 +3090,23 @@ void tst_QProcess::startStopStartStop()
 //-----------------------------------------------------------------------------
 void tst_QProcess::startStopStartStopBuffers_data()
 {
-    QTest::addColumn<int>("channelMode1");
-    QTest::addColumn<int>("channelMode2");
+    QTest::addColumn<QProcess::ProcessChannelMode>("channelMode1");
+    QTest::addColumn<QProcess::ProcessChannelMode>("channelMode2");
 
-    QTest::newRow("separate-separate") << int(QProcess::SeparateChannels) << int(QProcess::SeparateChannels);
-    QTest::newRow("separate-merged") << int(QProcess::SeparateChannels) << int(QProcess::MergedChannels);
-    QTest::newRow("merged-separate") << int(QProcess::MergedChannels) << int(QProcess::SeparateChannels);
-    QTest::newRow("merged-merged") << int(QProcess::MergedChannels) << int(QProcess::MergedChannels);
-    QTest::newRow("merged-forwarded") << int(QProcess::MergedChannels) << int(QProcess::ForwardedChannels);
+    QTest::newRow("separate-separate") << QProcess::SeparateChannels << QProcess::SeparateChannels;
+    QTest::newRow("separate-merged")   << QProcess::SeparateChannels << QProcess::MergedChannels;
+    QTest::newRow("merged-separate")   << QProcess::MergedChannels   << QProcess::SeparateChannels;
+    QTest::newRow("merged-merged")     << QProcess::MergedChannels   << QProcess::MergedChannels;
+    QTest::newRow("merged-forwarded")  << QProcess::MergedChannels   << QProcess::ForwardedChannels;
 }
 
 void tst_QProcess::startStopStartStopBuffers()
 {
-    QFETCH(int, channelMode1);
-    QFETCH(int, channelMode2);
+    QFETCH(QProcess::ProcessChannelMode, channelMode1);
+    QFETCH(QProcess::ProcessChannelMode, channelMode2);
 
     QProcess process;
-    process.setProcessChannelMode(QProcess::ProcessChannelMode(channelMode1));
+    process.setProcessChannelMode(channelMode1);
     process.start("testProcessHang/testProcessHang");
     QVERIFY2(process.waitForReadyRead(), process.errorString().toLocal8Bit());
     if (channelMode1 == QProcess::SeparateChannels || channelMode1 == QProcess::ForwardedOutputChannel) {
@@ -2889,14 +3117,18 @@ void tst_QProcess::startStopStartStopBuffers()
     }
 
     // We want to test that the write buffer still has bytes after the child
-    // exiting. We do that by writing to a child process that never reads. We
-    // just have to write more data than a pipe can hold, so that even if
-    // QProcess finds the pipe writable (during waitForFinished() or in the
-    // QWindowsPipeWriter thread), some data will remain. The worst case I know
-    // of is Linux, which defaults to 64 kB of buffer.
+    // exits. We can do that by writing data until the OS stops consuming data,
+    // indicating that the pipe buffers are full. The initial value of 128 kB
+    // should make this loop typicall run only once; the worst case I know of
+    // is Linux, which defaults to 64 kB of buffer.
 
-    process.write(QByteArray(128 * 1024, 'a'));
-    QVERIFY(process.bytesToWrite() > 0);
+    QByteArray chunk(128 * 1024, 'a');
+    do {
+        process.write(chunk);
+        QVERIFY(process.bytesToWrite() > 0);
+        process.waitForBytesWritten(1);
+    } while (process.bytesToWrite() == 0);
+    chunk = {};
     process.kill();
 
     QVERIFY(process.waitForFinished());
@@ -2904,7 +3136,8 @@ void tst_QProcess::startStopStartStopBuffers()
 #ifndef Q_OS_WIN
     // confirm that our buffers are still full
     // Note: this doesn't work on Windows because our buffers are drained into
-    // QWindowsPipeWriter before being sent to the child process.
+    // QWindowsPipeWriter before being sent to the child process and are lost
+    // in waitForFinished() -> processFinished() -> cleanup().
     QVERIFY(process.bytesToWrite() > 0);
     QVERIFY(process.bytesAvailable() > 0); // channelMode1 is not ForwardedChannels
     if (channelMode1 == QProcess::SeparateChannels || channelMode1 == QProcess::ForwardedOutputChannel) {
@@ -2914,7 +3147,7 @@ void tst_QProcess::startStopStartStopBuffers()
     }
 #endif
 
-    process.setProcessChannelMode(QProcess::ProcessChannelMode(channelMode2));
+    process.setProcessChannelMode(channelMode2);
     process.start("testProcessEcho2/testProcessEcho2", {}, QIODevice::ReadWrite | QIODevice::Text);
 
     // the buffers should now be empty

@@ -25,6 +25,8 @@
 #include <private/qabstractscrollarea_p.h>
 #include <private/qapplication_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_REQUIRE_CONFIG(graphicsview);
 
 QT_BEGIN_NAMESPACE
@@ -87,7 +89,7 @@ public:
     qreal topIndent;
 
     // Replaying mouse events
-    QMutableSinglePointEvent lastMouseEvent;
+    QEventStorage<QMouseEvent> lastMouseEvent;
     void replayLastMouseEvent();
     void storeMouseEvent(QMouseEvent *event);
     void mouseMoveEventHandler(QMouseEvent *event);
@@ -137,6 +139,7 @@ public:
     void populateSceneDragDropEvent(QGraphicsSceneDragDropEvent *dest,
                                     QDropEvent *source);
 
+    QTransform mapToViewTransform(const QGraphicsItem *item) const;
     QRect mapToViewRect(const QGraphicsItem *item, const QRectF &rect) const;
     QRegion mapToViewRegion(const QGraphicsItem *item, const QRectF &rect) const;
     QRegion dirtyRegion;

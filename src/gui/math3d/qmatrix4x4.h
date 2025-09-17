@@ -7,7 +7,6 @@
 #include <QtGui/qtguiglobal.h>
 #include <QtGui/qvector3d.h>
 #include <QtGui/qvector4d.h>
-#include <QtGui/qquaternion.h>
 #include <QtGui/qgenericmatrix.h>
 #include <QtCore/qrect.h>
 
@@ -15,6 +14,9 @@ class tst_QMatrixNxN;
 
 QT_BEGIN_NAMESPACE
 
+#ifndef QT_NO_QUATERNION
+class QQuaternion;
+#endif
 
 #ifndef QT_NO_MATRIX4X4
 
@@ -93,7 +95,7 @@ public:
     friend QMatrix4x4 operator*(const QMatrix4x4& matrix, float factor);
     friend Q_GUI_EXPORT QMatrix4x4 operator/(const QMatrix4x4& matrix, float divisor);
 
-    friend Q_GUI_EXPORT bool qFuzzyCompare(const QMatrix4x4& m1, const QMatrix4x4& m2);
+    friend Q_GUI_EXPORT bool qFuzzyCompare(const QMatrix4x4& m1, const QMatrix4x4& m2) noexcept;
 
 #ifndef QT_NO_VECTOR3D
     void scale(const QVector3D& vector);

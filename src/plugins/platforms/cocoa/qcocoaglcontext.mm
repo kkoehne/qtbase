@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -289,6 +290,9 @@ void QCocoaGLContext::updateSurfaceFormat()
     else
         m_format.setSwapBehavior(QSurfaceFormat::SingleBuffer);
 
+    m_isSoftwareContext = (pixelFormatAttribute(NSOpenGLPFARendererID)
+        & kCGLRendererIDMatchingMask) == kCGLRendererGenericFloatID;
+
     // ------------------- Query the context -------------------
 
     auto glContextParameter = [&](NSOpenGLContextParameter parameter) {
@@ -330,6 +334,25 @@ bool QCocoaGLContext::makeCurrent(QPlatformSurface *surface)
     }
 
     return true;
+}
+
+void QCocoaGLContext::beginFrame()
+{
+    QMacAutoReleasePool pool;
+
+    Q_ASSERT(context() && context()->surface());
+    auto *surface = context()->surface()->surfaceHandle();
+    Q_ASSERT(surface);
+
+    qCDebug(lcQpaOpenGLContext) << "Beginning frame for" << this
+        << "in" << QThread::currentThread() << "for" << surface;
+
+    Q_ASSERT(surface->surface()->supportsOpenGL());
+
+    if (surface->surface()->surfaceClass() == QSurface::Window) {
+        if (m_needsUpdate.fetchAndStoreRelaxed(false))
+            update();
+    }
 }
 
 /*!
@@ -491,6 +514,11 @@ bool QCocoaGLContext::isValid() const
 bool QCocoaGLContext::isSharing() const
 {
     return m_shareContext != nil;
+}
+
+bool QCocoaGLContext::isSoftwareContext() const
+{
+    return m_isSoftwareContext;
 }
 
 NSOpenGLContext *QCocoaGLContext::nativeContext() const

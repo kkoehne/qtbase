@@ -99,7 +99,7 @@ public:
 
         sendButton = new QPushButton(centralwidget);
         sendButton->setObjectName("sendButton");
-        QSizePolicy sizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(sendButton->sizePolicy().hasHeightForWidth());
@@ -116,7 +116,7 @@ public:
         ChatMainWindow->setCentralWidget(centralwidget);
         menubar = new QMenuBar(ChatMainWindow);
         menubar->setObjectName("menubar");
-        menubar->setGeometry(QRect(0, 0, 800, 31));
+        menubar->setGeometry(QRect(0, 0, 800, 26));
         menuQuit = new QMenu(menubar);
         menuQuit->setObjectName("menuQuit");
         menuFile = new QMenu(menubar);

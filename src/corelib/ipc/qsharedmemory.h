@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QSHAREDMEMORY_H
 #define QSHAREDMEMORY_H
@@ -50,14 +51,9 @@ public:
     QSharedMemory(const QNativeIpcKey &key, QObject *parent = nullptr);
     ~QSharedMemory();
 
-#if QT_DEPRECATED_SINCE(6, 10)
-    QT_DEPRECATED_VERSION_X_6_10("Please refer to 'Native IPC Key' documentation")
     QSharedMemory(const QString &key, QObject *parent = nullptr);
-    QT_DEPRECATED_VERSION_X_6_10("Please refer to 'Native IPC Key' documentation")
     void setKey(const QString &key);
-    QT_DEPRECATED_VERSION_X_6_10("Please refer to 'Native IPC Key' documentation")
     QString key() const;
-#endif
 
     void setNativeKey(const QNativeIpcKey &key);
     void setNativeKey(const QString &key, QNativeIpcKey::Type type = QNativeIpcKey::legacyDefaultTypeForOs())

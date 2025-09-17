@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QBuffer>
@@ -134,6 +134,7 @@ private slots:
     void stream_atEnd();
 
     void stream_writeError();
+    void stream_writeSizeLimitExceeded();
 
     void stream_QByteArray2();
 
@@ -142,9 +143,11 @@ private slots:
     void stream_QJsonObject();
     void stream_QJsonValue();
 
+#if QT_CONFIG(cborstreamwriter)
     void stream_QCborArray();
     void stream_QCborMap();
     void stream_QCborValue();
+#endif
 
     void setVersion_data();
     void setVersion();
@@ -273,7 +276,7 @@ private:
     QString m_previousCurrent;
 };
 
-static int NColorRoles[] = {
+static constexpr int NColorRoles[] = {
     QPalette::NoRole,              // No Version
     QPalette::NoRole,              // Qt_1_0
     QPalette::HighlightedText + 1, // Qt_2_0
@@ -296,8 +299,13 @@ static int NColorRoles[] = {
     QPalette::PlaceholderText + 1, // Qt_5_13, Qt_5_14, Qt_5_15
     QPalette::PlaceholderText + 1, // Qt_6_0
     QPalette::Accent + 1,     // Qt_6_6
-    0                              // add the correct value for Qt_5_14 here later
+    QPalette::Accent + 1,     // Qt_6_7
+    QPalette::Accent + 1,     // Qt_6_10
+    QPalette::Accent + 1,     // Qt_6_11
 };
+
+// +1, because we start from "No Version"
+static_assert(std::size(NColorRoles) == QDataStream::Qt_DefaultCompiledVersion + 1);
 
 // Testing get/set functions
 void tst_QDataStream::getSetCheck()
@@ -1258,14 +1266,14 @@ void tst_QDataStream::stream_QDate()
 void tst_QDataStream::writeQDate(QDataStream *s)
 {
     QDate d6(qDateData(dataIndex(QTest::currentDataTag())));
-    *s << d6;
+    QVERIFY(*s << d6);
 }
 
 void tst_QDataStream::readQDate(QDataStream *s)
 {
     QDate test(qDateData(dataIndex(QTest::currentDataTag())));
     QDate d6;
-    *s >> d6;
+    QVERIFY(*s >> d6);
     QCOMPARE(d6, test);
 }
 
@@ -2189,26 +2197,39 @@ void tst_QDataStream::stream_writeError()
     TEST_WRITE_ERROR(.writeRawData("test", 4))
 }
 
+void tst_QDataStream::stream_writeSizeLimitExceeded()
+{
+    QByteArray ba;
+    QDataStream ds(&ba, QDataStream::ReadWrite);
+    // Set the version that supports only 32-bit data size
+    ds.setVersion(QDataStream::Qt_6_6);
+    QCOMPARE(ds.status(), QDataStream::Ok);
+    const qint64 size = qint64(std::numeric_limits<quint32>::max()) + 1;
+    ds.writeBytes("", size);
+    QCOMPARE(ds.status(), QDataStream::SizeLimitExceeded);
+    QVERIFY(ba.isEmpty());
+}
+
 void tst_QDataStream::stream_QByteArray2()
 {
     QByteArray ba;
     {
         QDataStream s(&ba, QIODevice::WriteOnly);
-        s << QByteArray("hallo");
-        s << QByteArray("");
-        s << QByteArray();
+        QVERIFY(s << QByteArray("hallo"));
+        QVERIFY(s << QByteArray(""));
+        QVERIFY(s << QByteArray());
     }
 
     {
         QDataStream s(&ba, QIODevice::ReadOnly);
         QByteArray res;
-        s >> res;
+        QVERIFY(s >> res);
         QCOMPARE(res, QByteArray("hallo"));
-        s >> res;
+        QVERIFY(s >> res);
         QCOMPARE(res, QByteArray(""));
         QVERIFY(res.isEmpty());
         QVERIFY(!res.isNull());
-        s >> res;
+        QVERIFY(s >> res);
         QCOMPARE(res, QByteArray());
         QVERIFY(res.isEmpty());
         QVERIFY(res.isNull());
@@ -2220,10 +2241,10 @@ void tst_QDataStream::stream_QJsonDocument()
     QByteArray buffer;
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
-        save << QByteArrayLiteral("invalidJson");
+        QVERIFY(save << QByteArrayLiteral("invalidJson"));
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonDocument doc;
-        load >> doc;
+        QVERIFY(!(load >> doc));
         QVERIFY(doc.isEmpty());
         QVERIFY(load.status() != QDataStream::Ok);
         QCOMPARE(load.status(), QDataStream::ReadCorruptData);
@@ -2231,10 +2252,10 @@ void tst_QDataStream::stream_QJsonDocument()
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
         QJsonDocument docSave(QJsonArray{1,2,3});
-        save << docSave;
+        QVERIFY(save << docSave);
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonDocument docLoad;
-        load >> docLoad;
+        QVERIFY(load >> docLoad);
         QCOMPARE(docLoad, docSave);
     }
 }
@@ -2244,10 +2265,10 @@ void tst_QDataStream::stream_QJsonArray()
     QByteArray buffer;
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
-        save << QByteArrayLiteral("invalidJson");
+        QVERIFY(save << QByteArrayLiteral("invalidJson"));
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonArray array;
-        load >> array;
+        QVERIFY(!(load >> array));
         QVERIFY(array.isEmpty());
         QVERIFY(load.status() != QDataStream::Ok);
         QCOMPARE(load.status(), QDataStream::ReadCorruptData);
@@ -2255,10 +2276,10 @@ void tst_QDataStream::stream_QJsonArray()
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
         QJsonArray arraySave(QJsonArray{1,2,3});
-        save << arraySave;
+        QVERIFY(save << arraySave);
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonArray arrayLoad;
-        load >> arrayLoad;
+        QVERIFY(load >> arrayLoad);
         QCOMPARE(arrayLoad, arraySave);
     }
 }
@@ -2268,10 +2289,10 @@ void tst_QDataStream::stream_QJsonObject()
     QByteArray buffer;
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
-        save << QByteArrayLiteral("invalidJson");
+        QVERIFY(save << QByteArrayLiteral("invalidJson"));
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonObject object;
-        load >> object;
+        QVERIFY(!(load >> object));
         QVERIFY(object.isEmpty());
         QVERIFY(load.status() != QDataStream::Ok);
         QCOMPARE(load.status(), QDataStream::ReadCorruptData);
@@ -2279,10 +2300,10 @@ void tst_QDataStream::stream_QJsonObject()
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
         QJsonObject objSave{{"foo", 1}, {"bar", 2}};
-        save << objSave;
+        QVERIFY(save << objSave);
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonObject objLoad;
-        load >> objLoad;
+        QVERIFY(load >> objLoad);
         QCOMPARE(objLoad, objSave);
     }
 }
@@ -2292,10 +2313,10 @@ void tst_QDataStream::stream_QJsonValue()
     QByteArray buffer;
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
-        save << quint8(42);
+        QVERIFY(save << quint8(42));
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonValue value;
-        load >> value;
+        QVERIFY(!(load >> value));
         QVERIFY(value.isUndefined());
         QVERIFY(load.status() != QDataStream::Ok);
         QCOMPARE(load.status(), QDataStream::ReadCorruptData);
@@ -2303,23 +2324,24 @@ void tst_QDataStream::stream_QJsonValue()
     {
         QDataStream save(&buffer, QIODevice::WriteOnly);
         QJsonValue valueSave{42};
-        save << valueSave;
+        QVERIFY(save << valueSave);
         QDataStream load(&buffer, QIODevice::ReadOnly);
         QJsonValue valueLoad;
-        load >> valueLoad;
+        QVERIFY(load >> valueLoad);
         QCOMPARE(valueLoad, valueSave);
     }
 }
 
+#if QT_CONFIG(cborstreamwriter)
 void tst_QDataStream::stream_QCborArray()
 {
     QByteArray buffer;
     QDataStream save(&buffer, QIODevice::WriteOnly);
     QCborArray arraySave({1, 2, 3});
-    save << arraySave;
+    QVERIFY(save << arraySave);
     QDataStream load(&buffer, QIODevice::ReadOnly);
     QCborArray arrayLoad;
-    load >> arrayLoad;
+    QVERIFY(load >> arrayLoad);
     QCOMPARE(arrayLoad, arraySave);
 }
 
@@ -2328,10 +2350,10 @@ void tst_QDataStream::stream_QCborMap()
     QByteArray buffer;
     QDataStream save(&buffer, QIODevice::WriteOnly);
     QCborMap objSave{{"foo", 1}, {"bar", 2}};
-    save << objSave;
+    QVERIFY(save << objSave);
     QDataStream load(&buffer, QIODevice::ReadOnly);
     QCborMap objLoad;
-    load >> objLoad;
+    QVERIFY(load >> objLoad);
     QCOMPARE(objLoad, objSave);
 }
 
@@ -2340,12 +2362,13 @@ void tst_QDataStream::stream_QCborValue()
     QByteArray buffer;
     QDataStream save(&buffer, QIODevice::WriteOnly);
     QCborValue valueSave{42};
-    save << valueSave;
+    QVERIFY(save << valueSave);
     QDataStream load(&buffer, QIODevice::ReadOnly);
     QCborValue valueLoad;
-    load >> valueLoad;
+    QVERIFY(load >> valueLoad);
     QCOMPARE(valueLoad, valueSave);
 }
+#endif
 
 void tst_QDataStream::setVersion_data()
 {
@@ -2369,15 +2392,15 @@ void tst_QDataStream::setVersion()
     {
         QDataStream out(&ba1, QIODevice::WriteOnly);
         out.setVersion(vers);
-        out << QKeySequence(Qt::Key_A) << QKeySequence(Qt::Key_B, Qt::Key_C)
-                << (quint32)0xDEADBEEF;
+        QVERIFY(out << QKeySequence(Qt::Key_A) << QKeySequence(Qt::Key_B, Qt::Key_C)
+                    << (quint32)0xDEADBEEF);
     }
     {
         QKeySequence keyseq1, keyseq2;
         quint32 deadbeef;
         QDataStream in(&ba1, QIODevice::ReadOnly);
         in.setVersion(vers);
-        in >> keyseq1 >> keyseq2 >> deadbeef;
+        QVERIFY(in >> keyseq1 >> keyseq2 >> deadbeef);
         QCOMPARE(keyseq1, QKeySequence(Qt::Key_A));
         if (vers >= 5) {
             QVERIFY(keyseq2 == QKeySequence(Qt::Key_B, Qt::Key_C));
@@ -2411,15 +2434,15 @@ void tst_QDataStream::setVersion()
     {
         QDataStream out(&ba2, QIODevice::WriteOnly);
         out.setVersion(vers);
-        out << pal1 << pal2 << (quint32)0xCAFEBABE;
+        QVERIFY(out << pal1 << pal2 << (quint32)0xCAFEBABE);
     }
     {
         QPalette inPal1, inPal2;
         quint32 cafebabe;
         QDataStream in(&ba2, QIODevice::ReadOnly);
         in.setVersion(vers);
-        in >> inPal1 >> inPal2;
-        in >> cafebabe;
+        QVERIFY(in >> inPal1 >> inPal2);
+        QVERIFY(in >> cafebabe);
 
         QCOMPARE(cafebabe, 0xCAFEBABE);
 
@@ -2795,7 +2818,6 @@ void tst_QDataStream::status_charptr_QByteArray_data()
     QTest::newRow("badsize 1MB+1") << QByteArray("\x00\x10\x00\x01", 4) + oneMbMinus1 + QByteArray("j") << (int) QDataStream::ReadPastEnd << QByteArray();
     QTest::newRow("badsize 3MB") << QByteArray("\x00\x30\x00\x00", 4) + threeMbMinus1 << (int) QDataStream::ReadPastEnd << QByteArray();
     QTest::newRow("badsize 3MB+1") << QByteArray("\x00\x30\x00\x01", 4) + threeMbMinus1 + QByteArray("j") << (int) QDataStream::ReadPastEnd << QByteArray();
-    QTest::newRow("size -1") << QByteArray("\xff\xff\xff\xff", 4) << (int) QDataStream::ReadPastEnd << QByteArray();
     QTest::newRow("size -2") << QByteArray("\xff\xff\xff\xfe", 4) << (int) QDataStream::ReadPastEnd << QByteArray();
 }
 
@@ -2808,7 +2830,7 @@ void tst_QDataStream::status_charptr_QByteArray()
     {
         QDataStream stream(&data, QIODevice::ReadOnly);
         char *buf;
-        stream >> buf;
+        QCOMPARE(static_cast<bool>(stream >> buf), (expectedStatus == (int) QDataStream::Ok));
 
         QCOMPARE((int)qstrlen(buf), expectedString.size());
         QCOMPARE(QByteArray(buf), expectedString);
@@ -2818,18 +2840,36 @@ void tst_QDataStream::status_charptr_QByteArray()
     {
         QDataStream stream(&data, QIODevice::ReadOnly);
         char *buf;
-        uint len;
+        qint64 len;
         stream.readBytes(buf, len);
 
-        QCOMPARE((int)len, expectedString.size());
+        QCOMPARE(len, qint64(expectedString.size()));
         QCOMPARE(QByteArray(buf, len), expectedString);
         QCOMPARE(int(stream.status()), expectedStatus);
         delete [] buf;
     }
+#if QT_DEPRECATED_SINCE(6, 11)
+QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
+    {
+        // check that old overload still works as expected
+        QDataStream stream(&data, QIODevice::ReadOnly);
+        char *buf;
+        auto cleanup = qScopeGuard([&buf] {
+            delete [] buf;
+        });
+        uint len;
+        stream.readBytes(buf, len);
+
+        QCOMPARE(len, expectedString.size());
+        QCOMPARE(QByteArray(buf, len), expectedString);
+        QCOMPARE(int(stream.status()), expectedStatus);
+    }
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 11)
     {
         QDataStream stream(&data, QIODevice::ReadOnly);
-        QByteArray buf;
-        stream >> buf;
+        QByteArray buf = "Content to be overwritten";
+        QCOMPARE(static_cast<bool>(stream >> buf), (expectedStatus == (int) QDataStream::Ok));
 
         if (data.startsWith("\xff\xff\xff\xff")) {
             // QByteArray, unlike 'char *', supports the null/empty distinction
@@ -2897,12 +2937,20 @@ void tst_QDataStream::status_QString_data()
     QTest::newRow("badsize 1MB+1") << QByteArray("\x00\x20\x00\x02", 4) + oneMbMinus1Data + QByteArray("j") << (int) QDataStream::ReadPastEnd << QString();
     QTest::newRow("badsize 3MB") << QByteArray("\x00\x60\x00\x00", 4) + threeMbMinus1Data << (int) QDataStream::ReadPastEnd << QString();
     QTest::newRow("badsize 3MB+1") << QByteArray("\x00\x60\x00\x02", 4) + threeMbMinus1Data + QByteArray("j") << (int) QDataStream::ReadPastEnd << QString();
-    QTest::newRow("size -2") << QByteArray("\xff\xff\xff\xfe", 4) << (int) QDataStream::ReadPastEnd << QString();
-    QTest::newRow("size MAX") << QByteArray("\x7f\xff\xff\xfe", 4) << (int) QDataStream::ReadPastEnd << QString();
+    QTest::newRow("32 bit size should be 64 bit") << QByteArray("\xff\xff\xff\xfe", 4) << (int) QDataStream::ReadPastEnd << QString();
 
-    // corrupt data
+#if QT_POINTER_SIZE != 4
+    // past end on 64 bit platforms
+    QTest::newRow("32 bit size MAX string no content") << QByteArray("\xff\xff\xff\xfc", 4) << (int) QDataStream::ReadPastEnd << QString();
+#else
+    // too big for 32 bit platforms
+    QTest::newRow("32 bit size MAX string no content") << QByteArray("\xff\xff\xff\xfc", 4) << (int) QDataStream::SizeLimitExceeded << QString();
+#endif
+    // too big on both 32 and 64 bit platforms because qsizetype is signed
+    QTest::newRow("64 bit size MAX string no content") << QByteArray("\xff\xff\xff\xfe\xff\xff\xff\xff\xff\xff\xff\xfe", 12) << (int) QDataStream::SizeLimitExceeded << QString();
+
+    // corrupt data because QChar is 16 bit => even size required
     QTest::newRow("corrupt1") << QByteArray("yyyy") << (int) QDataStream::ReadCorruptData << QString();
-    QTest::newRow("size -3") << QByteArray("\xff\xff\xff\xfd", 4) << (int) QDataStream::ReadCorruptData << QString();
 }
 
 void tst_QDataStream::status_QString()
@@ -2912,8 +2960,8 @@ void tst_QDataStream::status_QString()
     QFETCH(QString, expectedString);
 
     QDataStream stream(&data, QIODevice::ReadOnly);
-    QString str;
-    stream >> str;
+    QString str = "Content to be overwritten";
+    QCOMPARE(static_cast<bool>(stream >> str), (expectedStatus == (int) QDataStream::Ok));
 
     QCOMPARE(str.size(), expectedString.size());
     QCOMPARE(str, expectedString);
@@ -2976,11 +3024,13 @@ void tst_QDataStream::status_QBitArray_data()
     QTest::newRow("badsize 16") << QDataStream::Qt_5_15 << QByteArray("\x00\x00\x00\x10\xff", 5) << (int) QDataStream::ReadPastEnd << QBitArray();
     QTest::newRow("badsize 17") << QDataStream::Qt_5_15 << QByteArray("\x00\x00\x00\x11\xff\xff", 6) << (int) QDataStream::ReadPastEnd << QBitArray();
     QTest::newRow("badsize 32") << QDataStream::Qt_5_15 << QByteArray("\x00\x00\x00\x20\xff\xff\xff", 7) << (int) QDataStream::ReadPastEnd << QBitArray();
+    QTest::newRow("badsize INT_MAX") << QDataStream::Qt_5_15 << QByteArray("\x7f\xff\xff\xff\xff\xff\xff", 7) << int(QDataStream::ReadPastEnd) << QBitArray(); // size accepted
+    QTest::addRow("badsize INT_MAX + 1") << QDataStream::Qt_5_15 << QByteArray("\x80\x00\x00\x01" "\xff\xff\xff", 7) << int(QDataStream::ReadCorruptData) << QBitArray(); // size rejected
     QTest::newRow("new badsize 0") << QDataStream::Qt_6_0 << QByteArray("\x00\x00\x00\x00", 4) << (int) QDataStream::ReadPastEnd << QBitArray();
     QTest::newRow("new badsize 9") << QDataStream::Qt_6_0 << QByteArray("\x00\x00\x00\x00\x00\x00\x00\x09\xff", 9) << (int) QDataStream::ReadPastEnd << QBitArray();
     QTest::newRow("new badsize 0x10000") << QDataStream::Qt_6_0 << QByteArray("\x00\x00\x00\x01\x00\x00\x00\x00\x00", 9) << (int) QDataStream::ReadPastEnd << QBitArray();
 
-    // corrupt data
+    // corrupt data: bits in positions outsize [0, size()[
     QTest::newRow("junk 1a") << QDataStream::Qt_5_15 << QByteArray("\x00\x00\x00\x01\x02", 5) << (int) QDataStream::ReadCorruptData << QBitArray();
     QTest::newRow("junk 1b") << QDataStream::Qt_5_15 << QByteArray("\x00\x00\x00\x01\x04", 5) << (int) QDataStream::ReadCorruptData << QBitArray();
     QTest::newRow("junk 1c") << QDataStream::Qt_5_15 << QByteArray("\x00\x00\x00\x01\x08", 5) << (int) QDataStream::ReadCorruptData << QBitArray();
@@ -3005,8 +3055,8 @@ void tst_QDataStream::status_QBitArray()
 
     QDataStream stream(&data, QIODevice::ReadOnly);
     stream.setVersion(version);
-    QBitArray str;
-    stream >> str;
+    QBitArray str(255, true);
+    QCOMPARE(static_cast<bool>(stream >> str), (expectedStatus == (int) QDataStream::Ok));
 
     if (sizeof(qsizetype) == sizeof(int))
         QEXPECT_FAIL("new badsize 0x10000", "size > INT_MAX fails on 32bit system (QTBUG-87660)",
@@ -3025,7 +3075,7 @@ void tst_QDataStream::status_QBitArray()
             if (inTransaction) \
                 stream.startTransaction(); \
             stream.setStatus(initialStatus); \
-            stream >> hash; \
+            QCOMPARE(static_cast<bool>(stream >> hash), (expectedStatus == (int) QDataStream::Ok)); \
             QCOMPARE((int)stream.status(), (int)expectedStatus); \
             if (!inTransaction || stream.commitTransaction()) { \
                 QCOMPARE(hash.size(), expectedHash.size()); \
@@ -3044,7 +3094,7 @@ void tst_QDataStream::status_QBitArray()
             if (inTransaction) \
                 stream.startTransaction(); \
             stream.setStatus(initialStatus); \
-            stream >> map; \
+            QCOMPARE(static_cast<bool>(stream >> map), (expectedStatus == (int) QDataStream::Ok)); \
             QCOMPARE((int)stream.status(), (int)expectedStatus); \
             if (!inTransaction || stream.commitTransaction()) { \
                 QCOMPARE(map.size(), expectedMap.size()); \
@@ -3072,7 +3122,9 @@ void tst_QDataStream::status_QHash_QMap()
     hash2.insert("L", "MN");
 
     // ok
+    hash = hash2;
     MAP_TEST(QByteArray("\x00\x00\x00\x00", 4), QDataStream::Ok, QDataStream::Ok, StringHash());
+    hash = hash2;
     MAP_TEST(QByteArray("\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00", 12), QDataStream::Ok, QDataStream::Ok, hash1);
     MAP_TEST(QByteArray("\x00\x00\x00\x02\x00\x00\x00\x02\x00J\x00\x00\x00\x02\x00K"
                         "\x00\x00\x00\x02\x00L\x00\x00\x00\x04\x00M\x00N", 30), QDataStream::Ok, QDataStream::Ok, hash2);
@@ -3106,7 +3158,7 @@ void tst_QDataStream::status_QHash_QMap()
             if (inTransaction) \
                 stream.startTransaction(); \
             stream.setStatus(initialStatus); \
-            stream >> list; \
+            QCOMPARE(static_cast<bool>(stream >> list), (expectedStatus == (int) QDataStream::Ok)); \
             QCOMPARE((int)stream.status(), (int)expectedStatus); \
             if (!inTransaction || stream.commitTransaction()) { \
                 QCOMPARE(list.size(), expectedList.size()); \
@@ -3124,7 +3176,7 @@ void tst_QDataStream::status_QHash_QMap()
             if (inTransaction) \
                 stream.startTransaction(); \
             stream.setStatus(initialStatus); \
-            stream >> vector; \
+            QCOMPARE(static_cast<bool>(stream >> vector), (expectedStatus == (int) QDataStream::Ok)); \
             QCOMPARE((int)stream.status(), (int)expectedStatus); \
             if (!inTransaction || stream.commitTransaction()) { \
                 QCOMPARE(vector.size(), expectedVector.size()); \
@@ -3153,7 +3205,9 @@ void tst_QDataStream::status_QList_QVector()
         someList.append("J");
         someList.append("MN");
 
+        list = someList;
         LIST_TEST(QByteArray("\x00\x00\x00\x00", 4), QDataStream::Ok, QDataStream::Ok, List());
+        list = someList;
         LIST_TEST(QByteArray("\x00\x00\x00\x01\x00\x00\x00\x00", 8), QDataStream::Ok, QDataStream::Ok, listWithEmptyString);
         LIST_TEST(QByteArray("\x00\x00\x00\x02\x00\x00\x00\x02\x00J"
                              "\x00\x00\x00\x04\x00M\x00N", 18), QDataStream::Ok, QDataStream::Ok, someList);
@@ -3197,8 +3251,8 @@ void tst_QDataStream::streamToAndFromQByteArray()
 
     quint32 x = 0xdeadbeef;
     quint32 y;
-    in << x;
-    out >> y;
+    QVERIFY(in << x);
+    QVERIFY(out >> y);
 
     QCOMPARE(y, x);
 }
@@ -3208,11 +3262,13 @@ void tst_QDataStream::streamRealDataTypes()
     // Generate QPicture from pixmap.
     QPixmap pm(open_xpm);
     QVERIFY(!pm.isNull());
+#ifndef QT_NO_PICTURE
     QPicture picture;
     picture.setBoundingRect(QRect(QPoint(0, 0), pm.size()));
     QPainter painter(&picture);
     painter.drawPixmap(0, 0, pm);
     painter.end();
+#endif
 
     // Generate path
     QPainterPath path;
@@ -3220,6 +3276,13 @@ void tst_QDataStream::streamRealDataTypes()
     path.cubicTo(0, 0, 10, 10, 20, 20);
     path.arcTo(4, 5, 6, 7, 8, 9);
     path.quadTo(1, 2, 3, 4);
+
+    QPainterPath otherPath;
+    otherPath.arcTo(10, 4, 5, 6, 7, 8);
+    otherPath.lineTo(9, 0);
+    otherPath.cubicTo(0, 0, 10, 10, 20, 20);
+    otherPath.quadTo(2, 4, 5, 6);
+    QCOMPARE(otherPath.elementCount(), 12);
 
     QColor color(64, 64, 64);
     color.setAlphaF(0.5);
@@ -3239,30 +3302,34 @@ void tst_QDataStream::streamRealDataTypes()
             QVERIFY(file.open(QIODevice::WriteOnly));
             QDataStream stream(&file);
             stream.setVersion(QDataStream::Qt_4_2);
-            stream << qreal(0) << qreal(1.0) << qreal(1.1) << qreal(3.14) << qreal(-3.14) << qreal(-1);
-            stream << QPointF(3, 5) << QRectF(-1, -2, 3, 4) << (QPolygonF() << QPointF(0, 0) << QPointF(1, 2));
-            stream << QTransform().rotate(90).scale(2, 2).asAffineMatrix();
-            stream << path;
-            stream << picture;
-            stream << QTextLength(QTextLength::VariableLength, 1.5);
-            stream << color;
-            stream << radialBrush << conicalBrush;
-            stream << QPen(QBrush(Qt::red), 1.5);
+            QVERIFY(stream << qreal(0) << qreal(1.0) << qreal(1.1) << qreal(3.14) << qreal(-3.14) << qreal(-1));
+            QVERIFY(stream << QPointF(3, 5) << QRectF(-1, -2, 3, 4) << (QPolygonF() << QPointF(0, 0) << QPointF(1, 2)));
+            QVERIFY(stream << QTransform().rotate(90).scale(2, 2).asAffineMatrix());
+            QVERIFY(stream << path);
+#ifndef QT_NO_PICTURE
+            QVERIFY(stream << picture);
+#endif
+            QVERIFY(stream << QTextLength(QTextLength::VariableLength, 1.5));
+            QVERIFY(stream << color);
+            QVERIFY(stream << radialBrush << conicalBrush);
+            QVERIFY(stream << QPen(QBrush(Qt::red), 1.5));
 
             file.close();
         }
 
-        QPointF point;
-        QRectF rect;
-        QPolygonF polygon;
+        QPointF point(1, 2);
+        QRectF rect(1, 2, 5, 6);
+        QPolygonF polygon {{3, 4}, {5, 6}};
         QTransform transform;
-        QPainterPath p;
+        QPainterPath p = otherPath;
+#ifndef QT_NO_PICTURE
         QPicture pict;
-        QTextLength textLength;
-        QColor col;
-        QBrush rGrad;
-        QBrush cGrad;
-        QPen pen;
+#endif
+        QTextLength textLength(QTextLength::FixedLength, 2.5);
+        QColor col(128, 128, 127);
+        QBrush rGrad(Qt::CrossPattern);
+        QBrush cGrad(Qt::CrossPattern);
+        QPen pen(conicalBrush, 10);
 
         QVERIFY(file.open(QIODevice::ReadOnly));
         QDataStream stream(&file);
@@ -3272,46 +3339,47 @@ void tst_QDataStream::streamRealDataTypes()
             // the reference stream for 4.2 contains doubles,
             // so we must read them out as doubles!
             double a, b, c, d, e, f;
-            stream >> a;
+            QVERIFY(stream >> a);
             QCOMPARE(a, 0.0);
-            stream >> b;
+            QVERIFY(stream >> b);
             QCOMPARE(b, 1.0);
-            stream >> c;
+            QVERIFY(stream >> c);
             QCOMPARE(c, 1.1);
-            stream >> d;
+            QVERIFY(stream >> d);
             QCOMPARE(d, 3.14);
-            stream >> e;
+            QVERIFY(stream >> e);
             QCOMPARE(e, -3.14);
-            stream >> f;
+            QVERIFY(stream >> f);
             QCOMPARE(f, -1.0);
         } else {
             qreal a, b, c, d, e, f;
-            stream >> a;
+            QVERIFY(stream >> a);
             QCOMPARE(a, qreal(0));
-            stream >> b;
+            QVERIFY(stream >> b);
             QCOMPARE(b, qreal(1.0));
-            stream >> c;
+            QVERIFY(stream >> c);
             QCOMPARE(c, qreal(1.1));
-            stream >> d;
+            QVERIFY(stream >> d);
             QCOMPARE(d, qreal(3.14));
-            stream >> e;
+            QVERIFY(stream >> e);
             QCOMPARE(e, qreal(-3.14));
-            stream >> f;
+            QVERIFY(stream >> f);
             QCOMPARE(f, qreal(-1));
         }
-        stream >> point;
+        QVERIFY(stream >> point);
         QCOMPARE(point, QPointF(3, 5));
-        stream >> rect;
+        QVERIFY(stream >> rect);
         QCOMPARE(rect, QRectF(-1, -2, 3, 4));
-        stream >> polygon;
+        QVERIFY(stream >> polygon);
         QCOMPARE((QList<QPointF> &)polygon, (QPolygonF() << QPointF(0, 0) << QPointF(1, 2)));
         auto matrix = transform.asAffineMatrix();
-        stream >> matrix;
+        QVERIFY(stream >> matrix);
         QCOMPARE(transform, QTransform().rotate(90).scale(2, 2));
-        stream >> p;
+        QVERIFY(stream >> p);
         QCOMPARE(p, path);
+#ifndef QT_NO_PICTURE
         if (i == 1) {
-            stream >> pict;
+            QVERIFY(stream >> pict);
 
             QByteArray pictA, pictB;
             QBuffer bufA, bufB;
@@ -3323,11 +3391,12 @@ void tst_QDataStream::streamRealDataTypes()
 
             QCOMPARE(pictA, pictB);
         }
-        stream >> textLength;
+#endif
+        QVERIFY(stream >> textLength);
         QCOMPARE(textLength, QTextLength(QTextLength::VariableLength, 1.5));
-        stream >> col;
+        QVERIFY(stream >> col);
         QCOMPARE(col, color);
-        stream >> rGrad;
+        QVERIFY(stream >> rGrad);
         QCOMPARE(rGrad.style(), radialBrush.style());
         QCOMPARE(rGrad.transform(), radialBrush.transform());
         QCOMPARE(rGrad.gradient()->type(), radialBrush.gradient()->type());
@@ -3336,7 +3405,7 @@ void tst_QDataStream::streamRealDataTypes()
         QCOMPARE(((QRadialGradient *)rGrad.gradient())->center(), ((QRadialGradient *)radialBrush.gradient())->center());
         QCOMPARE(((QRadialGradient *)rGrad.gradient())->focalPoint(), ((QRadialGradient *)radialBrush.gradient())->focalPoint());
         QCOMPARE(((QRadialGradient *)rGrad.gradient())->radius(), ((QRadialGradient *)radialBrush.gradient())->radius());
-        stream >> cGrad;
+        QVERIFY(stream >> cGrad);
         QCOMPARE(cGrad.style(), conicalBrush.style());
         QCOMPARE(cGrad.transform(), conicalBrush.transform());
         QCOMPARE(cGrad.gradient()->type(), conicalBrush.gradient()->type());
@@ -3346,7 +3415,7 @@ void tst_QDataStream::streamRealDataTypes()
         QCOMPARE(((QConicalGradient *)cGrad.gradient())->angle(), ((QConicalGradient *)conicalBrush.gradient())->angle());
 
         QCOMPARE(cGrad, conicalBrush);
-        stream >> pen;
+        QVERIFY(stream >> pen);
         QCOMPARE(pen.widthF(), qreal(1.5));
 
         QCOMPARE(stream.status(), QDataStream::Ok);
@@ -3368,16 +3437,16 @@ void tst_QDataStream::compatibility_Qt5()
     {
         QDataStream out(&stream, QIODevice::WriteOnly);
         out.setVersion(QDataStream::Qt_5_7);
-        out << palette;
-        out << brush;
+        QVERIFY(out << palette);
+        QVERIFY(out << brush);
     }
     QBrush in_brush;
     QPalette in_palette;
     {
         QDataStream in(stream);
         in.setVersion(QDataStream::Qt_5_7);
-        in >> in_palette;
-        in >> in_brush;
+        QVERIFY(in >> in_palette);
+        QVERIFY(in >> in_brush);
     }
     QCOMPARE(in_brush.style(), Qt::LinearGradientPattern);
     QCOMPARE(in_palette.brush(QPalette::Button).style(), Qt::LinearGradientPattern);
@@ -3393,33 +3462,33 @@ void tst_QDataStream::compatibility_Qt3()
     {
         QDataStream out(&stream, QIODevice::WriteOnly);
         out.setVersion(QDataStream::Qt_3_3);
-        out << var;
-        out << QColor();
-        out << QColor(Qt::darkYellow);
-        out << QColor(Qt::darkCyan);
-        out << invalidColor;
+        QVERIFY(out << var);
+        QVERIFY(out << QColor());
+        QVERIFY(out << QColor(Qt::darkYellow));
+        QVERIFY(out << QColor(Qt::darkCyan));
+        QVERIFY(out << invalidColor);
     }
     {
         QDataStream in(stream);
         in.setVersion(QDataStream::Qt_3_3);
 
         quint32 type;
-        in >> type;
+        QVERIFY(in >> type);
         //29 is the type of a QByteArray in Qt3
         QCOMPARE(type, quint32(29));
         QByteArray ba2;
-        in >> ba2;
+        QVERIFY(in >> ba2);
         QCOMPARE(ba2, ba);
 
         quint32 color;
-        in >> color;
+        QVERIFY(in >> color);
         QCOMPARE(color, invalidColor);
-        in >> color;
+        QVERIFY(in >> color);
         QCOMPARE(color, QColor(Qt::darkYellow).rgb());
         QColor col;
-        in >> col;
+        QVERIFY(in >> col);
         QCOMPARE(col, QColor(Qt::darkCyan));
-        in >> col;
+        QVERIFY(in >> col);
         QVERIFY(!col.isValid());
     }
     {
@@ -3436,16 +3505,16 @@ void tst_QDataStream::compatibility_Qt3()
         {
             QDataStream out(&stream, QIODevice::WriteOnly);
             out.setVersion(QDataStream::Qt_3_3);
-            out << palette;
-            out << brush;
+            QVERIFY(out << palette);
+            QVERIFY(out << brush);
         }
         QBrush in_brush;
         QPalette in_palette;
         {
             QDataStream in(stream);
             in.setVersion(QDataStream::Qt_3_3);
-            in >> in_palette;
-            in >> in_brush;
+            QVERIFY(in >> in_palette);
+            QVERIFY(in >> in_brush);
         }
         QCOMPARE(in_brush.style(), Qt::NoBrush);
         QCOMPARE(in_palette.brush(QPalette::Button).style(), Qt::NoBrush);
@@ -3458,20 +3527,20 @@ void tst_QDataStream::compatibility_Qt3()
         {
             QDataStream out(&stream, QIODevice::WriteOnly);
             out.setVersion(QDataStream::Qt_3_3);
-            out << QTime();
+            QVERIFY(out << QTime());
         }
         QTime in_time;
         {
             QDataStream in(stream);
             in.setVersion(QDataStream::Qt_3_3);
-            in >> in_time;
+            QVERIFY(in >> in_time);
         }
         QVERIFY(in_time.isNull());
 
         quint32 rawValue;
         QDataStream in(stream);
         in.setVersion(QDataStream::Qt_3_3);
-        in >> rawValue;
+        QVERIFY(in >> rawValue);
         QCOMPARE(rawValue, quint32(0));
     }
 
@@ -3492,16 +3561,16 @@ void tst_QDataStream::compatibility_Qt2()
     {
         QDataStream out(&stream, QIODevice::WriteOnly);
         out.setVersion(QDataStream::Qt_2_1);
-        out << palette;
-        out << brush;
+        QVERIFY(out << palette);
+        QVERIFY(out << brush);
     }
     QBrush in_brush;
     QPalette in_palette;
     {
         QDataStream in(stream);
         in.setVersion(QDataStream::Qt_2_1);
-        in >> in_palette;
-        in >> in_brush;
+        QVERIFY(in >> in_palette);
+        QVERIFY(in >> in_brush);
     }
     QCOMPARE(in_brush.style(), Qt::NoBrush);
     QCOMPARE(in_palette.brush(QPalette::Button).style(), Qt::NoBrush);
@@ -3534,8 +3603,8 @@ void tst_QDataStream::floatingPointNaN()
         QDataStream stream(&ba, QIODevice::WriteOnly);
         stream.setByteOrder(bo);
         stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
-        stream << xs[0].f;
-        stream << xs[1].f;
+        QVERIFY(stream << xs[0].f);
+        QVERIFY(stream << xs[1].f);
     }
 
     {
@@ -3543,9 +3612,9 @@ void tst_QDataStream::floatingPointNaN()
         stream.setByteOrder(bo);
         stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
         float fr = 0.0f;
-        stream >> fr;
+        QVERIFY(stream >> fr);
         QCOMPARE(fr, xs[0].f);
-        stream >> fr;
+        QVERIFY(stream >> fr);
         QCOMPARE(fr, xs[1].f);
     }
 }
@@ -3562,13 +3631,13 @@ void tst_QDataStream::enumTest()
     };
     {
         QDataStream stream(&ba, QIODevice::WriteOnly);
-        stream << E1::A;
+        QVERIFY(stream << E1::A);
         QCOMPARE(ba.size(), int(sizeof(E1)));
     }
     {
         QDataStream stream(ba);
         E1 e;
-        stream >> e;
+        QVERIFY(stream >> e);
         QCOMPARE(e, E1::A);
     }
     ba.clear();
@@ -3581,13 +3650,13 @@ void tst_QDataStream::enumTest()
     };
     {
         QDataStream stream(&ba, QIODevice::WriteOnly);
-        stream << E2::B;
+        QVERIFY(stream << E2::B);
         QCOMPARE(ba.size(), int(sizeof(E2)));
     }
     {
         QDataStream stream(ba);
         E2 e;
-        stream >> e;
+        QVERIFY(stream >> e);
         QCOMPARE(e, E2::B);
     }
     ba.clear();
@@ -3600,13 +3669,13 @@ void tst_QDataStream::enumTest()
     };
     {
         QDataStream stream(&ba, QIODevice::WriteOnly);
-        stream << E4::C;
+        QVERIFY(stream << E4::C);
         QCOMPARE(ba.size(), int(sizeof(E4)));
     }
     {
         QDataStream stream(ba);
         E4 e;
-        stream >> e;
+        QVERIFY(stream >> e);
         QCOMPARE(e, E4::C);
     }
     ba.clear();
@@ -3621,17 +3690,52 @@ void tst_QDataStream::enumTest()
     };
     {
         QDataStream stream(&ba, QIODevice::WriteOnly);
-        stream << E::D;
+        QVERIFY(stream << E::D);
         QCOMPARE(ba.size(), 4);
     }
     {
         QDataStream stream(ba);
         E e;
-        stream >> e;
+        QVERIFY(stream >> e);
         QCOMPARE(e, E::D);
     }
     ba.clear();
 
+    enum class E5 : qint64
+    {
+        A,
+        B,
+        C
+    };
+    {
+        QDataStream stream(&ba, QIODevice::WriteOnly);
+        QVERIFY(stream << E5::C);
+        QCOMPARE(ba.size(), int(sizeof(E5)));
+    }
+    {
+        QDataStream stream(ba);
+        E5 e;
+        QVERIFY(stream >> e);
+        QCOMPARE(e, E5::C);
+    }
+    ba.clear();
+
+    // unlike regular streaming operators, we accept long and ulong, because
+    // usually the only reason people see them is because they have
+    // std::(u)int64_t underlying types.
+    enum class ELong : long { A, B, C };
+    {
+        QDataStream stream(&ba, QIODevice::WriteOnly);
+        QVERIFY(stream << ELong::A);
+        QCOMPARE(ba.size(), sizeof(long));
+    }
+    {
+        QDataStream stream(ba);
+        ELong e;
+        QVERIFY(stream >> e);
+        QCOMPARE(e, ELong::A);
+    }
+    ba.clear();
 }
 
 void tst_QDataStream::floatingPointPrecision()
@@ -3642,21 +3746,21 @@ void tst_QDataStream::floatingPointPrecision()
         QCOMPARE(QDataStream::DoublePrecision, stream.floatingPointPrecision());
 
         float f = 123.0f;
-        stream << f;
+        QVERIFY(stream << f);
         QCOMPARE(ba.size(), int(sizeof(double)));
 
         double d = 234.0;
-        stream << d;
+        QVERIFY(stream << d);
         QCOMPARE(ba.size(), int(sizeof(double)*2));
 
         stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
 
         f = 123.0f;
-        stream << f;
+        QVERIFY(stream << f);
         QCOMPARE(ba.size(), int(sizeof(double)*2 + sizeof(float)));
 
         d = 234.0;
-        stream << d;
+        QVERIFY(stream << d);
         QCOMPARE(ba.size(), int(sizeof(double)*2 + sizeof(float)*2));
     }
 
@@ -3664,20 +3768,20 @@ void tst_QDataStream::floatingPointPrecision()
         QDataStream stream(ba);
 
         float f = 0.0f;
-        stream >> f;
+        QVERIFY(stream >> f);
         QCOMPARE(123.0f, f);
 
         double d = 0.0;
-        stream >> d;
+        QVERIFY(stream >> d);
         QCOMPARE(234.0, d);
 
         f = 0.0f;
         stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
-        stream >> f;
+        QVERIFY(stream >> f);
         QCOMPARE(123.0f, f);
 
         d = 0.0;
-        stream >> d;
+        QVERIFY(stream >> d);
         QCOMPARE(234.0, d);
     }
 
@@ -3727,8 +3831,8 @@ void tst_QDataStream::transaction()
     {
         QDataStream stream(&testBuffer, QIODevice::WriteOnly);
 
-        stream << i8Data << i16Data << i32Data << i64Data
-               << bData << fData << dData << imgData << strData.constData();
+        QVERIFY(stream << i8Data << i16Data << i32Data << i64Data
+                       << bData << fData << dData << imgData << strData.constData());
         stream.writeRawData(rawData.constData(), rawData.size());
     }
 
@@ -3829,7 +3933,7 @@ void tst_QDataStream::nestedTransactionsResult()
 
     stream.startTransaction();
     stream.startTransaction();
-    stream >> c;
+    QVERIFY(stream >> c);
 
     if (commitFirst)
         QVERIFY(stream.commitTransaction());
@@ -3872,7 +3976,7 @@ void tst_QDataStream::typedefQt5Compat()
         QDataStream stream(&in);
         stream.setVersion(QDataStream::Qt_5_15);
         QVariant var;
-        stream >> var;
+        QVERIFY(stream >> var);
         QCOMPARE(stream.status(), QDataStream::Ok);
         CustomPair p = var.value<CustomPair>();
         QCOMPARE(p.first, 42);
@@ -3883,13 +3987,13 @@ void tst_QDataStream::typedefQt5Compat()
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         QFile file(dir.filePath(u"typedef.q6"_s));
-        file.open(QIODevice::WriteOnly);
+        QVERIFY(file.open(QIODevice::WriteOnly));
         QDataStream stream(&file);
         stream.setVersion(QDataStream::Qt_5_15);
         CustomPair p {42, 100};
-        stream << QVariant::fromValue(p);
+        QVERIFY(stream << QVariant::fromValue(p));
         file.close();
-        file.open(QIODevice::ReadOnly);
+        QVERIFY(file.open(QIODevice::ReadOnly));
         QCOMPARE(file.readAll(), qt5Data);
     }
 }

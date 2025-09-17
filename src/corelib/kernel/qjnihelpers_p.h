@@ -22,8 +22,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_JNI_CLASS(Activity, "android/app/Activity")
-Q_DECLARE_JNI_CLASS(Service, "android/app/Service")
+Q_DECLARE_JNI_CLASS(QtNative, "org/qtproject/qt/android/QtNative")
 
 namespace QtAndroidPrivate
 {
@@ -49,6 +48,13 @@ namespace QtAndroidPrivate
         virtual void handleResume();
     };
 
+    class Q_CORE_EXPORT OnBindListener
+    {
+    public:
+        virtual ~OnBindListener() {}
+        virtual jobject onBind(jobject intent) = 0;
+    };
+
     class Q_CORE_EXPORT GenericMotionEventListener
     {
     public:
@@ -63,11 +69,18 @@ namespace QtAndroidPrivate
         virtual bool handleKeyEvent(jobject event) = 0;
     };
 
-    class Q_CORE_EXPORT OnBindListener
+    class Q_CORE_EXPORT AndroidDeadlockProtector
     {
     public:
-        virtual ~OnBindListener() {}
-        virtual jobject onBind(jobject intent) = 0;
+        AndroidDeadlockProtector(const QString &lockedBy);
+        ~AndroidDeadlockProtector();
+        bool acquire();
+
+    private:
+        bool m_acquired = false;
+        QString m_lockedBy;
+
+        inline static QStringList s_lockers;
     };
 
     Q_CORE_EXPORT QtJniTypes::Activity activity();
@@ -79,8 +92,9 @@ namespace QtAndroidPrivate
     jobject classLoader();
     Q_CORE_EXPORT jint androidSdkVersion();
 
-    bool registerPermissionNatives();
-    bool registerNativeInterfaceNatives();
+    bool registerPermissionNatives(QJniEnvironment &env);
+    bool registerNativeInterfaceNatives(QJniEnvironment &env);
+    bool registerExtrasNatives(QJniEnvironment &env);
 
     Q_CORE_EXPORT void handleActivityResult(jint requestCode, jint resultCode, jobject data);
     Q_CORE_EXPORT void registerActivityResultListener(ActivityResultListener *listener);
@@ -90,16 +104,16 @@ namespace QtAndroidPrivate
     Q_CORE_EXPORT void registerNewIntentListener(NewIntentListener *listener);
     Q_CORE_EXPORT void unregisterNewIntentListener(NewIntentListener *listener);
 
-    Q_CORE_EXPORT void handlePause();
-    Q_CORE_EXPORT void handleResume();
-    Q_CORE_EXPORT void registerResumePauseListener(ResumePauseListener *listener);
-    Q_CORE_EXPORT void unregisterResumePauseListener(ResumePauseListener *listener);
-
     Q_CORE_EXPORT void registerGenericMotionEventListener(GenericMotionEventListener *listener);
     Q_CORE_EXPORT void unregisterGenericMotionEventListener(GenericMotionEventListener *listener);
 
     Q_CORE_EXPORT void registerKeyEventListener(KeyEventListener *listener);
     Q_CORE_EXPORT void unregisterKeyEventListener(KeyEventListener *listener);
+
+    Q_CORE_EXPORT void handlePause();
+    Q_CORE_EXPORT void handleResume();
+    Q_CORE_EXPORT void registerResumePauseListener(ResumePauseListener *listener);
+    Q_CORE_EXPORT void unregisterResumePauseListener(ResumePauseListener *listener);
 
     Q_CORE_EXPORT void waitForServiceSetup();
     Q_CORE_EXPORT int acuqireServiceSetup(int flags);
@@ -108,6 +122,9 @@ namespace QtAndroidPrivate
 
     Q_CORE_EXPORT bool acquireAndroidDeadlockProtector();
     Q_CORE_EXPORT void releaseAndroidDeadlockProtector();
+
+    Q_CORE_EXPORT bool isUncompressedNativeLibs();
+    Q_CORE_EXPORT QString resolveApkPath(const QString &fileName);
 }
 
 #define Q_JNI_FIND_AND_CHECK_CLASS(CLASS_NAME) \

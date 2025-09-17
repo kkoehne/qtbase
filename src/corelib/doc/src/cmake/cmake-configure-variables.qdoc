@@ -63,6 +63,7 @@ This variable is written out as part of the deployment settings for a target.
 /*!
 \page cmake-variable-qt-android-application-arguments.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-manifest-properties
 
 \title QT_ANDROID_APPLICATION_ARGUMENTS
 \target cmake-variable-QT_ANDROID_APPLICATION_ARGUMENTS
@@ -80,20 +81,67 @@ is written out as part of the deployment settings for a target.
 */
 
 /*!
-\page cmake-variable-qt-android-deploy-release.html
+\page cmake-variable-qt-android-post-build-gradle-cleanup.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-manifest-properties
 
-\title QT_ANDROID_DEPLOY_RELEASE
-\target cmake-variable-QT_ANDROID_DEPLOY_RELEASE
+\title QT_ANDROID_POST_BUILD_GRADLE_CLEANUP
+\target cmake-variable-QT_ANDROID_POST_BUILD_GRADLE_CLEANUP
 
-\summary {Sets the package type as a release.}
+\summary {Perform a Gradle cleanup after the Android package is created.}
 
-\cmakevariablesince 6.5.2
+\cmakevariablesince 6.11
 \preliminarycmakevariable
 \cmakevariableandroidonly
 
-When set to \c TRUE, allows you to create a release package
-by passing the \c --release flag to the \c androiddeployqt tool.
+After the Android package build is done and the APK is created, perform a Gradle
+clean task to remove build artifacts. This is useful to keep disk space taken
+by Qt for Android projects at a minimal.
+
+\sa{qt6_android_generate_deployment_settings}{qt_android_generate_deployment_settings()}
+*/
+
+/*!
+\page cmake-variable-qt-android-create-symlinks-only.html
+\ingroup cmake-variables-qtcore
+\ingroup cmake-android-manifest-properties
+
+\title QT_ANDROID_CREATE_SYMLINKS_ONLY
+\target cmake-variable-QT_ANDROID_CREATE_SYMLINKS_ONLY
+
+\summary {Only create symlinks for dependencies under the Gradle project directory.}
+
+\cmakevariablesince 6.11
+\preliminarycmakevariable
+\cmakevariableandroidonly
+
+Create symlinks for shared libraries, jars and resource, etc. instead of a full
+copy. This can be useful to avoid projects taking extra space, and instead directly
+use, for example, library files referenced from a Qt installation.
+
+\sa{qt6_android_generate_deployment_settings}{qt_android_generate_deployment_settings()}
+*/
+
+/*!
+\page cmake-variable-qt-android-deployment-type.html
+\ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
+
+\title QT_ANDROID_DEPLOYMENT_TYPE
+\target cmake-variable-QT_ANDROID_DEPLOYMENT_TYPE
+
+\summary {Forces or disables release package signing regardless of the build type.}
+
+\cmakevariablesince 6.7
+\preliminarycmakevariable
+\cmakevariableandroidonly
+
+When set to \c Release, the \c --release flag is passed to the \c
+androiddeployqt tool, regardless of the application build type. When set to
+another value, the \c --release flag is never passed to the tool, which
+effectively disables release package signing even in Release or RelWithDebInfo
+builds. When not set, the default behavior is to use release package signing in
+build types other than Debug.
 
 \sa {androiddeployqt}
 */
@@ -101,6 +149,7 @@ by passing the \c --release flag to the \c androiddeployqt tool.
 /*!
 \page cmake_variable-qt-android-multi-abi-forward-vars
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_MULTI_ABI_FORWARD_VARS
 \target cmake-variable-QT_ANDROID_MULTI_ABI_FORWARD_VARS
@@ -182,17 +231,18 @@ finalization occurs automatically when using CMake 3.19 or later.
 /*!
 \page cmake-variable-qt-android-build-all-abis.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_BUILD_ALL_ABIS
 \target cmake-variable-QT_ANDROID_BUILD_ALL_ABIS
 
-\summary {Enables building multi-ABI packages using the autodetected Qt for Android SDK list.}
+\summary {Enables building multi-ABI packages using the autodetected \Q4A SDK list.}
 
 \cmakevariablesince 6.3
 \preliminarycmakevariable
 \cmakevariableandroidonly
 
-Automatically detects available ABIs of Qt for Android and uses them to
+Automatically detects available ABIs of \Q4A and uses them to
 build a package. The automatic detection expects the default directory structure
 supplied by the Qt installer, with the corresponding naming of the directories.
 \include cmake-android-supported-abis.qdocinc
@@ -209,12 +259,19 @@ The auto-detected paths can be customized using one of \c{QT_PATH_ANDROID_ABI_<A
 
 The variable is set to \c FALSE by default.
 
-\sa{QT_PATH_ANDROID_ABI_<ABI>}
+\note The multi-ABI project build process does not offer a generic way to
+forward the CMake cache variables that are specified either in the command line
+or in another similar way. Use QT_ANDROID_MULTI_ABI_FORWARD_VARS to specify the
+list of CMake variables to forward from the main ABI project to ABI-specific
+subprojects.
+
+\sa{QT_PATH_ANDROID_ABI_<ABI>},{QT_ANDROID_MULTI_ABI_FORWARD_VARS}
 */
 
 /*!
 \page cmake-variable-qt-android-abis.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_ABIS
 \target cmake-variable-QT_ANDROID_ABIS
@@ -227,8 +284,8 @@ The variable is set to \c FALSE by default.
 
 Specifies a list of ABIs to be used to build the project packages.
 \include cmake-android-supported-abis.qdocinc
-Each ABI should have the corresponding Qt for Android either installed or
-user-built. To specify the path to the Qt for Android ABI, use
+Each ABI should have the corresponding \Q4A either installed or
+user-built. To specify the path to the \Q4A ABI, use
 the corresponding \c{QT_PATH_ANDROID_ABI_<ABI>} variable.
 
 \note \c{QT_ANDROID_BUILD_ALL_ABIS} has the higher priority and ignores the
@@ -244,13 +301,13 @@ QT_ANDROID_ABIS logic.
 \title QT_PATH_ANDROID_ABI_<ABI>
 \target cmake-variable-QT_PATH_ANDROID_ABI_<ABI>
 
-\summary {Set of variables to specify the path to Qt for Android for the corresponding ABI.}
+\summary {Set of variables to specify the path to \Q4A for the corresponding ABI.}
 
 \cmakevariablesince 6.3
 \preliminarycmakevariable
 \cmakevariableandroidonly
 
-Each variable can be used to specify the path to Qt for Android for the corresponding ABI.
+Each variable can be used to specify the path to \Q4A for the corresponding ABI.
 \include cmake-android-supported-abis.qdocinc
 
 \sa{cmake-variable-QT_ANDROID_ABIS}{QT_ANDROID_ABIS}
@@ -259,6 +316,7 @@ Each variable can be used to specify the path to Qt for Android for the correspo
 /*!
 \page cmake-variable-qt-android-sign-aab.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_SIGN_AAB
 \target cmake-variable-QT_ANDROID_SIGN_AAB
@@ -284,6 +342,7 @@ The mentioned variables are used internally by \l{androiddeployqt}.
 /*!
 \page cmake-variable-qt-android-sign-apk.html
 \ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
 
 \title QT_ANDROID_SIGN_APK
 \target cmake-variable-QT_ANDROID_SIGN_APK
@@ -304,6 +363,50 @@ have to be specified by additional environment variables:
 The mentioned variables are used internally by \l{androiddeployqt}.
 
 \sa{androiddeployqt}
+*/
+
+/*!
+\page cmake-variable-qt-android-generate-java-qml-components.html
+\ingroup cmake-variables-qtcore
+\ingroup cmake-android-build-properties
+
+\title QT_ANDROID_GENERATE_JAVA_QTQUICKVIEW_CONTENTS
+\target cmake-variable-QT_ANDROID_GENERATE_JAVA_QTQUICKVIEW_CONTENTS
+
+\summary {Enables the generation of QtQuickViewContent-based classes.}
+\cmakevariablesince 6.8
+\preliminarycmakevariable
+\cmakevariableandroidonly
+
+This variable enables Java code generation for QML components of the target application. The
+generated code will be included in the resulting package. The Java package name of generated
+classes will be the same as the Android app package. If the leaf part of the package name is
+not the same as the target executable, an extra static class with the same name as the
+capitalized target executable will surround all QML modules enclosing Java classes. Each QML
+module class, again in a capitalized form, will contain QtQuickViewContent extension classes
+that represent QML components of that module.
+*/
+
+\sa{androiddeployqt}
+/*!
+\page cmake-variable-qt-use-target-android-build-dir.html
+\ingroup cmake-variables-qtcore
+
+\title QT_USE_TARGET_ANDROID_BUILD_DIR
+\target cmake-variable-QT_USE_TARGET_ANDROID_BUILD_DIR
+
+\summary {Enables the use of per-target Android build directories.}
+
+\cmakevariablesince 6.7
+\preliminarycmakevariable
+\cmakevariableandroidonly
+
+The variable appends the target-specific suffix to the android-build directory.
+The variable only takes an effect when it's set in \c CACHE. The variable is
+only supported by Qt Creator starting from version 13.
+If a single \c CMakeLists.txt contains more than one Android executable and
+this option is not set, you will see a warning. To disable the warning, set
+\c QT_SKIP_ANDROID_BUILD_DIR_CHECK to \c TRUE.
 */
 
 /*!
@@ -368,7 +471,10 @@ To disable this behavior, set this variable to \c TRUE.
 
 When cross-compiling, this variable must be set to the install location of Qt for the host
 platform. It is used to locate tools to be run on the host (\l{moc}, \l{rcc},
-\l{androiddeployqt}, and so on).
+\l{androiddeployqt}, and so on). It's possible to reuse pre-installed tools
+when compiling Qt for host systems too, by using \c QT_HOST_PATH that points to
+a pre-installed host Qt and setting the \c QT_FORCE_FIND_TOOLS to \c ON. The Qt
+versions should match in this case.
 */
 
 /*!
@@ -481,8 +587,8 @@ methods provided by CMake.
 \page cmake-variable-qt-i18n-languages.html
 \ingroup cmake-variables-qtcore
 
-\title QT_I18N_LANGUAGES
-\target cmake-variable-QT_I18N_LANGUAGES
+\title QT_I18N_TRANSLATED_LANGUAGES
+\target cmake-variable-QT_I18N_TRANSLATED_LANGUAGES
 
 \summary {List of languages to be used for project internationalization.}
 
@@ -492,7 +598,7 @@ Specifies a list of languages that are used for project
 internationalization. The single languages must be compatible with the
 string-based \l QLocale constructor.
 
-The languages in \c QT_I18N_LANGUAGES are used to:
+The languages in \c QT_I18N_TRANSLATED_LANGUAGES are used to:
 \list
     \li Set up executable targets for consuming \c{.qm} files.
     \li Automatically construct \c{.ts} file names in
@@ -502,6 +608,8 @@ The languages in \c QT_I18N_LANGUAGES are used to:
 This variable can be conveniently set with the
 \l {qt6_standard_project_setup}{qt_standard_project_setup()} command.
 
+By default, translatable strings are considered to be written in \c{en}.
+
 \sa {qt6_standard_project_setup}{qt_standard_project_setup()}
 \sa {qt6_add_translations}{qt_add_translations()}
 */
@@ -510,8 +618,8 @@ This variable can be conveniently set with the
 \page cmake-variable-qt-i18n-native-language.html
 \ingroup cmake-variables-qtcore
 
-\title QT_I18N_NATIVE_LANGUAGE
-\target cmake-variable-QT_I18N_NATIVE_LANGUAGE
+\title QT_I18N_SOURCE_LANGUAGE
+\target cmake-variable-QT_I18N_SOURCE_LANGUAGE
 
 \summary {Specifies the language of translatable strings.}
 
@@ -520,7 +628,7 @@ This variable can be conveniently set with the
 Specifies the language of translatable strings in the source code.
 The language must be compatible with the string-based \l QLocale constructor.
 
-Together with \c{QT_I18N_LANGUAGES}, this variable is used to determine the
+Together with \c{QT_I18N_TRANSLATED_LANGUAGES}, this variable is used to determine the
 names of \c{.ts} files for \l{qt6_add_translations}{qt_add_translations()}.
 
 This variable can be conveniently set with the

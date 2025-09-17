@@ -7,7 +7,36 @@
 
 using namespace std::chrono_literals;
 
+// Assert that this instantiation of std::atomic is always lock-free so we
+// know that no code will execute on destruction.
+static_assert(std::atomic<std::chrono::milliseconds>::is_always_lock_free);
+
 QT_BEGIN_NAMESPACE
+
+// ### Qt 7: reduce the default: QTBUG-138160
+Q_CONSTINIT std::atomic<std::chrono::milliseconds> QTest::defaultTryTimeout{5s};
+
+/*!
+    \variable QTest::defaultTryTimeout
+    \since 6.11
+
+    This global variable stores the default timeout used by the \c {QTRY_*}
+    functions and \l qWait.
+
+    The most typical use case for this variable is to modify the timeout
+    for an entire test:
+
+    \snippet code/src_qtestlib_qtestcase.cpp set defaultTryTimeout
+
+    However, you can also set it for a specific scope, using
+    \l QAtomicScopedValueRollback:
+
+    \snippet code/src_qtestlib_qtestcase.cpp rollback defaultTryTimeout
+
+    To access the value, call \c load():
+
+    \snippet code/src_qtestlib_qtestcase.cpp get defaultTryTimeout
+*/
 
 /*!
     \overload
@@ -107,7 +136,22 @@ Q_CORE_EXPORT void QTest::qWait(int msecs)
     The code above will wait until the network server is responding for a
     maximum of about 12.5 seconds.
 
-    \sa QTest::qSleep(), QSignalSpy::wait()
+    The \l{QTRY_COMPARE()}{QTRY_*} macros are usually a better choice than
+    qWait(). qWait() always pauses for the full timeout, which can leave the
+    test idle and slow down execution.
+
+    The \c {QTRY_*} macros poll the condition until it succeeds or the timeout
+    expires. Your test therefore continues as soon as possible and stays more
+    reliable. If the condition still fails, the macros double the timeout once
+    and report the new value so that you can adjust it.
+
+    For example, rewrite the code above as:
+
+    \code
+        QTRY_VERIFY_WITH_TIMEOUT(!myNetworkServerNotResponding(), 12.5s);
+    \endcode
+
+    \sa QTest::qSleep(), QSignalSpy::wait(), QTRY_VERIFY_WITH_TIMEOUT()
 */
 Q_CORE_EXPORT void QTest::qWait(std::chrono::milliseconds msecs)
 {

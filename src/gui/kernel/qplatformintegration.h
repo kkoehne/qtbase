@@ -33,6 +33,7 @@ class QPlatformOpenGLContext;
 class QGuiGLFormat;
 class QAbstractEventDispatcher;
 class QPlatformInputContext;
+class QPlatformKeyMapper;
 class QPlatformAccessibility;
 class QPlatformTheme;
 class QPlatformDialogHelper;
@@ -89,7 +90,9 @@ public:
         WindowManagement,
         WindowActivation, // whether requestActivate is supported
         SyncState,
-        RasterGLSurface,
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 11)
+        RasterGLSurface Q_DECL_ENUMERATOR_DEPRECATED_X("This capability is no longer used"),
+#endif
         AllGLFunctionsQueryable,
         ApplicationIcon,
         SwitchableWidgetComposition,
@@ -98,7 +101,8 @@ public:
         MaximizeUsingFullscreenGeometry,
         PaintEvents,
         RhiBasedRendering,
-        ScreenWindowGrabbing // whether QScreen::grabWindow() is supported
+        ScreenWindowGrabbing, // whether QScreen::grabWindow() is supported
+        BackingStoreStaticContents
     };
 
     virtual ~QPlatformIntegration() { }
@@ -171,8 +175,12 @@ public:
     virtual QVariant styleHint(StyleHint hint) const;
     virtual Qt::WindowState defaultWindowState(Qt::WindowFlags) const;
 
+protected:
     virtual Qt::KeyboardModifiers queryKeyboardModifiers() const;
     virtual QList<int> possibleKeys(const QKeyEvent *) const;
+    friend class QPlatformKeyMapper;
+public:
+    virtual QPlatformKeyMapper *keyMapper() const;
 
     virtual QStringList themeNames() const;
     virtual QPlatformTheme *createPlatformTheme(const QString &name) const;

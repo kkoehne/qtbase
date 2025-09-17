@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QCheckBox>
@@ -20,6 +20,8 @@
 #include <QtWidgets/QSplitter>
 #include <QtWidgets/QStyle>
 #include <QtWidgets/QStyleFactory>
+#include <QtWidgets/QTabBar>
+#include <QtWidgets/QTabWidget>
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QToolTip>
@@ -115,6 +117,7 @@ private slots:
     void appStyle();
     void QTBUG11658_cachecrash();
     void styleSheetTargetAttribute();
+    void tabWidgetDocumentModeCrash();
     void unpolish();
 
     void highdpiImages_data();
@@ -124,6 +127,8 @@ private slots:
     void iconSizes();
     void inheritWidgetPalette_data();
     void inheritWidgetPalette();
+
+    void resetFont();
 
 private:
     static QColor COLOR(const QWidget &w)
@@ -980,7 +985,6 @@ void tst_QStyleSheetStyle::focusColors()
     centerOnScreen(&frame);
     frame.show();
 
-    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
     for (QWidget *widget : frame.widgets()) {
@@ -1026,7 +1030,6 @@ void tst_QStyleSheetStyle::hoverColors()
     QCursor::setPos(frame.geometry().topLeft() - QPoint(100, 0));
     frame.show();
 
-    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
     QWindow *frameWindow = frame.windowHandle();
@@ -1720,7 +1723,6 @@ void tst_QStyleSheetStyle::toolTip()
 
     centerOnScreen(&w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QColor normalToolTipBgColor = QToolTip::palette().color(QPalette::Inactive, QPalette::ToolTipBase);
@@ -1889,7 +1891,6 @@ void tst_QStyleSheetStyle::complexWidgetFocus()
 
     centerOnScreen(&frame);
     frame.show();
-    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
     for (QWidget *widget : widgets) {
         widget->setFocus();
@@ -1978,7 +1979,6 @@ void tst_QStyleSheetStyle::task232085_spinBoxLineEditBg()
 
     centerOnScreen(&frame);
     frame.show();
-    QApplicationPrivate::setActiveWindow(&frame);
     spinbox->setFocus();
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
@@ -2114,7 +2114,6 @@ void tst_QStyleSheetStyle::QTBUG36933_brokenPseudoClassLookup()
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
     widget.activateWindow();
-    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     QHeaderView *verticalHeader = widget.verticalHeader();
@@ -2335,6 +2334,16 @@ void tst_QStyleSheetStyle::styleSheetTargetAttribute()
     QCOMPARE(pb.testAttribute(Qt::WA_StyleSheetTarget), false);
 }
 
+void tst_QStyleSheetStyle::tabWidgetDocumentModeCrash()
+{
+    // Don't crash when matching accessing documentMode of QTabWidget while styling QTabBar.
+    qApp->setStyleSheet("QTabWidget[documentMode=true] QTabBar { font-size: 40pt; }");
+
+    QTabWidget tabWidget;
+    tabWidget.setDocumentMode(true);
+    QCOMPARE(FONTSIZE(*tabWidget.tabBar()), 40);
+}
+
 void tst_QStyleSheetStyle::unpolish()
 {
     QWidget w;
@@ -2532,6 +2541,28 @@ void tst_QStyleSheetStyle::inheritWidgetPalette()
     const QColor phColor = edit.palette().placeholderText().color();
 
     QCOMPARE(phColor, phColorPalette);
+}
+
+void tst_QStyleSheetStyle::resetFont()
+{
+    QDoubleSpinBox sb;
+    sb.setStyleSheet(R"(QDoubleSpinBox[changed="true"] {font: italic;})");
+
+    auto checkFont = [&sb](bool isItalic) {
+        sb.setProperty("changed", isItalic);
+        sb.style()->polish(&sb);
+        const auto children = sb.findChildren<QWidget *>();
+        for (const auto *w : children) {
+            auto diagnostics = qScopeGuard([&] {
+                qWarning() << "Failure with" << w << "should be italic:" << isItalic;
+            });
+            QCOMPARE(w->font().italic(), isItalic);
+            diagnostics.dismiss();
+        }
+    };
+    checkFont(false);
+    checkFont(true);
+    checkFont(false);
 }
 
 QTEST_MAIN(tst_QStyleSheetStyle)

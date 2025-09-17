@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "debugproxystyle.h"
 #include "eventfilter.h"
@@ -14,10 +14,9 @@ QDebug operator<<(QDebug debug, const QStyleOption *option)
     QDebugStateSaver saver(debug);
     debug.noquote();
     debug.nospace();
-    if (!option) {
-        debug << "QStyleOption(0)";
-        return debug;
-    }
+    if (!option)
+        return debug << "QStyleOption(0x0)";
+
     if (const QStyleOptionViewItem *ivo = qstyleoption_cast<const QStyleOptionViewItem *>(option)) {
         debug << "QStyleOptionViewItem(";
         debug << ivo->index;

@@ -1,6 +1,7 @@
 // Copyright (C) 2021 Intel Corporation.
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:cryptography
 
 // for rand_s
 #define _CRT_RAND_S
@@ -377,8 +378,9 @@ struct QRandomGenerator::SystemAndGlobalGenerators
 
     struct PRNGLocker
     {
+        Q_DISABLE_COPY_MOVE(PRNGLocker)
         const bool locked;
-        PRNGLocker(const QRandomGenerator *that)
+        Q_NODISCARD_CTOR explicit PRNGLocker(const QRandomGenerator *that)
             : locked(that == globalNoInit())
         {
             if (locked)
@@ -765,7 +767,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
  */
 
 /*!
-    \fn template <typename UInt> void QRandomGenerator::fillRange(UInt *buffer, qsizetype count)
+    \fn template <typename UInt, QRandomGenerator::IfValidUInt<UInt> = true> void QRandomGenerator::fillRange(UInt *buffer, qsizetype count)
 
     Generates \a count 32- or 64-bit quantities (depending on the type \c UInt)
     and stores them in the buffer pointed by \a buffer. This is the most
@@ -781,7 +783,7 @@ inline QRandomGenerator::SystemGenerator &QRandomGenerator::SystemGenerator::sel
  */
 
 /*!
-    \fn template <typename UInt, size_t N> void QRandomGenerator::fillRange(UInt (&buffer)[N])
+    \fn template <typename UInt, size_t N, QRandomGenerator::IfValidUInt<UInt> = true> void QRandomGenerator::fillRange(UInt (&buffer)[N])
 
     Generates \c N 32- or 64-bit quantities (depending on the type \c UInt) and
     stores them in the \a buffer array. This is the most efficient way to

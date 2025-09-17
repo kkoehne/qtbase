@@ -155,7 +155,7 @@ public:
     QByteArray returnType() const;
     void setReturnType(const QByteArray& value);
 
-    QList<QByteArray> parameterTypes() const;
+    QList<QByteArrayView> parameterTypes() const;
     QList<QByteArray> parameterNames() const;
     void setParameterNames(const QList<QByteArray>& value);
 
@@ -168,7 +168,7 @@ public:
     int attributes() const;
     void setAttributes(int value);
 
-    int isConst() const;
+    bool isConst() const;
     void setConst(bool methodIsConst=true);
 
     int revision() const;
@@ -216,6 +216,7 @@ public:
     bool isFinal() const;
     bool isAlias() const;
     bool isBindable() const;
+    bool isRequired() const;
 
     void setReadable(bool value);
     void setWritable(bool value);
@@ -230,6 +231,7 @@ public:
     void setFinal(bool value);
     void setAlias(bool value);
     void setBindable(bool value);
+    void setRequired(bool value);
 
     int revision() const;
     void setRevision(int revision);
@@ -267,11 +269,16 @@ public:
     bool isScoped() const;
     void setIsScoped(bool value);
 
+    bool is64Bit() const;
+    void setIs64Bit(bool value);
+
     int keyCount() const;
     QByteArray key(int index) const;
     int value(int index) const;
+    std::optional<quint64> value64(int index) const;
 
-    int addKey(const QByteArray& name, int value);
+    int addKey(const QByteArray &name, int value);
+    int addKey(const QByteArray &name, quint64 value);
     void removeKey(int index);
 
 private:

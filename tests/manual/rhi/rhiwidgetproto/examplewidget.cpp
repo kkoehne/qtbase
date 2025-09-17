@@ -1,10 +1,13 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "examplewidget.h"
 #include "../shared/cube.h"
+
 #include <QFile>
+
 #include <QPainter>
+#include <QtGui/qquaternion.h>
 
 static const QSize CUBE_TEX_SIZE(512, 512);
 

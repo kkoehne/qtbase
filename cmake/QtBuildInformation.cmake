@@ -1,6 +1,22 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+function(qt_internal_set_message_log_level out_var)
+    # Decide whether output should be verbose or not.
+    # Default to verbose (--log-level=STATUS) in a developer-build and
+    # non-verbose (--log-level=NOTICE) otherwise.
+    # If a custom CMAKE_MESSAGE_LOG_LEVEL was specified, it takes priority.
+    # Passing an explicit --log-level=Foo has the highest priority.
+    if(NOT CMAKE_MESSAGE_LOG_LEVEL)
+        if(FEATURE_developer_build OR QT_FEATURE_developer_build)
+            set(CMAKE_MESSAGE_LOG_LEVEL "STATUS")
+        else()
+            set(CMAKE_MESSAGE_LOG_LEVEL "NOTICE")
+        endif()
+        set(${out_var} "${CMAKE_MESSAGE_LOG_LEVEL}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(qt_print_feature_summary)
     if(QT_SUPERBUILD)
         qt_internal_set_message_log_level(message_log_level)
@@ -11,7 +27,26 @@ function(qt_print_feature_summary)
         endif()
     endif()
 
-    include(FeatureSummary)
+    # Print debug information about which tests were not run.
+    get_property(known_compile_tests GLOBAL PROPERTY _qtfeature_known_compile_tests)
+    list(REMOVE_DUPLICATES known_compile_tests)
+    set(tests_not_run "")
+    foreach(test_name IN LISTS known_compile_tests)
+        if(NOT DEFINED "TEST_${test_name}")
+            list(APPEND tests_not_run "${test_name}")
+        endif()
+    endforeach()
+    if(tests_not_run STREQUAL "")
+        message(DEBUG "All known compile tests were run.")
+    else()
+        message(DEBUG
+            "The following compile tests were not run, because their values were not requested."
+        )
+        foreach(test_name IN LISTS tests_not_run)
+            message(DEBUG "The compile test '${test_name}' was not run.")
+        endforeach()
+    endif()
+
     # Show which packages were found.
     feature_summary(INCLUDE_QUIET_PACKAGES
                     WHAT PACKAGES_FOUND
@@ -43,8 +78,7 @@ endfunction()
 
 function(qt_print_build_instructions)
     if((NOT PROJECT_NAME STREQUAL "QtBase" AND
-        NOT PROJECT_NAME STREQUAL "Qt") OR
-       QT_BUILD_STANDALONE_TESTS)
+        NOT PROJECT_NAME STREQUAL "Qt") OR QT_INTERNAL_BUILD_STANDALONE_PARTS)
 
         return()
     endif()
@@ -111,13 +145,6 @@ from the build directory")
     if(QT_SUPERBUILD)
         qt_internal_save_previously_visited_packages()
     endif()
-
-    # TODO: Abuse qt_print_build_instructions being called as the last command in a top-level build.
-    # Instead we should call this explicitly at the end of the top-level project.
-    # TODO: Remove this once the top-level calls qt_internal_top_level_setup_after_project
-    if(QT_SUPERBUILD AND NOT __qt6_top_level_after_project_called)
-        qt_internal_qt_configure_end()
-    endif()
 endfunction()
 
 function(qt_configure_print_summary_helper summary_reports force_show)
@@ -154,11 +181,23 @@ function(qt_configure_print_summary)
 
     # Show Qt-specific configuration summary.
     if(__qt_configure_reports)
+        # The summary will only be printed for log level STATUS or above.
+        # Check whether the log level is sufficient for printing the summary.
+        set(log_level_sufficient_for_printed_summary TRUE)
+        if(CMAKE_VERSION GREATER_EQUAL "3.25")
+            cmake_language(GET_MESSAGE_LOG_LEVEL log_level)
+            set(sufficient_log_levels STATUS VERBOSE DEBUG TRACE)
+            if(NOT log_level IN_LIST sufficient_log_levels)
+                set(log_level_sufficient_for_printed_summary FALSE)
+            endif()
+        endif()
+
         # We want to show the configuration summary file and log level message only on
         # first configuration or when we detect a feature change, to keep most
         # reconfiguration output as quiet as possible.
         # Currently feature change detection is not entirely reliable.
-        if(NOT QT_INTERNAL_SUMMARY_INSTRUCTIONS_SHOWN OR features_possibly_changed)
+        if(log_level_sufficient_for_printed_summary
+                AND (NOT QT_INTERNAL_SUMMARY_INSTRUCTIONS_SHOWN OR features_possibly_changed))
             set(force_show_summary TRUE)
             message(
                 "\n"
@@ -516,11 +555,54 @@ function(qt_configure_add_report_error error)
     qt_configure_add_report_entry(TYPE ERROR MESSAGE "${error}" CONDITION TRUE ${ARGN})
 endfunction()
 
+# Goes through each token in given in `CONDITION` or `COMPILE_TESTS_TO_SHOW_ON_ERROR`, checks if
+# the token starts with TEST_ which means it represents a Qt compile test, queries its
+# compile output if available, and appends it to `out_var`.
+# The compile output for a test is only available on first configuration, because we don't cache it
+# across cmake invocations.
+function(qt_internal_get_try_compile_output_from_tests_in_condition out_var)
+    set(opt_args "")
+    set(single_args "")
+    set(multi_args
+        CONDITION
+        COMPILE_TESTS_TO_SHOW_ON_ERROR
+    )
+    cmake_parse_arguments(PARSE_ARGV 1 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    set(content "")
+
+    foreach(token IN LISTS arg_CONDITION arg_COMPILE_TESTS_TO_SHOW_ON_ERROR)
+        if(token MATCHES "TEST_(.+)")
+            set(name "${CMAKE_MATCH_1}")
+            get_cmake_property(try_compile_output _qt_run_config_compile_test_output_${name})
+
+            if(try_compile_output)
+                string(APPEND content "\n   TEST_${name} output: \n\n${try_compile_output}")
+            endif()
+        else()
+            continue()
+        endif()
+    endforeach()
+
+    if(content)
+        string(PREPEND content "\n Compile test outputs:\n")
+    endif()
+
+    set(${out_var} "${content}" PARENT_SCOPE)
+endfunction()
+
 function(qt_configure_process_add_report_entry)
-    cmake_parse_arguments(PARSE_ARGV 0 arg
-        ""
-        "TYPE;MESSAGE"
-        "CONDITION")
+    set(opt_args "")
+    set(single_args
+        TYPE
+        MESSAGE
+    )
+    set(multi_args
+        CONDITION
+        COMPILE_TESTS_TO_SHOW_ON_ERROR
+    )
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
     _qt_internal_validate_all_args_are_parsed(arg)
 
     set(possible_types NOTE WARNING ERROR FATAL_ERROR)
@@ -552,6 +634,23 @@ function(qt_configure_process_add_report_entry)
 
     if("${arg_CONDITION}" STREQUAL "" OR condition_result)
         set(new_report "${prefix}${arg_MESSAGE}")
+
+        set(compile_test_args "")
+        if(arg_CONDITION)
+            list(APPEND compile_test_args CONDITION ${arg_CONDITION})
+        endif()
+        if(arg_COMPILE_TESTS_TO_SHOW_ON_ERROR)
+            list(APPEND compile_test_args
+                COMPILE_TESTS_TO_SHOW_ON_ERROR ${arg_COMPILE_TESTS_TO_SHOW_ON_ERROR})
+        endif()
+
+        qt_internal_get_try_compile_output_from_tests_in_condition(extra_output
+            ${compile_test_args}
+        )
+        if(extra_output)
+            string(APPEND new_report "\n${extra_output}")
+        endif()
+
         string(APPEND "${contents_var}" "\n${new_report}")
 
         if(arg_TYPE STREQUAL "ERROR" OR arg_TYPE STREQUAL "FATAL_ERROR")

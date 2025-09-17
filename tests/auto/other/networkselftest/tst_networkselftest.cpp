@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtNetwork/QtNetwork>
@@ -1071,9 +1071,9 @@ void tst_NetworkSelfTest::smbServer()
 
     output = smbclient.readAll();
     QCOMPARE(output.constData(), contents);
-    qDebug() << "Test file is correct";
+    qDebug("Test file is correct");
 #else
-    QSKIP( "No QProcess support", SkipAll);
+    QSKIP("No QProcess support");
 #endif
 #endif
 }

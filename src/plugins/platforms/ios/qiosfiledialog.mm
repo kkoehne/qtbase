@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #import <UIKit/UIKit.h>
 
@@ -11,10 +12,13 @@
 
 #include <QtCore/private/qcore_mac_p.h>
 
+#include "qiosglobal.h"
 #include "qiosfiledialog.h"
 #include "qiosintegration.h"
 #include "qiosoptionalplugininterface.h"
 #include "qiosdocumentpickercontroller.h"
+
+#include <QtCore/qpointer.h>
 
 using namespace Qt::StringLiterals;
 
@@ -57,8 +61,7 @@ bool QIOSFileDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
 
 void QIOSFileDialog::showImagePickerDialog_helper(QWindow *parent)
 {
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-                              : qt_apple_sharedApplication().keyWindow;
+    UIWindow *window = presentationWindow(parent);
     [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
 }
 
@@ -98,7 +101,7 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
         [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (status == PHAuthorizationStatusAuthorized) {
-                    if (thisGuard && winGuard)
+                    if (thisGuard && (winGuard || !parent))
                         thisGuard->showImagePickerDialog_helper(winGuard);
 
                 } else if (thisGuard) {
@@ -121,8 +124,7 @@ bool QIOSFileDialog::showNativeDocumentPickerDialog(QWindow *parent)
 #ifndef Q_OS_TVOS
     m_viewController = [[QIOSDocumentPickerController alloc] initWithQIOSFileDialog:this];
 
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-        : qt_apple_sharedApplication().keyWindow;
+    UIWindow *window = presentationWindow(parent);
     [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
 
     return true;

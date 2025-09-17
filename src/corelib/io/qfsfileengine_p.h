@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QFSFILEENGINE_P_H
 #define QFSFILEENGINE_P_H
@@ -60,8 +61,12 @@ public:
     bool isSequential() const override;
     bool remove() override;
     bool copy(const QString &newName) override;
-    bool rename(const QString &newName) override;
-    bool renameOverwrite(const QString &newName) override;
+
+    bool rename(const QString &newName) override
+    { return rename_helper(newName, Rename); }
+    bool renameOverwrite(const QString &newName) override
+    { return rename_helper(newName, RenameOverwrite); }
+
     bool link(const QString &newName) override;
     bool mkdir(const QString &dirName, bool createParentDirectories,
                std::optional<QFile::Permissions> permissions) const override;
@@ -69,27 +74,27 @@ public:
     bool setSize(qint64 size) override;
     bool caseSensitive() const override;
     bool isRelativePath() const override;
-    QStringList entryList(QDir::Filters filters, const QStringList &filterNames) const override;
     FileFlags fileFlags(FileFlags type) const override;
     bool setPermissions(uint perms) override;
     QByteArray id() const override;
     QString fileName(FileName file) const override;
     uint ownerId(FileOwner) const override;
     QString owner(FileOwner) const override;
-    bool setFileTime(const QDateTime &newDate, FileTime time) override;
-    QDateTime fileTime(FileTime time) const override;
+    bool setFileTime(const QDateTime &newDate, QFile::FileTime time) override;
+    QDateTime fileTime(QFile::FileTime time) const override;
     void setFileName(const QString &file) override;
+    void setFileEntry(QFileSystemEntry &&entry);
     int handle() const override;
 
 #ifndef QT_NO_FILESYSTEMITERATOR
-    Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames) override;
-    Iterator *endEntryList() override;
+    IteratorUniquePtr beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                                     const QStringList &filterNames) override;
 #endif
 
     qint64 read(char *data, qint64 maxlen) override;
     qint64 readLine(char *data, qint64 maxlen) override;
     qint64 write(const char *data, qint64 len) override;
-    bool cloneTo(QAbstractFileEngine *target) override;
+    TriStateResult cloneTo(QAbstractFileEngine *target) override;
 
     virtual bool isUnnamedFile() const
     { return false; }
@@ -103,13 +108,14 @@ public:
     bool open(QIODevice::OpenMode flags, FILE *fh, QFile::FileHandleFlags handleFlags);
     static bool setCurrentPath(const QString &path);
     static QString currentPath(const QString &path = QString());
-    static QString homePath();
-    static QString rootPath();
-    static QString tempPath();
     static QFileInfoList drives();
 
 protected:
     QFSFileEngine(QFSFileEnginePrivate &dd);
+
+private:
+    enum RenameMode : int { Rename, RenameOverwrite };
+    bool rename_helper(const QString &newName, RenameMode mode);
 };
 
 class Q_AUTOTEST_EXPORT QFSFileEnginePrivate : public QAbstractFileEnginePrivate
@@ -150,6 +156,9 @@ public:
     bool nativeIsSequential() const;
 #ifndef Q_OS_WIN
     bool isSequentialFdFh() const;
+#endif
+#ifdef Q_OS_WIN
+    bool nativeRenameOverwrite(const QFileSystemEntry &newEntry);
 #endif
 
     uchar *map(qint64 offset, qint64 size, QFile::MemoryMapFlags flags);
@@ -209,7 +218,7 @@ public:
         return (openMode & QFile::WriteOnly) && !(openMode & QFile::ExistingOnly);
     }
 protected:
-    QFSFileEnginePrivate();
+    QFSFileEnginePrivate(QAbstractFileEngine *q);
 
     void init();
 

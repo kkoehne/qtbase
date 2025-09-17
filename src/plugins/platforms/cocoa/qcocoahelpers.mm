@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -8,8 +9,6 @@
 #include "qcocoahelpers.h"
 #include "qnsview.h"
 
-#include <QtCore>
-#include <QtGui>
 #include <qpa/qplatformscreen.h>
 #include <private/qguiapplication_p.h>
 #include <private/qwindow_p.h>
@@ -27,7 +26,6 @@ Q_LOGGING_CATEGORY(lcQpaInputMethods, "qt.qpa.input.methods")
 Q_LOGGING_CATEGORY(lcQpaScreen, "qt.qpa.screen", QtCriticalMsg);
 Q_LOGGING_CATEGORY(lcQpaApplication, "qt.qpa.application");
 Q_LOGGING_CATEGORY(lcQpaClipboard, "qt.qpa.clipboard")
-Q_LOGGING_CATEGORY(lcInputDevices, "qt.qpa.input.devices")
 Q_LOGGING_CATEGORY(lcQpaDialogs, "qt.qpa.dialogs")
 Q_LOGGING_CATEGORY(lcQpaMenus, "qt.qpa.menus")
 
@@ -336,6 +334,15 @@ QString qt_mac_removeAmpersandEscapes(QString s)
     return QPlatformTheme::removeMnemonics(s).trimmed();
 }
 
+NSString *qt_mac_AppKitString(NSString *table, NSString *key)
+{
+    static const NSBundle *appKit = [NSBundle bundleForClass:NSApplication.class];
+    if (!appKit)
+        return key;
+
+    return [appKit localizedStringForKey:key value:nil table:table];
+}
+
 QT_END_NAMESPACE
 
 /*! \internal
@@ -463,6 +470,8 @@ QT_END_NAMESPACE
 
 @end // QNSPanelContentsWrapper
 
+QT_BEGIN_NAMESPACE
+
 // -------------------------------------------------------------------------
 
 InputMethodQueryResult queryInputMethod(QObject *object, Qt::InputMethodQueries queries)
@@ -503,3 +512,5 @@ QDebug operator<<(QDebug debug, SEL selector)
     debug << NSStringFromSelector(selector);
     return debug;
 }
+
+QT_END_NAMESPACE

@@ -27,7 +27,7 @@ QGraphicsFrameCaptureMetal::QGraphicsFrameCaptureMetal()
 
 QGraphicsFrameCaptureMetal::~QGraphicsFrameCaptureMetal()
 {
-#ifdef Q_OS_MACOS
+#if defined(Q_OS_MACOS) && QT_CONFIG(process)
     if (m_process) {
         m_process->terminate();
         delete m_process;
@@ -111,6 +111,7 @@ void QGraphicsFrameCaptureMetal::endCaptureFrame()
     }
 
     [m_captureManager stopCapture];
+    m_capturedFilesNames.append(QString::fromNSString(m_traceURL.path));
     frameNumber++;
 }
 
@@ -131,7 +132,10 @@ bool QGraphicsFrameCaptureMetal::isCapturing() const
 
 void QGraphicsFrameCaptureMetal::openCapture()
 {
-#ifdef Q_OS_MACOS
+#if defined(Q_OS_MACOS)
+#if !QT_CONFIG(process)
+    qFatal("QGraphicsFrameCapture requires QProcess on macOS");
+#else
     if (!initialized()) {
         qCWarning(lcGraphicsFrameCapture) << "Capturing on Metal was not initialized. Can not open XCode with a valid capture.";
         return;
@@ -148,11 +152,14 @@ void QGraphicsFrameCaptureMetal::openCapture()
     m_process->kill();
     m_process->start();
 #endif
+#endif
 }
 
 void QGraphicsFrameCaptureMetal::updateCaptureFileName()
 {
-    m_traceURL = QUrl::fromLocalFile(m_capturePath + "/" + m_capturePrefix + "_" + QString::number(frameNumber) + ".gputrace").toNSURL();
+    m_traceURL = QUrl::fromLocalFile(m_capturePath + u"/" + m_capturePrefix + u"_"
+                                     + QString::number(frameNumber) + u".gputrace")
+                         .toNSURL();
     // We need to remove the trace file if it already existed else MTLCaptureManager
     // will fail to.
     if ([NSFileManager.defaultManager fileExistsAtPath:m_traceURL.path])

@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2014 BlackBerry Limited. All rights reserved.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 
 //#define QSSLSOCKET_DEBUG
@@ -97,8 +98,7 @@
 
     \list
     \li The socket's cryptographic cipher suite can be customized before
-    the handshake phase with QSslConfiguration::setCiphers()
-    and QSslConfiguration::setDefaultCiphers().
+    the handshake phase with QSslConfiguration::setCiphers().
     \li The socket's local certificate and private key can be customized
     before the handshake phase with setLocalCertificate() and
     setPrivateKey().
@@ -364,6 +364,12 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+
+#ifdef Q_OS_VXWORKS
+constexpr auto isVxworks = true;
+#else
+constexpr auto isVxworks = false;
+#endif
 
 class QSslSocketGlobalData
 {
@@ -1539,7 +1545,12 @@ QList<QString> QSslSocket::availableBackends()
     from the list of available backends.
 
     \note When selecting a default backend implicitly, QSslSocket prefers
-    the OpenSSL backend if available.
+    the OpenSSL backend if available. If it's not available, the Schannel backend
+    is implicitly selected on Windows, and Secure Transport on Darwin platforms.
+    Failing these, if a custom TLS backend is found, it is used.
+    If no other backend is found, the "certificate only" backend is selected.
+    For more information about TLS plugins, please see
+    \l {Enabling and Disabling SSL Support when Building Qt from Source}.
 
     \sa setActiveBackend(), availableBackends()
 */
@@ -2952,7 +2963,8 @@ QList<QByteArray> QSslSocketPrivate::unixRootCertDirectories()
     static const QByteArray dirs[] = {
         ba("/etc/ssl/certs/"), // (K)ubuntu, OpenSUSE, Mandriva ...
         ba("/usr/lib/ssl/certs/"), // Gentoo, Mandrake
-        ba("/usr/share/ssl/"), // Centos, Redhat, SuSE
+        ba("/usr/share/ssl/"), // Red Hat pre-2004, SuSE
+        ba("/etc/pki/ca-trust/extracted/pem/directory-hash/"), // Red Hat 2021+
         ba("/usr/local/ssl/"), // Normal OpenSSL Tarball
         ba("/var/ssl/certs/"), // AIX
         ba("/usr/local/ssl/certs/"), // Solaris
@@ -2960,7 +2972,13 @@ QList<QByteArray> QSslSocketPrivate::unixRootCertDirectories()
         ba("/opt/openssl/certs/"), // HP-UX
         ba("/etc/ssl/"), // OpenBSD
     };
-    return QList<QByteArray>::fromReadOnlyData(dirs);
+    QList<QByteArray> result = QList<QByteArray>::fromReadOnlyData(dirs);
+    if constexpr (isVxworks) {
+        static QByteArray vxworksCertsDir = qgetenv("VXWORKS_CERTS_DIR");
+        if (!vxworksCertsDir.isEmpty())
+            result.push_back(vxworksCertsDir);
+    }
+    return result;
 }
 
 /*!

@@ -139,8 +139,6 @@ QSqlQueryModel::~QSqlQueryModel()
 }
 
 /*!
-    \since 4.1
-
     Fetches more rows from a database.
     This only affects databases that don't report back the size of a query
     (see QSqlDriver::hasFeature()).
@@ -162,8 +160,6 @@ void QSqlQueryModel::fetchMore(const QModelIndex &parent)
 }
 
 /*!
-    \since 4.1
-
     Returns \c true if it is possible to read more rows from the database.
     This only affects databases that don't report back the size of a query
     (see QSqlDriver::hasFeature()).
@@ -197,9 +193,10 @@ bool QSqlQueryModel::canFetchMore(const QModelIndex &parent) const
 */
 QHash<int, QByteArray> QSqlQueryModel::roleNames() const
 {
-    return QHash<int, QByteArray> {
+    static const QHash<int, QByteArray> names = {
         { Qt::DisplayRole, QByteArrayLiteral("display") }
     };
+    return names;
 }
 
 /*! \internal
@@ -295,7 +292,6 @@ void QSqlQueryModel::endResetModel()
 }
 
 /*! \fn int QSqlQueryModel::rowCount(const QModelIndex &parent) const
-    \since 4.1
 
     If the database supports returning the size of a query
     (see QSqlDriver::hasFeature()), the number of rows of the current
@@ -334,19 +330,18 @@ QVariant QSqlQueryModel::data(const QModelIndex &item, int role) const
     if (!item.isValid())
         return QVariant();
 
-    QVariant v;
     if (role & ~(Qt::DisplayRole | Qt::EditRole))
-        return v;
+        return QVariant();
 
     if (!d->rec.isGenerated(item.column()))
-        return v;
+        return QVariant();
     QModelIndex dItem = indexInQuery(item);
     if (dItem.row() > d->bottom.row())
         const_cast<QSqlQueryModelPrivate *>(d)->prefetch(dItem.row());
 
     if (!d->query.seek(dItem.row())) {
         d->error = d->query.lastError();
-        return v;
+        return QVariant();
     }
 
     return d->query.value(dItem.column());
@@ -384,19 +379,19 @@ void QSqlQueryModel::queryChange()
     // do nothing
 }
 
-#if QT_DEPRECATED_SINCE(6, 2)
+#if QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
 /*!
     \deprecated [6.2] Use the \c{setQuery(QSqlQuery &&query)} overload instead.
-    \overload
-    \since 4.5
+    This overload will be removed in Qt 7.
 
+    \overload
 */
 void QSqlQueryModel::setQuery(const QSqlQuery &query)
 {
     QT_IGNORE_DEPRECATIONS(QSqlQuery copy = query;)
     setQuery(std::move(copy));
 }
-#endif // QT_DEPRECATED_SINCE(6, 2)
+#endif // QT_REMOVAL_QT7_DEPRECATED_SINCE(6, 2)
 
 /*!
     Resets the model and sets the data provider to be the given \a
@@ -474,6 +469,22 @@ void QSqlQueryModel::setQuery(QSqlQuery &&query)
 void QSqlQueryModel::setQuery(const QString &query, const QSqlDatabase &db)
 {
     setQuery(QSqlQuery(query, db));
+}
+
+/*!
+    \since 6.9
+    Re-executes the current query to fetch the data from the same database connection.
+
+    \note \c refresh() is not applicable when the query contains bound values.
+
+    \sa setQuery(QSqlQuery &&query), QSqlQuery::boundValue()
+*/
+void QSqlQueryModel::refresh()
+{
+    Q_D(QSqlQueryModel);
+    const auto connName = d->query.driver()
+        ? d->query.driver()->connectionName() : QString();
+    setQuery(d->query.executedQuery(), QSqlDatabase::database(connName));
 }
 
 /*!
@@ -625,7 +636,7 @@ bool QSqlQueryModel::insertColumns(int column, int count, const QModelIndex &par
             d->colOffsets.append(nVal);
             Q_ASSERT(d->colOffsets.size() >= d->rec.count());
         }
-        for (int i = column + 1; i < d->colOffsets.size(); ++i)
+        for (qsizetype i = column + 1; i < d->colOffsets.size(); ++i)
             ++d->colOffsets[i];
     }
     endInsertColumns();
@@ -651,10 +662,9 @@ bool QSqlQueryModel::removeColumns(int column, int count, const QModelIndex &par
 
     beginRemoveColumns(parent, column, column + count - 1);
 
-    int i;
-    for (i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i)
         d->rec.remove(column);
-    for (i = column; i < d->colOffsets.size(); ++i)
+    for (qsizetype i = column; i < d->colOffsets.size(); ++i)
         d->colOffsets[i] -= count;
 
     endRemoveColumns();

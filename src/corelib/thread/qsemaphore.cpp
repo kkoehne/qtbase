@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsemaphore.h"
 #include "qfutex_p.h"
@@ -15,6 +16,8 @@
 QT_BEGIN_NAMESPACE
 
 using namespace QtFutex;
+
+#if QT_CONFIG(thread)
 
 /*!
     \class QSemaphore
@@ -401,10 +404,10 @@ void QSemaphore::release(int n)
         return;
     }
 
-    {
-        const auto locker = qt_scoped_lock(d->mutex);
-        d->avail += n;
-    }
+    // Keep mutex locked until after notify_all() lest another thread acquire()s
+    // the semaphore once d->avail == 0 and then destroys it, leaving `d` dangling.
+    const auto locker = qt_scoped_lock(d->mutex);
+    d->avail += n;
     d->cond.notify_all();
 }
 
@@ -674,5 +677,33 @@ bool QSemaphore::tryAcquire(int n, QDeadlineTimer timer)
     \snippet code/src_corelib_thread_qsemaphore.cpp 7
 */
 
+#else // #if QT_CONFIG(thread)
+
+// No-thread stubs for QSemaphore. These essentially allow
+// unlimited acquire and release, since we can't ever block
+// the calling thread (which is the only thread in the no-thread
+// configuraton)
+
+QSemaphore::QSemaphore(int n)
+{
+
+}
+
+QSemaphore::~QSemaphore()
+{
+
+}
+
+void QSemaphore::acquire(int)
+{
+
+}
+
+void QSemaphore::release(int)
+{
+
+}
+
+#endif
 
 QT_END_NAMESPACE

@@ -17,6 +17,7 @@ class Q_WIDGETS_EXPORT QColumnView : public QAbstractItemView {
 
 Q_OBJECT
     Q_PROPERTY(bool resizeGripsVisible READ resizeGripsVisible WRITE setResizeGripsVisible)
+    Q_PROPERTY(bool previewColumnVisible READ previewColumnVisible WRITE setPreviewColumnVisible)
 
 Q_SIGNALS:
     void updatePreviewWidget(const QModelIndex &index);
@@ -38,6 +39,8 @@ public:
     // QColumnView functions
     void setResizeGripsVisible(bool visible);
     bool resizeGripsVisible() const;
+    void setPreviewColumnVisible(bool visible);
+    bool previewColumnVisible() const;
 
     QWidget *previewWidget() const;
     void setPreviewWidget(QWidget *widget);
@@ -67,9 +70,6 @@ protected:
 private:
     Q_DECLARE_PRIVATE(QColumnView)
     Q_DISABLE_COPY(QColumnView)
-    Q_PRIVATE_SLOT(d_func(), void _q_gripMoved(int))
-    Q_PRIVATE_SLOT(d_func(), void _q_changeCurrentColumn())
-    Q_PRIVATE_SLOT(d_func(), void _q_clicked(const QModelIndex &))
 };
 
 QT_END_NAMESPACE

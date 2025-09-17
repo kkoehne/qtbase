@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsharedmemory.h"
 #include "qsharedmemory_p.h"
@@ -76,6 +77,7 @@ key_t QSharedMemorySystemV::handle(QSharedMemoryPrivate *self)
     unix_key = ftok(nativeKeyFile, int(self->nativeKey.type()));
     if (unix_key < 0) {
         self->setUnixErrorString("QSharedMemory::handle"_L1);
+        nativeKeyFile.clear();
         unix_key = 0;
     }
     return unix_key;
@@ -159,6 +161,8 @@ bool QSharedMemorySystemV::attach(QSharedMemoryPrivate *self, QSharedMemory::Acc
     int id = shmget(unix_key, 0, (mode == QSharedMemory::ReadOnly ? 0400 : 0600));
     if (-1 == id) {
         self->setUnixErrorString("QSharedMemory::attach (shmget)"_L1);
+        unix_key = 0;
+        nativeKeyFile.clear();
         return false;
     }
 

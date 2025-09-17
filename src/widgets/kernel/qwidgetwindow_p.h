@@ -22,6 +22,8 @@
 #include <QtGui/private/qevent_p.h>
 #include <QtWidgets/qwidget.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
 
@@ -44,6 +46,8 @@ public:
 
     QObject *focusObject() const override;
     void setNativeWindowVisibility(bool visible);
+    static void focusNextPrevChild(QWidget *widget, bool next);
+
 protected:
     bool event(QEvent *) override;
 
@@ -61,7 +65,7 @@ protected:
     void handleWheelEvent(QWheelEvent *);
 #endif
 #if QT_CONFIG(draganddrop)
-    void handleDragEnterEvent(QDragEnterEvent *, QWidget *widget = nullptr);
+    void handleDragEnterEvent(QDragMoveEvent *, QWidget *widget = nullptr);
     void handleDragMoveEvent(QDragMoveEvent *);
     void handleDragLeaveEvent(QDragLeaveEvent *);
     void handleDropEvent(QDropEvent *);
@@ -85,7 +89,7 @@ private slots:
 private:
     void handleScreenChange();
     void handleDevicePixelRatioChange();
-    void repaintWindow();
+    void scheduleRepaint();
     bool updateSize();
     void updateMargins();
     void updateNormalGeometry();

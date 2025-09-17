@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'qttrid.ui'
 **
-** Created by: Qt User Interface Compiler version 5.5.1
+** Created by: Qt User Interface Compiler version 6.0.0
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -68,7 +68,7 @@ public:
     {
         if (RemoteControlClass->objectName().isEmpty())
             RemoteControlClass->setObjectName("RemoteControlClass");
-        RemoteControlClass->resize(344, 364);
+        RemoteControlClass->resize(344, 457);
         actionQuit = new QAction(RemoteControlClass);
         actionQuit->setObjectName("actionQuit");
         centralWidget = new QWidget(RemoteControlClass);
@@ -92,11 +92,11 @@ public:
 
         gridLayout->addWidget(launchButton, 1, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(101, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(101, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem, 1, 2, 1, 1);
 
-        spacerItem1 = new QSpacerItem(113, 16, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem1 = new QSpacerItem(113, 16, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem1, 2, 1, 1, 1);
 
@@ -122,7 +122,8 @@ public:
 
         indexButton = new QToolButton(actionGroupBox);
         indexButton->setObjectName("indexButton");
-        const QIcon icon = QIcon(QString::fromUtf8(":/remotecontrol/enter.png"));
+        QIcon icon;
+        icon.addFile(QString::fromUtf8(":/remotecontrol/enter.png"), QSize(), QIcon::Mode::Normal, QIcon::State::Off);
         indexButton->setIcon(icon);
 
         hboxLayout->addWidget(indexButton);
@@ -179,7 +180,7 @@ public:
 
         gridLayout1->addWidget(syncContentsButton, 3, 1, 1, 1);
 
-        spacerItem2 = new QSpacerItem(81, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem2 = new QSpacerItem(81, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout1->addItem(spacerItem2, 3, 2, 1, 1);
 
@@ -204,7 +205,7 @@ public:
         RemoteControlClass->setCentralWidget(centralWidget);
         menuBar = new QMenuBar(RemoteControlClass);
         menuBar->setObjectName("menuBar");
-        menuBar->setGeometry(QRect(0, 0, 344, 21));
+        menuBar->setGeometry(QRect(0, 0, 344, 26));
         menuFile = new QMenu(menuBar);
         menuFile->setObjectName("menuFile");
         RemoteControlClass->setMenuBar(menuBar);

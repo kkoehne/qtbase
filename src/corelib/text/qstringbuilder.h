@@ -100,25 +100,28 @@ private:
             // so we're special casing this one out, QTBUG-114206
             return T();
         }
-
-        const qsizetype len = QConcatenable< QStringBuilder<A, B> >::size(*this);
+        return convertToImpl<T>(Concatenable::size(*this));
+    }
+    template <typename T> T convertToImpl(const qsizetype len) const
+    {
         T s(len, Qt::Uninitialized);
 
-        // we abuse const_cast / constData here because we know we've just
-        // allocated the data and we're the only reference count
-        typename T::iterator d = const_cast<typename T::iterator>(s.constData());
+        // Using data_ptr() here (private API) so we can bypass the
+        // isDetached() and the replacement of a null pointer with _empty in
+        // both QString and QByteArray's data() and constData(). The result is
+        // the same if len != 0.
+        auto d = reinterpret_cast<typename T::iterator>(s.data_ptr().data());
+        const auto start = d;
+        Concatenable::appendTo(*this, d);
 
-        if constexpr (QConcatenable<QStringBuilder<A, B>>::ExactSize) {
-            QConcatenable<QStringBuilder<A, B>>::appendTo(*this, d);
-            return s;
-        }
-
-        typename T::const_iterator const start = d;
-        QConcatenable<QStringBuilder<A, B>>::appendTo(*this, d);
-        if (len != d - start) {
-            // this resize is necessary since we allocate a bit too much
-            // when dealing with variable sized 8-bit encodings
-            s.resize(d - start);
+        if constexpr (Concatenable::ExactSize) {
+            Q_UNUSED(start)
+        } else {
+            if (len != d - start) {
+                // this resize is necessary since we allocate a bit too much
+                // when dealing with variable sized 8-bit encodings
+                s.resize(d - start);
+            }
         }
         return s;
     }
@@ -252,7 +255,7 @@ template <> struct QConcatenable<QString> : private QAbstractConcatenable
     {
         const qsizetype n = a.size();
         if (n)
-            memcpy(out, reinterpret_cast<const char*>(a.constData()), sizeof(QChar) * n);
+            memcpy(out, a.data(), sizeof(QChar) * n);
         out += n;
     }
 };
@@ -372,10 +375,10 @@ template <> struct QConcatenable<QByteArray> : private QAbstractConcatenable
 #endif
     static inline void appendTo(const QByteArray &ba, char *&out)
     {
-        const char *a = ba.constData();
-        const char * const end = ba.end();
-        while (a != end)
-            *out++ = *a++;
+        const qsizetype n = ba.size();
+        if (n)
+            memcpy(out, ba.begin(), n);
+        out += n;
     }
 };
 

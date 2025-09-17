@@ -550,8 +550,22 @@ void QOpenGLFramebufferObjectPrivate::initTexture(int idx)
     else if (color.internalFormat == GL_RGB16F  || color.internalFormat == GL_RGBA16F)
         pixelType = GL_HALF_FLOAT;
 
+    bool isOpaque = false;
+    switch (color.internalFormat) {
+    case GL_RGB8:
+    case GL_RGB16:
+    case GL_RGB16F:
+    case GL_RGB32F:
+        isOpaque = true;
+        break;
+    case GL_RGB10:
+        // opaque but the pixel type (INT_2_10_10_10) has alpha and so requires RGBA texture format
+        break;
+    }
+    const GLuint textureFormat = isOpaque ? GL_RGB : GL_RGBA;
+
     funcs.glTexImage2D(target, 0, color.internalFormat, color.size.width(), color.size.height(), 0,
-                       GL_RGBA, pixelType, nullptr);
+                       textureFormat, pixelType, nullptr);
     if (format.mipmap()) {
         int width = color.size.width();
         int height = color.size.height();
@@ -560,8 +574,8 @@ void QOpenGLFramebufferObjectPrivate::initTexture(int idx)
             width = qMax(1, width >> 1);
             height = qMax(1, height >> 1);
             ++level;
-            funcs.glTexImage2D(target, level, color.internalFormat, width, height, 0,
-                               GL_RGBA, pixelType, nullptr);
+            funcs.glTexImage2D(target, level, color.internalFormat, width, height, 0, textureFormat,
+                               pixelType, nullptr);
         }
     }
     funcs.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + idx,
@@ -1404,30 +1418,31 @@ static QImage qt_gl_read_framebuffer(const QSize &size, GLenum internal_format, 
         if (error == GL_NO_ERROR || error == GL_CONTEXT_LOST)
             break;
     }
+    Qt::Orientations orient = flip ? Qt::Vertical : Qt::Orientations{};
     switch (internal_format) {
     case GL_RGB:
     case GL_RGB8:
-        return qt_gl_read_framebuffer_rgba8(size, false, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba8(size, false, ctx).flipped(orient);
     case GL_RGB10:
-        return qt_gl_read_framebuffer_rgb10a2(size, false, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgb10a2(size, false, ctx).flipped(orient);
     case GL_RGB10_A2:
-        return qt_gl_read_framebuffer_rgb10a2(size, include_alpha, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgb10a2(size, include_alpha, ctx).flipped(orient);
     case GL_RGB16:
-        return qt_gl_read_framebuffer_rgba16(size, false, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba16(size, false, ctx).flipped(orient);
     case GL_RGBA16:
-        return qt_gl_read_framebuffer_rgba16(size, include_alpha, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba16(size, include_alpha, ctx).flipped(orient);
     case GL_RGB16F:
-        return qt_gl_read_framebuffer_rgba16f(size, false, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba16f(size, false, ctx).flipped(orient);
     case GL_RGBA16F:
-        return qt_gl_read_framebuffer_rgba16f(size, include_alpha, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba16f(size, include_alpha, ctx).flipped(orient);
     case GL_RGB32F:
-        return qt_gl_read_framebuffer_rgba32f(size, false, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba32f(size, false, ctx).flipped(orient);
     case GL_RGBA32F:
-        return qt_gl_read_framebuffer_rgba32f(size, include_alpha, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba32f(size, include_alpha, ctx).flipped(orient);
     case GL_RGBA:
     case GL_RGBA8:
     default:
-        return qt_gl_read_framebuffer_rgba8(size, include_alpha, ctx).mirrored(false, flip);
+        return qt_gl_read_framebuffer_rgba8(size, include_alpha, ctx).flipped(orient);
     }
 
     Q_UNREACHABLE_RETURN(QImage());

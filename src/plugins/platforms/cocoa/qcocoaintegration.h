@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMINTEGRATION_COCOA_H
 #define QPLATFORMINTEGRATION_COCOA_H
@@ -84,8 +85,7 @@ public:
     QCocoaServices *services() const override;
     QVariant styleHint(StyleHint hint) const override;
 
-    Qt::KeyboardModifiers queryKeyboardModifiers() const override;
-    QList<int> possibleKeys(const QKeyEvent *event) const override;
+    QPlatformKeyMapper *keyMapper() const override;
 
     void setApplicationIcon(const QIcon &icon) const override;
     void setApplicationBadge(qint64 number) override;
@@ -112,7 +112,7 @@ private:
 #endif
     QScopedPointer<QCocoaDrag> mCocoaDrag;
     QScopedPointer<QCocoaNativeInterface> mNativeInterface;
-    QScopedPointer<QCocoaServices> mServices;
+    mutable QScopedPointer<QCocoaServices> mServices;
     QScopedPointer<QAppleKeyMapper> mKeyboardMapper;
 
 #if QT_CONFIG(vulkan)
@@ -120,6 +120,8 @@ private:
 #endif
 
     QCocoaWindowManager m_windowManager;
+
+    QMacNotificationObserver m_menuTrackingObserver;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QCocoaIntegration::Options)

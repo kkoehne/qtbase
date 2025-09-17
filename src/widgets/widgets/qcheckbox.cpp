@@ -28,7 +28,7 @@ public:
     uint tristate : 1;
     uint noChange : 1;
     uint hovering : 1;
-    Qt::CheckState publishedState : 2;
+    Qt::CheckState publishedState : 3;
 
     void init();
 };
@@ -40,7 +40,7 @@ public:
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-checkbox.png
+    \image fusion-checkbox.png
 
     A QCheckBox is an option button that can be switched on (checked) or off
     (unchecked). Checkboxes are typically used to represent features in an
@@ -80,21 +80,18 @@ public:
     {QShortcut} documentation for details. To display an actual ampersand,
     use '&&'.
 
-    Important inherited functions: text(), setText(), text(), pixmap(),
-    setPixmap(), accel(), setAccel(), isToggleButton(), setDown(), isDown(),
-    isOn(), checkState(), autoRepeat(), isExclusiveToggle(), group(),
-    setAutoRepeat(), toggle(), pressed(), released(), clicked(), toggled(),
-    checkState(), and checkStateChanged().
-
     \sa QAbstractButton, QRadioButton
 */
 
 /*!
     \fn void QCheckBox::stateChanged(int state)
 
-    \obsolete
+    \deprecated [6.9] Use checkStateChanged(Qt::CheckState) instead.
 
-    Use checkStateChanged(Qt::CheckState) instead.
+    This signal is emitted whenever the checkbox's state changes, i.e.,
+    whenever the user checks or unchecks it.
+
+    \a state contains the checkbox's new Qt::CheckState.
 */
 
 /*!
@@ -236,7 +233,11 @@ void QCheckBox::setCheckState(Qt::CheckState state)
     if (state != d->publishedState) {
         d->publishedState = state;
         emit checkStateChanged(state);
+#if QT_DEPRECATED_SINCE(6, 9)
+        QT_IGNORE_DEPRECATIONS(
         emit stateChanged(state);
+        )
+#endif
     }
 
 #if QT_CONFIG(accessibility)
@@ -332,7 +333,11 @@ void QCheckBox::checkStateSet()
     if (state != d->publishedState) {
         d->publishedState = state;
         emit checkStateChanged(state);
+#if QT_DEPRECATED_SINCE(6, 9)
+        QT_IGNORE_DEPRECATIONS(
         emit stateChanged(state);
+        )
+#endif
     }
 }
 

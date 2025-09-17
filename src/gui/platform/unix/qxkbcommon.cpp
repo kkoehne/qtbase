@@ -17,8 +17,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcXkbcommon, "qt.xkbcommon")
-
 static int keysymToQtKey_internal(xkb_keysym_t keysym, Qt::KeyboardModifiers modifiers,
                                   xkb_state *state, xkb_keycode_t code,
                                   bool superAsMeta, bool hyperAsMeta);
@@ -239,10 +237,14 @@ static constexpr const auto KeyTbl = qMakeArray(
         Xkb2Qt<XKB_KEY_dead_small_schwa,        Qt::Key_Dead_Small_Schwa>,
         Xkb2Qt<XKB_KEY_dead_capital_schwa,      Qt::Key_Dead_Capital_Schwa>,
         Xkb2Qt<XKB_KEY_dead_greek,              Qt::Key_Dead_Greek>,
+/* The following four XKB_KEY_dead keys got removed in libxkbcommon 1.6.0
+   The define check is kind of version check here. */
+#ifdef XKB_KEY_dead_lowline
         Xkb2Qt<XKB_KEY_dead_lowline,            Qt::Key_Dead_Lowline>,
         Xkb2Qt<XKB_KEY_dead_aboveverticalline,  Qt::Key_Dead_Aboveverticalline>,
         Xkb2Qt<XKB_KEY_dead_belowverticalline,  Qt::Key_Dead_Belowverticalline>,
         Xkb2Qt<XKB_KEY_dead_longsolidusoverlay, Qt::Key_Dead_Longsolidusoverlay>,
+#endif
 
         // Special keys from X.org - This include multimedia keys,
         // wireless/bluetooth/uwb keys, special launcher keys, etc.
@@ -298,6 +300,7 @@ static constexpr const auto KeyTbl = qMakeArray(
         Xkb2Qt<XKB_KEY_XF86Book,                Qt::Key_Book>,
         Xkb2Qt<XKB_KEY_XF86CD,                  Qt::Key_CD>,
         Xkb2Qt<XKB_KEY_XF86Calculater,          Qt::Key_Calculator>,
+        Xkb2Qt<XKB_KEY_XF86Calculator,          Qt::Key_Calculator>,
         Xkb2Qt<XKB_KEY_XF86Clear,               Qt::Key_Clear>,
         Xkb2Qt<XKB_KEY_XF86ClearGrab,           Qt::Key_ClearGrab>,
         Xkb2Qt<XKB_KEY_XF86Close,               Qt::Key_Close>,
@@ -373,6 +376,7 @@ static constexpr const auto KeyTbl = qMakeArray(
         Xkb2Qt<XKB_KEY_XF86TouchpadOn,          Qt::Key_TouchpadOn>,
         Xkb2Qt<XKB_KEY_XF86TouchpadOff,         Qt::Key_TouchpadOff>,
         Xkb2Qt<XKB_KEY_XF86AudioMicMute,        Qt::Key_MicMute>,
+        Xkb2Qt<XKB_KEY_XF86Keyboard,            Qt::Key_Keyboard>,
         Xkb2Qt<XKB_KEY_XF86Launch0,             Qt::Key_Launch0>,
         Xkb2Qt<XKB_KEY_XF86Launch1,             Qt::Key_Launch1>,
         Xkb2Qt<XKB_KEY_XF86Launch2,             Qt::Key_Launch2>,
@@ -488,9 +492,11 @@ int QXkbCommon::keysymToQtKey(xkb_keysym_t keysym, Qt::KeyboardModifiers modifie
         // With standard shortcuts we should prefer a latin character, this is
         // for checks like "some qkeyevent == QKeySequence::Copy" to work even
         // when using for example 'russian' keyboard layout.
-        xkb_keysym_t latinKeysym = QXkbCommon::lookupLatinKeysym(state, code);
-        if (latinKeysym != XKB_KEY_NoSymbol)
-            keysym = latinKeysym;
+        if (!QXkbCommon::isLatin1(keysym)) {
+            xkb_keysym_t latinKeysym = QXkbCommon::lookupLatinKeysym(state, code);
+            if (latinKeysym != XKB_KEY_NoSymbol)
+                keysym = latinKeysym;
+        }
     }
 
     return keysymToQtKey_internal(keysym, modifiers, state, code, superAsMeta, hyperAsMeta);
@@ -575,7 +581,7 @@ Qt::KeyboardModifiers QXkbCommon::modifiers(struct xkb_state *state, xkb_keysym_
     if (xkb_state_mod_name_is_active(state, XKB_MOD_NAME_LOGO, XKB_STATE_MODS_EFFECTIVE) > 0)
         modifiers |= Qt::MetaModifier;
 
-    if (keysym >= XKB_KEY_KP_Space && keysym <= XKB_KEY_KP_9)
+    if (isKeypad(keysym))
         modifiers |= Qt::KeypadModifier;
 
     return modifiers;
@@ -594,10 +600,24 @@ static const Qt::KeyboardModifiers ModsTbl[] = {
     Qt::NoModifier                                              // Fall-back to raw Key_*, for non-latin1 kb layouts
 };
 
+/*
+    Compatibility until all sub modules have transitioned to new API below
+*/
 QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
                                     bool superAsMeta, bool hyperAsMeta)
 {
     QList<int> result;
+    auto keyCombinations = possibleKeyCombinations(state, event, superAsMeta, hyperAsMeta);
+    for (auto keyCombination : keyCombinations)
+        result << keyCombination.toCombined();
+
+    return result;
+}
+
+QList<QKeyCombination> QXkbCommon::possibleKeyCombinations(xkb_state *state, const QKeyEvent *event,
+                                    bool superAsMeta, bool hyperAsMeta)
+{
+    QList<QKeyCombination> result;
     quint32 keycode = event->nativeScanCode();
     if (!keycode)
         return result;
@@ -611,7 +631,7 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
     ScopedXKBState scopedXkbQueryState(xkb_state_new(keymap));
     xkb_state *queryState = scopedXkbQueryState.get();
     if (!queryState) {
-        qCWarning(lcXkbcommon) << Q_FUNC_INFO << "failed to compile xkb keymap";
+        qCWarning(lcQpaKeyMapper) << Q_FUNC_INFO << "failed to compile xkb keymap";
         return result;
     }
     // get kb state from the master state and update the temporary state
@@ -637,7 +657,7 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
 
     int baseQtKey = keysymToQtKey_internal(sym, modifiers, queryState, keycode, superAsMeta, hyperAsMeta);
     if (baseQtKey)
-        result += (baseQtKey + int(modifiers));
+        result += QKeyCombination::fromCombined(baseQtKey + int(modifiers));
 
     xkb_mod_index_t shiftMod = xkb_keymap_mod_get_index(keymap, "Shift");
     xkb_mod_index_t altMod = xkb_keymap_mod_get_index(keymap, "Alt");
@@ -683,8 +703,9 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
             // catch only more specific shortcuts, i.e. Ctrl+Shift+= also generates Ctrl++ and +,
             // but Ctrl++ is more specific than +, so we should skip the last one
             bool ambiguous = false;
-            for (int shortcut : std::as_const(result)) {
-                if (int(shortcut & ~Qt::KeyboardModifierMask) == qtKey && (shortcut & mods) == mods) {
+            for (auto keyCombination : std::as_const(result)) {
+                if (keyCombination.key() == qtKey
+                    && (keyCombination.keyboardModifiers() & mods) == mods) {
                     ambiguous = true;
                     break;
                 }
@@ -692,7 +713,7 @@ QList<int> QXkbCommon::possibleKeys(xkb_state *state, const QKeyEvent *event,
             if (ambiguous)
                 continue;
 
-            result += (qtKey + int(mods));
+            result += QKeyCombination::fromCombined(qtKey + int(mods));
         }
     }
 
@@ -724,18 +745,23 @@ void QXkbCommon::verifyHasLatinLayout(xkb_keymap *keymap)
     // selected layouts is irrelevant. Properly functioning desktop environments
     // handle this behind the scenes, even if no latin key based layout has been
     // explicitly listed in the selected layouts.
-    qCDebug(lcXkbcommon, "no keyboard layouts with latin keys present");
+    qCDebug(lcQpaKeyMapper, "no keyboard layouts with latin keys present");
 }
 
 xkb_keysym_t QXkbCommon::lookupLatinKeysym(xkb_state *state, xkb_keycode_t keycode)
 {
     xkb_layout_index_t layout;
     xkb_keysym_t sym = XKB_KEY_NoSymbol;
+    if (!state)
+        return sym;
     xkb_keymap *keymap = xkb_state_get_keymap(state);
     const xkb_layout_index_t layoutCount = xkb_keymap_num_layouts_for_key(keymap, keycode);
+    const xkb_layout_index_t currentLayout = xkb_state_key_get_layout(state, keycode);
     // Look at user layouts in the order in which they are defined in system
     // settings to find a latin keysym.
     for (layout = 0; layout < layoutCount; ++layout) {
+        if (layout == currentLayout)
+            continue;
         const xkb_keysym_t *syms = nullptr;
         xkb_level_index_t level = xkb_state_key_get_level(state, keycode, layout);
         if (xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, level, &syms) != 1)
@@ -743,6 +769,34 @@ xkb_keysym_t QXkbCommon::lookupLatinKeysym(xkb_state *state, xkb_keycode_t keyco
         if (isLatin1(syms[0])) {
             sym = syms[0];
             break;
+        }
+    }
+
+    if (sym == XKB_KEY_NoSymbol)
+        return sym;
+
+    xkb_mod_mask_t latchedMods = xkb_state_serialize_mods(state, XKB_STATE_MODS_LATCHED);
+    xkb_mod_mask_t lockedMods = xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED);
+
+    // Check for uniqueness, consider the following setup:
+    // setxkbmap -layout us,ru,us -variant dvorak,, -option 'grp:ctrl_alt_toggle' (set 'ru' as active).
+    // In this setup, the user would expect to trigger a ctrl+q shortcut by pressing ctrl+<physical x key>,
+    // because "US dvorak" is higher up in the layout settings list. This check verifies that an obtained
+    // 'sym' can not be acquired by any other layout higher up in the user's layout list. If it can be acquired
+    // then the obtained key is not unique. This prevents ctrl+<physical q key> from generating a ctrl+q
+    // shortcut in the above described setup. We don't want ctrl+<physical x key> and ctrl+<physical q key> to
+    // generate the same shortcut event in this case.
+    const xkb_keycode_t minKeycode = xkb_keymap_min_keycode(keymap);
+    const xkb_keycode_t maxKeycode = xkb_keymap_max_keycode(keymap);
+    ScopedXKBState queryState(xkb_state_new(keymap));
+    for (xkb_layout_index_t prevLayout = 0; prevLayout < layout; ++prevLayout) {
+        xkb_state_update_mask(queryState.get(), 0, latchedMods, lockedMods, 0, 0, prevLayout);
+        for (xkb_keycode_t code = minKeycode; code < maxKeycode; ++code) {
+            xkb_keysym_t prevSym = xkb_state_key_get_one_sym(queryState.get(), code);
+            if (prevSym == sym) {
+                sym = XKB_KEY_NoSymbol;
+                break;
+            }
         }
     }
 
@@ -765,7 +819,7 @@ void QXkbCommon::setXkbContext(QPlatformInputContext *inputContext, struct xkb_c
         QMetaMethod method = inputContext->metaObject()->method(methodIndex);
         Q_ASSERT(method.isValid());
         if (!method.isValid())
-            qCWarning(lcXkbcommon) << normalizedSignature << "not found on" << inputContextClassName;
+            qCWarning(lcQpaKeyMapper) << normalizedSignature << "not found on" << inputContextClassName;
         return method;
     }();
 

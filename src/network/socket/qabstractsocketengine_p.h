@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QABSTRACTSOCKETENGINE_P_H
 #define QABSTRACTSOCKETENGINE_P_H
@@ -19,8 +20,9 @@
 #include <QtNetwork/private/qtnetworkglobal_p.h>
 #include "QtNetwork/qhostaddress.h"
 #include "QtNetwork/qabstractsocket.h"
-#include "private/qobject_p.h"
+#include <QtCore/qdeadlinetimer.h>
 #include "private/qnetworkdatagram_p.h"
+#include "private/qobject_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -43,6 +45,8 @@ public:
     virtual void proxyAuthenticationRequired(const QNetworkProxy &proxy, QAuthenticator *authenticator)= 0;
 #endif
 };
+
+static constexpr std::chrono::seconds DefaultTimeout{30};
 
 class Q_AUTOTEST_EXPORT QAbstractSocketEngine : public QObject
 {
@@ -128,11 +132,14 @@ public:
     virtual int option(SocketOption option) const = 0;
     virtual bool setOption(SocketOption option, int value) = 0;
 
-    virtual bool waitForRead(int msecs = 30000, bool *timedOut = nullptr) = 0;
-    virtual bool waitForWrite(int msecs = 30000, bool *timedOut = nullptr) = 0;
+    virtual bool waitForRead(QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                             bool *timedOut = nullptr) = 0;
+    virtual bool waitForWrite(QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                              bool *timedOut = nullptr) = 0;
     virtual bool waitForReadOrWrite(bool *readyToRead, bool *readyToWrite,
                             bool checkRead, bool checkWrite,
-                            int msecs = 30000, bool *timedOut = nullptr) = 0;
+                            QDeadlineTimer deadline = QDeadlineTimer{DefaultTimeout},
+                            bool *timedOut = nullptr) = 0;
 
     QAbstractSocket::SocketError error() const;
     QString errorString() const;

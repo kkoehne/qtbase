@@ -17,12 +17,16 @@
 #include <QtCore/qsettings.h>
 #include <qpa/qwindowsysteminterface.h>
 
+#include <QtGui/private/qguiapplication_p.h>
+
 #include <commctrl.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <windowsx.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::Literals::StringLiterals;
 
 static const UINT q_uNOTIFYICONID = 0;
 
@@ -84,8 +88,7 @@ static int indexOfHwnd(HWND hwnd)
     return -1;
 }
 
-extern "C" LRESULT QT_WIN_CALLBACK qWindowsTrayIconWndProc(HWND hwnd, UINT message,
-                                                           WPARAM wParam, LPARAM lParam)
+LRESULT QT_WIN_CALLBACK qWindowsTrayIconWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (message == MYWM_TASKBARCREATED || message == MYWM_NOTIFYICON
         || message == WM_INITMENU || message == WM_INITMENUPOPUP
@@ -116,7 +119,7 @@ static inline HWND createTrayIconMessageWindow()
         return nullptr;
     // Register window class in the platform plugin.
     const QString className =
-        ctx->registerWindowClass(QWindowsContext::classNamePrefix() + QStringLiteral("TrayIconMessageWindowClass"),
+        ctx->registerWindowClass(QWindowsContext::classNamePrefix() + "TrayIconMessageWindowClass"_L1,
                                  qWindowsTrayIconWndProc);
     const wchar_t windowName[] = L"QTrayIconMessageWindow";
     return CreateWindowEx(0, reinterpret_cast<const wchar_t *>(className.utf16()),
@@ -162,8 +165,6 @@ void QWindowsSystemTrayIcon::cleanup()
 void QWindowsSystemTrayIcon::updateIcon(const QIcon &icon)
 {
     qCDebug(lcQpaTrayIcon) << __FUNCTION__ << '(' << icon << ')' << this;
-    if (icon.cacheKey() == m_icon.cacheKey())
-        return;
     m_icon = icon;
     const HICON hIconToDestroy = createIcon(icon);
     if (ensureInstalled())
@@ -184,6 +185,9 @@ void QWindowsSystemTrayIcon::updateToolTip(const QString &tooltip)
 
 QRect QWindowsSystemTrayIcon::geometry() const
 {
+    if (!isIconVisible())
+        return QRect();
+
     NOTIFYICONIDENTIFIER nid;
     memset(&nid, 0, sizeof(nid));
     nid.cbSize = sizeof(nid);
@@ -217,25 +221,19 @@ void QWindowsSystemTrayIcon::showMessage(const QString &title, const QString &me
     qStringToLimitedWCharArray(title, tnd.szInfoTitle, 64);
 
     tnd.uID = q_uNOTIFYICONID;
-    tnd.dwInfoFlags = NIIF_USER;
 
-    QSize size(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
-    const QSize largeIcon(GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
-    const QSize more = icon.actualSize(largeIcon);
-    if (more.height() > (largeIcon.height() * 3/4) || more.width() > (largeIcon.width() * 3/4)) {
-        tnd.dwInfoFlags |= NIIF_LARGE_ICON;
-        size = largeIcon;
-    }
+    const auto size = icon.actualSize(QSize(256, 256));
     QPixmap pm = icon.pixmap(size);
+    if (m_hMessageIcon) {
+        DestroyIcon(m_hMessageIcon);
+        m_hMessageIcon = nullptr;
+    }
     if (pm.isNull()) {
         tnd.dwInfoFlags = NIIF_INFO;
     } else {
-        if (pm.size() != size) {
-            qWarning("QSystemTrayIcon::showMessage: Wrong icon size (%dx%d), please add standard one: %dx%d",
-                      pm.size().width(), pm.size().height(), size.width(), size.height());
-            pm = pm.scaled(size, Qt::IgnoreAspectRatio);
-        }
-        tnd.hBalloonIcon = qt_pixmapToWinHICON(pm);
+        tnd.dwInfoFlags = NIIF_USER | NIIF_LARGE_ICON;
+        m_hMessageIcon = qt_pixmapToWinHICON(pm);
+        tnd.hBalloonIcon = m_hMessageIcon;
     }
     tnd.hWnd = m_hwnd;
     tnd.uTimeout = msecsIn <= 0 ?  UINT(10000) : UINT(msecsIn); // 10s default
@@ -293,7 +291,10 @@ void QWindowsSystemTrayIcon::ensureCleanup()
     }
     if (m_hIcon != nullptr)
         DestroyIcon(m_hIcon);
+    if (m_hMessageIcon != nullptr)
+        DestroyIcon(m_hMessageIcon);
     m_hIcon = nullptr;
+    m_hMessageIcon = nullptr;
     m_menu = nullptr; // externally owned
     m_toolTip.clear();
 }
@@ -308,6 +309,29 @@ bool QWindowsSystemTrayIcon::setIconVisible(bool visible)
     tnd.hWnd = m_hwnd;
     setIconVisibility(tnd, visible);
     return Shell_NotifyIcon(NIM_MODIFY, &tnd) == TRUE;
+}
+
+bool QWindowsSystemTrayIcon::isIconVisible() const
+{
+    NOTIFYICONIDENTIFIER nid;
+    memset(&nid, 0, sizeof(nid));
+    nid.cbSize = sizeof(nid);
+    nid.hWnd = m_hwnd;
+    nid.uID = q_uNOTIFYICONID;
+    RECT rect;
+    const HRESULT hr = Shell_NotifyIconGetRect(&nid, &rect);
+    // Windows 10 returns S_FALSE if the icon is hidden
+    if (FAILED(hr) || hr == S_FALSE)
+        return false;
+
+    HMONITOR monitor = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO info;
+    info.cbSize = sizeof(MONITORINFO);
+    GetMonitorInfo(monitor, &info);
+    // Windows 11 seems to return a geometry outside of the current monitor's geometry in case of
+    // the icon being hidden. As it's impossible to change the alignment of the task bar on Windows
+    // 11 this check should be fine.
+    return rect.bottom <= info.rcMonitor.bottom;
 }
 
 bool QWindowsSystemTrayIcon::sendTrayMessage(DWORD msg)
@@ -365,6 +389,10 @@ bool QWindowsSystemTrayIcon::winEvent(const MSG &message, long *result)
             // since hi-res coordinates are delivered in this case (Windows issue).
             // Default to primary screen with check to prevent a crash.
             const QPoint globalPos = QPoint(GET_X_LPARAM(message.wParam), GET_Y_LPARAM(message.wParam));
+            // QTBUG-130832: QMenu relies on lastCursorPosition being up to date. When this code
+            // is called it still holds the last known mouse position inside a Qt window. Do a
+            // forced update of this position.
+            QGuiApplicationPrivate::lastCursorPosition = QCursor::pos().toPointF();
             const auto &screenManager = QWindowsContext::instance()->screenManager();
             const QPlatformScreen *screen = screenManager.screenAtDp(globalPos);
             if (!screen)
@@ -435,7 +463,7 @@ QDebug operator<<(QDebug d, const QWindowsSystemTrayIcon *t)
     if (t)
         t->formatDebug(d);
     else
-        d << '0';
+        d << "0x0";
     d << ')';
     return d;
 }

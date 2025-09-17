@@ -38,7 +38,7 @@ public:
     QToolButton *removeQrcButton;
     QSpacerItem *spacerItem;
     QToolButton *importQrcButton;
-    QWidget *widget;
+    QWidget *layoutWidget1;
     QGridLayout *gridLayout1;
     QTreeView *resourceTreeView;
     QToolButton *newResourceButton;
@@ -56,7 +56,7 @@ public:
         verticalLayout->setObjectName("verticalLayout");
         splitter = new QSplitter(QtResourceEditorDialog);
         splitter->setObjectName("splitter");
-        splitter->setOrientation(Qt::Horizontal);
+        splitter->setOrientation(Qt::Orientation::Horizontal);
         layoutWidget = new QWidget(splitter);
         layoutWidget->setObjectName("layoutWidget");
         gridLayout = new QGridLayout(layoutWidget);
@@ -64,7 +64,7 @@ public:
         gridLayout->setContentsMargins(0, 0, 0, 0);
         qrcFileList = new QListWidget(layoutWidget);
         qrcFileList->setObjectName("qrcFileList");
-        QSizePolicy sizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Expanding);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(qrcFileList->sizePolicy().hasHeightForWidth());
@@ -82,7 +82,7 @@ public:
 
         gridLayout->addWidget(removeQrcButton, 1, 2, 1, 1);
 
-        spacerItem = new QSpacerItem(21, 20, QSizePolicy::Ignored, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(21, 20, QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem, 1, 3, 1, 1);
 
@@ -92,43 +92,43 @@ public:
         gridLayout->addWidget(importQrcButton, 1, 1, 1, 1);
 
         splitter->addWidget(layoutWidget);
-        widget = new QWidget(splitter);
-        widget->setObjectName("widget");
-        gridLayout1 = new QGridLayout(widget);
+        layoutWidget1 = new QWidget(splitter);
+        layoutWidget1->setObjectName("layoutWidget1");
+        gridLayout1 = new QGridLayout(layoutWidget1);
         gridLayout1->setObjectName("gridLayout1");
         gridLayout1->setContentsMargins(0, 0, 0, 0);
-        resourceTreeView = new QTreeView(widget);
+        resourceTreeView = new QTreeView(layoutWidget1);
         resourceTreeView->setObjectName("resourceTreeView");
 
         gridLayout1->addWidget(resourceTreeView, 0, 0, 1, 4);
 
-        newResourceButton = new QToolButton(widget);
+        newResourceButton = new QToolButton(layoutWidget1);
         newResourceButton->setObjectName("newResourceButton");
 
         gridLayout1->addWidget(newResourceButton, 1, 0, 1, 1);
 
-        addResourceButton = new QToolButton(widget);
+        addResourceButton = new QToolButton(layoutWidget1);
         addResourceButton->setObjectName("addResourceButton");
 
         gridLayout1->addWidget(addResourceButton, 1, 1, 1, 1);
 
-        removeResourceButton = new QToolButton(widget);
+        removeResourceButton = new QToolButton(layoutWidget1);
         removeResourceButton->setObjectName("removeResourceButton");
 
         gridLayout1->addWidget(removeResourceButton, 1, 2, 1, 1);
 
-        horizontalSpacer = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout1->addItem(horizontalSpacer, 1, 3, 1, 1);
 
-        splitter->addWidget(widget);
+        splitter->addWidget(layoutWidget1);
 
         verticalLayout->addWidget(splitter);
 
         buttonBox = new QDialogButtonBox(QtResourceEditorDialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         verticalLayout->addWidget(buttonBox);
 

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <string.h>
 
@@ -123,7 +124,19 @@ bool qDBusInterfaceInObject(QObject *obj, const QString &interface_name)
 // sig must be the normalised signature for the method
 int qDBusParametersForMethod(const QMetaMethod &mm, QList<QMetaType> &metaTypes, QString &errorMsg)
 {
-    return qDBusParametersForMethod(mm.parameterTypes(), metaTypes, errorMsg);
+    QList<QByteArray> parameterTypes;
+    parameterTypes.reserve(mm.parameterCount());
+
+    // Not using QMetaMethod::parameterTypes() since we call QMetaType::fromName below
+    // where we need any typedefs resolved already.
+    for (int i = 0; i < mm.parameterCount(); ++i) {
+        QByteArray typeName = mm.parameterMetaType(i).name();
+        if (typeName.isEmpty())
+            typeName = mm.parameterTypeName(i);
+        parameterTypes.append(typeName);
+    }
+
+    return qDBusParametersForMethod(parameterTypes, metaTypes, errorMsg);
 }
 
 #endif // QT_BOOTSTRAPPED

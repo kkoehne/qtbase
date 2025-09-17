@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <qtconcurrentmap.h>
 #include <qexception.h>
 #include <qdebug.h>
@@ -22,9 +22,11 @@ private slots:
     void mapped();
     void mappedThreadPool();
     void mappedWithMoveOnlyCallable();
+    void mappedWithGenericCallable();
     void mappedReduced();
     void mappedReducedThreadPool();
     void mappedReducedWithMoveOnlyCallable();
+    void mappedReducedWithGenericCallable();
     void mappedReducedDifferentType();
     void mappedReducedInitialValue();
     void mappedReducedInitialValueThreadPool();
@@ -185,6 +187,17 @@ void tst_QtConcurrentMap::map()
         QCOMPARE(list, NonTemplateSequence({ 2, 4, 6 }));
     }
 
+    // custom pool with invalid number of threads
+    {
+        QList<int> list;
+        list << 1 << 2 << 3;
+        QThreadPool pool;
+        pool.setMaxThreadCount(0); // explicitly set incorrect value
+        // This should not crash
+        QtConcurrent::map(&pool, list, MultiplyBy2InPlace()).waitForFinished();
+        QCOMPARE(list, QList<int>() << 2 << 4 << 6);
+    }
+
 #if 0
     // not allowed: map() with immutable sequences makes no sense
     {
@@ -215,7 +228,7 @@ void tst_QtConcurrentMap::map()
 #if 0
     // not allowed: map() on a const list, where functors try to modify the items in the list
     {
-        const QList<int> list = QList<int>() << 1 << 2 << 3;;
+        const QList<int> list = QList<int>() << 1 << 2 << 3;
 
         QtConcurrent::map(list, MultiplyBy2InPlace());
         QtConcurrent::map(list, multiplyBy2InPlace);
@@ -352,7 +365,7 @@ void tst_QtConcurrentMap::blockingMap()
 #if 0
     // not allowed: map() on a const list, where functors try to modify the items in the list
     {
-        const QList<int> list = QList<int>() << 1 << 2 << 3;;
+        const QList<int> list = QList<int>() << 1 << 2 << 3;
 
         QtConcurrent::blockingMap(list, MultiplyBy2InPlace());
         QtConcurrent::blockingMap(list, multiplyBy2InPlace);
@@ -743,6 +756,32 @@ void tst_QtConcurrentMap::mappedWithMoveOnlyCallable()
     }
 }
 
+void tst_QtConcurrentMap::mappedWithGenericCallable()
+{
+    QList<int> intList{1, 2, 3};
+    QList<std::string> expectedResult{"1", "2", "3"};
+
+    auto toString = [](const auto &el) { return std::to_string(el); };
+    {
+        const auto res = QtConcurrent::mapped(intList, toString).results();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMapped(intList, toString);
+        QCOMPARE_EQ(res, expectedResult);
+    }
+
+    QThreadPool pool;
+    {
+        const auto res = QtConcurrent::mapped(&pool, intList, toString).results();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMapped(&pool, intList, toString);
+        QCOMPARE_EQ(res, expectedResult);
+    }
+}
+
 int intSquare(int x)
 {
     return x * x;
@@ -1075,6 +1114,17 @@ void tst_QtConcurrentMap::mappedReducedThreadPool()
                                                           intCube, intSumReduce);
         QCOMPARE(result, sumOfCubes);
     }
+
+    {
+        // pool with invalid number of threads
+        QThreadPool pool;
+        pool.setMaxThreadCount(0); // explicitly set incorrect value
+
+        // This should not crash
+        NonTemplateSequence list { 1, 2, 3 };
+        auto future = QtConcurrent::mappedReduced(&pool, list, multiplyBy2, intSumReduce);
+        QCOMPARE(future.result(), 12);
+    }
 }
 
 void tst_QtConcurrentMap::mappedReducedWithMoveOnlyCallable()
@@ -1124,6 +1174,40 @@ void tst_QtConcurrentMap::mappedReducedWithMoveOnlyCallable()
         const auto result = QtConcurrent::blockingMappedReduced(
                 &pool, intList.begin(), intList.end(), MultiplyBy2(), IntSumReduceMoveOnly());
         QCOMPARE(result, sum);
+    }
+}
+
+void tst_QtConcurrentMap::mappedReducedWithGenericCallable()
+{
+    QList<int> intList{1, 2, 3};
+    const std::string expectedResult{"123"};
+
+    auto toString = [](const auto &el) { return std::to_string(el); };
+    auto appendString = [](auto &res, const auto &el) { res.append(el); };
+    {
+        const auto res = QtConcurrent::mappedReduced<std::string>(intList, toString, appendString,
+                                                                  OrderedReduce).result();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMappedReduced<std::string>(intList, toString,
+                                                                          appendString,
+                                                                          OrderedReduce);
+        QCOMPARE_EQ(res, expectedResult);
+    }
+
+    QThreadPool pool;
+    {
+        const auto res = QtConcurrent::mappedReduced<std::string>(&pool, intList, toString,
+                                                                  appendString,
+                                                                  OrderedReduce).result();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMappedReduced<std::string>(&pool, intList, toString,
+                                                                          appendString,
+                                                                          OrderedReduce);
+        QCOMPARE_EQ(res, expectedResult);
     }
 }
 

@@ -584,8 +584,10 @@ void QToolButton::mousePressEvent(QMouseEvent *e)
 void QToolButton::mouseReleaseEvent(QMouseEvent *e)
 {
     Q_D(QToolButton);
+    QPointer<QAbstractButton> guard(this);
     QAbstractButton::mouseReleaseEvent(e);
-    d->buttonPressed = QToolButtonPrivate::NoButtonPressed;
+    if (guard)
+        d->buttonPressed = QToolButtonPrivate::NoButtonPressed;
 }
 
 /*!
@@ -725,8 +727,13 @@ static QPoint positionMenu(const QToolButton *q, bool horizontal,
             }
         }
     }
+
+    // QTBUG-118695 Force point inside the current screen. If the returned point
+    // is not found inside any screen, QMenu's positioning logic kicks in without
+    // taking the QToolButton's screen into account. This can cause the menu to
+    // end up on primary monitor, even if the QToolButton is on a non-primary monitor.
     p.rx() = qMax(screen.left(), qMin(p.x(), screen.right() - sh.width()));
-    p.ry() += 1;
+    p.ry() = qMax(screen.top(), qMin(p.y() + 1, screen.bottom()));
     return p;
 }
 
@@ -781,6 +788,11 @@ void QToolButtonPrivate::popupTimerDone()
 
     QObjectPrivate::disconnect(actualMenu, &QMenu::aboutToHide,
                                this, &QToolButtonPrivate::updateButtonDown);
+    if (menuButtonDown) {
+        // The menu was empty, it didn't actually show up, so it was never hidden either
+        updateButtonDown();
+    }
+
     if (mustDeleteActualMenu) {
         delete actualMenu;
     } else {

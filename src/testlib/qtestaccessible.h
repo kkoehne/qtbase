@@ -25,7 +25,6 @@
 
 QT_BEGIN_NAMESPACE
 
-
 class QObject;
 
 // Use pointers since we subclass QAccessibleEvent
@@ -108,11 +107,20 @@ public:
             qWarning("Timeout waiting for accessibility event.");
             return false;
         }
-        const bool res = *eventList().constFirst() == *ev;
-        if (!res)
-            qWarning("%s", qPrintable(msgAccessibilityEventListMismatch(eventList(), ev)));
-        delete eventList().takeFirst();
-        return res;
+
+        for (int i = 0; i < eventList().size(); ++i) {
+            if (*eventList()[i] == *ev) {
+                if (i != 0) {
+                    qWarning() << " Found event at position " << i;
+                    qWarning("%s", qPrintable(msgAccessibilityEventListMismatch(eventList(), ev)));
+                }
+                delete eventList().takeAt(i);
+                return true;
+            }
+        }
+
+        qWarning("%s", qPrintable(msgAccessibilityEventListMismatch(eventList(), ev)));
+        return false;
     }
     static bool containsEvent(QAccessibleEvent *event) {
         for (const QAccessibleEvent *ev : std::as_const(eventList())) {
@@ -120,6 +128,10 @@ public:
                 return true;
         }
         return false;
+    }
+    static void setUpdateHandler(std::function<void(QAccessibleEvent *event)> updateHandler)
+    {
+        instance()->m_updateHandler = updateHandler;
     }
 
 private:
@@ -149,6 +161,8 @@ private:
 
     static void updateHandler(QAccessibleEvent *event)
     {
+        instance()->m_updateHandler(event);
+
         auto ev = copyEvent(event);
         if (auto obj = ev->object()) {
             QObject::connect(obj, &QObject::destroyed, obj, [&, ev](){
@@ -228,13 +242,26 @@ private:
             newEvent->setLastRow(oldEvent->lastRow());
             newEvent->setLastColumn(oldEvent->lastColumn());
             ev = newEvent;
+        } else if (event->type() == QAccessible::Announcement) {
+            QAccessibleAnnouncementEvent *oldEvent =
+                    static_cast<QAccessibleAnnouncementEvent *>(event);
+            QAccessibleAnnouncementEvent *newEvent;
+            if (event->object())
+                newEvent = new QAccessibleAnnouncementEvent(event->object(), oldEvent->message());
+            else
+                newEvent = new QAccessibleAnnouncementEvent(event->accessibleInterface(),
+                                                            oldEvent->message());
+            newEvent->setPoliteness(oldEvent->politeness());
+            ev = newEvent;
         } else {
             if (event->object())
                 ev = new QAccessibleEvent(event->object(), event->type());
             else
                 ev = new QAccessibleEvent(event->accessibleInterface(), event->type());
         }
-        ev->setChild(event->child());
+
+        if (ev->type() != QAccessible::ObjectDestroyed)
+            ev->setChild(event->child());
         return ev;
     }
 
@@ -256,12 +283,13 @@ private:
     {
         QString rc;
         QDebug str = QDebug(&rc).nospace();
-        str << "Event " << *needle
-            <<  " not found at head of event list of size " << haystack.size() << " :";
+        str << "Event " << *needle << "\n"
+            <<  " not found at head of event list of size " << haystack.size() << " :\n";
         for (const QAccessibleEvent *e : haystack)
-            str << ' ' << *e;
+            str << ' ' << *e << "\n";
         return rc;
     }
+    std::function<void(QAccessibleEvent *event)> m_updateHandler = [](QAccessibleEvent *) { ; };
 
 };
 

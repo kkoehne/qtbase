@@ -1,7 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-#ifndef QXCBATOM_H
-#define QXCBATOM_H
+#pragma once
 
 #include <xcb/xcb.h>
 
@@ -112,6 +111,7 @@ public:
         Atom_NET_WM_WINDOW_TYPE_NORMAL,
         Atom_KDE_NET_WM_WINDOW_TYPE_OVERRIDE,
 
+        Atom_KDE_NET_WM_DESKTOP_FILE,
         Atom_KDE_NET_WM_FRAME_STRUT,
         Atom_NET_FRAME_EXTENTS,
 
@@ -199,6 +199,7 @@ public:
         Atom_COMPIZ_DECOR_REQUEST,
         Atom_COMPIZ_DECOR_DELETE_PIXMAP,
         Atom_COMPIZ_TOOLKIT_ACTION,
+        Atom_GTK_APPLICATION_ID,
         Atom_GTK_LOAD_ICONTHEMES,
 
         AtomAT_SPI_BUS,
@@ -208,6 +209,10 @@ public:
         AtomXFree86_DDC_EDID1_RAWDATA,
 
         Atom_ICC_PROFILE,
+
+        // AppMenu
+        Atom_KDE_NET_WM_APPMENU_SERVICE_NAME,
+        Atom_KDE_NET_WM_APPMENU_OBJECT_PATH,
 
         NAtoms
     };
@@ -224,5 +229,3 @@ protected:
 private:
     xcb_atom_t m_allAtoms[QXcbAtom::NAtoms];
 };
-
-#endif // QXCBATOM_H

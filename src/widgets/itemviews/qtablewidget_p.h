@@ -22,6 +22,8 @@
 #include <private/qtableview_p.h>
 #include <private/qwidgetitemdata_p.h>
 
+#include <array>
+
 QT_REQUIRE_CONFIG(tablewidget);
 
 QT_BEGIN_NAMESPACE
@@ -56,11 +58,15 @@ public:
     QTableModel(int rows, int columns, QTableWidget *parent);
     ~QTableModel();
 
+    inline QTableWidget *view() const { return qobject_cast<QTableWidget *>(QObject::parent()); }
+
     bool insertRows(int row, int count = 1, const QModelIndex &parent = QModelIndex()) override;
     bool insertColumns(int column, int count = 1, const QModelIndex &parent = QModelIndex()) override;
 
     bool removeRows(int row, int count = 1, const QModelIndex &parent = QModelIndex()) override;
     bool removeColumns(int column, int count = 1, const QModelIndex &parent = QModelIndex()) override;
+
+    bool moveRows(const QModelIndex &sourceParent, int sourceRow, int count, const QModelIndex &destinationParent, int destinationChild) override;
 
     void setItem(int row, int column, QTableWidgetItem *item);
     QTableWidgetItem *takeItem(int row, int column);
@@ -99,10 +105,10 @@ public:
     Qt::ItemFlags flags(const QModelIndex &index) const override;
 
     void sort(int column, Qt::SortOrder order) override;
-    static bool itemLessThan(const QPair<QTableWidgetItem*,int> &left,
-                             const QPair<QTableWidgetItem*,int> &right);
-    static bool itemGreaterThan(const QPair<QTableWidgetItem*,int> &left,
-                                const QPair<QTableWidgetItem*,int> &right);
+    static bool itemLessThan(const std::pair<QTableWidgetItem*,int> &left,
+                             const std::pair<QTableWidgetItem*,int> &right);
+    static bool itemGreaterThan(const std::pair<QTableWidgetItem*,int> &left,
+                                const std::pair<QTableWidgetItem*,int> &right);
 
     void ensureSorted(int column, Qt::SortOrder order, int start, int end);
     QList<QTableWidgetItem *> columnItems(int column) const;
@@ -130,6 +136,7 @@ public:
     bool dropMimeData(const QMimeData *data, Qt::DropAction action,
             int row, int column, const QModelIndex &parent) override;
     Qt::DropActions supportedDropActions() const override;
+    Qt::DropActions supportedDragActions() const override;
 
     QMimeData *internalMimeData()  const;
 
@@ -150,20 +157,24 @@ public:
     QTableWidgetPrivate() : QTableViewPrivate() {}
     inline QTableModel *tableModel() const { return qobject_cast<QTableModel*>(model); }
     void setup();
+    void clearConnections();
 
     // view signals
-    void _q_emitItemPressed(const QModelIndex &index);
-    void _q_emitItemClicked(const QModelIndex &index);
-    void _q_emitItemDoubleClicked(const QModelIndex &index);
-    void _q_emitItemActivated(const QModelIndex &index);
-    void _q_emitItemEntered(const QModelIndex &index);
+    void emitItemPressed(const QModelIndex &index);
+    void emitItemClicked(const QModelIndex &index);
+    void emitItemDoubleClicked(const QModelIndex &index);
+    void emitItemActivated(const QModelIndex &index);
+    void emitItemEntered(const QModelIndex &index);
     // model signals
-    void _q_emitItemChanged(const QModelIndex &index);
+    void emitItemChanged(const QModelIndex &index);
     // selection signals
-    void _q_emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &current);
+    void emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &current);
     // sorting
-    void _q_sort();
-    void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+    void sort();
+    void dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight);
+
+    std::array<QMetaObject::Connection, 10> connections;
+    std::optional<Qt::DropActions> supportedDragActions;
 };
 
 class QTableWidgetItemPrivate

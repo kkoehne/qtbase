@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcDD, "qt.qpa.input")
+Q_STATIC_LOGGING_CATEGORY(lcDD, "qt.qpa.input")
 
 QDeviceDiscovery *QDeviceDiscovery::create(QDeviceTypes types, QObject *parent)
 {
@@ -174,6 +174,9 @@ void QDeviceDiscoveryUDev::handleUDevNotification()
 
     if (qstrcmp(action, "remove") == 0)
         emit deviceRemoved(devNode);
+
+    if (qstrcmp(action, "change") == 0)
+        emit deviceChanged(devNode);
 
 cleanup:
     udev_device_unref(dev);

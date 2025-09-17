@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -95,7 +95,7 @@ public:
         vboxLayout1->setObjectName("vboxLayout1");
         listContents = new QTreeWidget(contentPage);
         listContents->setObjectName("listContents");
-        listContents->setContextMenuPolicy(Qt::CustomContextMenu);
+        listContents->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
         listContents->setRootIsDecorated(true);
         listContents->setUniformRowHeights(true);
 
@@ -123,7 +123,7 @@ public:
 
         listIndex = new QListView(indexPage);
         listIndex->setObjectName("listIndex");
-        listIndex->setContextMenuPolicy(Qt::CustomContextMenu);
+        listIndex->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
 
         vboxLayout2->addWidget(listIndex);
 
@@ -138,7 +138,7 @@ public:
         vboxLayout3->setObjectName("vboxLayout3");
         listBookmarks = new QTreeWidget(bookmarkPage);
         listBookmarks->setObjectName("listBookmarks");
-        listBookmarks->setContextMenuPolicy(Qt::CustomContextMenu);
+        listBookmarks->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
         listBookmarks->setUniformRowHeights(true);
 
         vboxLayout3->addWidget(listBookmarks);
@@ -149,7 +149,7 @@ public:
 #endif
         hboxLayout->setContentsMargins(0, 0, 0, 0);
         hboxLayout->setObjectName("hboxLayout");
-        spacerItem = new QSpacerItem(20, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(20, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
@@ -175,7 +175,7 @@ public:
 #endif
         gridLayout->setContentsMargins(5, 5, 5, 5);
         gridLayout->setObjectName("gridLayout");
-        spacerItem1 = new QSpacerItem(20, 20, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem1 = new QSpacerItem(20, 20, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         gridLayout->addItem(spacerItem1, 3, 0, 1, 1);
 
@@ -191,7 +191,7 @@ public:
 
         resultBox = new QListWidget(searchPage);
         resultBox->setObjectName("resultBox");
-        resultBox->setContextMenuPolicy(Qt::CustomContextMenu);
+        resultBox->setContextMenuPolicy(Qt::ContextMenuPolicy::CustomContextMenu);
 
         gridLayout->addWidget(resultBox, 5, 0, 1, 1);
 
@@ -211,7 +211,7 @@ public:
 
         hboxLayout1->addWidget(helpButton);
 
-        spacerItem2 = new QSpacerItem(61, 21, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem2 = new QSpacerItem(61, 21, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout1->addItem(spacerItem2);
 
@@ -230,8 +230,8 @@ public:
 
         framePrepare = new QFrame(HelpDialog);
         framePrepare->setObjectName("framePrepare");
-        framePrepare->setFrameShape(QFrame::StyledPanel);
-        framePrepare->setFrameShadow(QFrame::Raised);
+        framePrepare->setFrameShape(QFrame::Shape::StyledPanel);
+        framePrepare->setFrameShadow(QFrame::Shadow::Raised);
         hboxLayout2 = new QHBoxLayout(framePrepare);
 #ifndef Q_OS_MAC
         hboxLayout2->setSpacing(6);

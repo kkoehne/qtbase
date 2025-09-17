@@ -28,7 +28,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(lcQpaInputDevices);
+QT_DECLARE_EXPORTED_QT_LOGGING_CATEGORY(lcQpaInputDevices, Q_GUI_EXPORT)
 
 class QWindowSystemEventHandler;
 
@@ -40,7 +40,7 @@ public:
         GeometryChange = 0x02,
         Enter = UserInputEvent | 0x03,
         Leave = UserInputEvent | 0x04,
-        ActivatedWindow = 0x05,
+        FocusWindow = 0x05,
         WindowStateChanged = 0x06,
         Mouse = UserInputEvent | 0x07,
         Wheel = UserInputEvent | 0x09,
@@ -101,7 +101,7 @@ public:
 
     class GeometryChangeEvent : public WindowSystemEvent {
     public:
-        GeometryChangeEvent(QWindow *window, const QRect &newGeometry);
+        GeometryChangeEvent(QWindow *window, QRect requestedGeometry, QRect newGeometry);
         QPointer<QWindow> window;
         QRect requestedGeometry;
         QRect newGeometry;
@@ -125,12 +125,12 @@ public:
         QPointer<QWindow> leave;
     };
 
-    class ActivatedWindowEvent : public WindowSystemEvent {
+    class FocusWindowEvent : public WindowSystemEvent {
     public:
-        explicit ActivatedWindowEvent(QWindow *activatedWindow, Qt::FocusReason r)
-            : WindowSystemEvent(ActivatedWindow), activated(activatedWindow), reason(r)
+        explicit FocusWindowEvent(QWindow *focusedWindow, Qt::FocusReason r)
+            : WindowSystemEvent(FocusWindow), focused(focusedWindow), reason(r)
         { }
-        QPointer<QWindow> activated;
+        QPointer<QWindow> focused;
         Qt::FocusReason reason;
     };
 
@@ -224,9 +224,11 @@ public:
                    Qt::MouseButtons state, Qt::KeyboardModifiers mods,
                    Qt::MouseButton b, QEvent::Type type,
                    Qt::MouseEventSource src = Qt::MouseEventNotSynthesized, bool frame = false,
-                   const QPointingDevice *device = QPointingDevice::primaryPointingDevice())
+                   const QPointingDevice *device = QPointingDevice::primaryPointingDevice(),
+                   int evPtId = -1)
             : PointerEvent(w, time, Mouse, mods, device), localPos(local), globalPos(global),
-              buttons(state), source(src), nonClientArea(frame), button(b), buttonType(type) { }
+              buttons(state), source(src), nonClientArea(frame), button(b), buttonType(type),
+              eventPointId(evPtId) { }
 
         QPointF localPos;
         QPointF globalPos;
@@ -235,6 +237,7 @@ public:
         bool nonClientArea;
         Qt::MouseButton button;
         QEvent::Type buttonType;
+        int eventPointId; // from the original device if synth-mouse, otherwise -1
     };
 
     class WheelEvent : public PointerEvent {
@@ -326,9 +329,8 @@ public:
 
     class ThemeChangeEvent : public WindowSystemEvent {
     public:
-        explicit ThemeChangeEvent(QWindow * w)
-            : WindowSystemEvent(ThemeChange), window(w) { }
-        QPointer<QWindow> window;
+        explicit ThemeChangeEvent()
+            : WindowSystemEvent(ThemeChange) { }
     };
 
     class ExposeEvent : public WindowSystemEvent {
@@ -362,13 +364,13 @@ public:
     public:
         // TODO take QPointingDevice* instead of types and IDs
         static void handleTabletEvent(QWindow *w, const QPointF &local, const QPointF &global,
-                                      int device, int pointerType, Qt::MouseButtons buttons, qreal pressure, int xTilt, int yTilt,
+                                      int device, int pointerType, Qt::MouseButtons buttons, qreal pressure, qreal xTilt, qreal yTilt,
                                       qreal tangentialPressure, qreal rotation, int z, qint64 uid,
                                       Qt::KeyboardModifiers modifiers = Qt::NoModifier);
         static void setPlatformSynthesizesMouse(bool v);
 
         TabletEvent(QWindow *w, ulong time, const QPointF &local, const QPointF &global,
-                    const QPointingDevice *device, Qt::MouseButtons b, qreal pressure, int xTilt, int yTilt, qreal tpressure,
+                    const QPointingDevice *device, Qt::MouseButtons b, qreal pressure, qreal xTilt, qreal yTilt, qreal tpressure,
                     qreal rotation, int z, Qt::KeyboardModifiers mods)
             : PointerEvent(w, time, Tablet, mods, device),
               buttons(b), local(local), global(global),
@@ -378,8 +380,8 @@ public:
         QPointF local;
         QPointF global;
         qreal pressure;
-        int xTilt;
-        int yTilt;
+        qreal xTilt;
+        qreal yTilt;
         qreal tangentialPressure;
         qreal rotation;
         int z;

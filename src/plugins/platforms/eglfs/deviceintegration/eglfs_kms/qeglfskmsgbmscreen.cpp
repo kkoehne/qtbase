@@ -6,7 +6,9 @@
 #include "qeglfskmsgbmscreen_p.h"
 #include "qeglfskmsgbmdevice_p.h"
 #include "qeglfskmsgbmcursor_p.h"
+
 #include <private/qeglfsintegration_p.h>
+#include <private/qeglfskmsintegration_p.h>
 
 #include <QtCore/QLoggingCategory>
 
@@ -18,9 +20,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_DECLARE_LOGGING_CATEGORY(qLcEglfsKmsDebug)
-
-QMutex QEglFSKmsGbmScreen::m_nonThreadedFlipMutex;
+QMutex QEglFSKmsGbmScreen::s_nonThreadedFlipMutex;
 
 static inline uint32_t drmFormatToGbmFormat(uint32_t drmFormat)
 {
@@ -73,8 +73,9 @@ QEglFSKmsGbmScreen::FrameBuffer *QEglFSKmsGbmScreen::framebufferForBufferObject(
         return nullptr;
     }
 
-    gbm_bo_set_user_data(bo, fb.get(), bufferDestroyedHandler);
-    return fb.release();
+    auto res = fb.get();
+    gbm_bo_set_user_data(bo, fb.release(), bufferDestroyedHandler);
+    return res;
 }
 
 QEglFSKmsGbmScreen::QEglFSKmsGbmScreen(QEglFSKmsDevice *device, const QKmsOutput &output, bool headless)
@@ -91,9 +92,26 @@ QEglFSKmsGbmScreen::QEglFSKmsGbmScreen(QEglFSKmsDevice *device, const QKmsOutput
 QEglFSKmsGbmScreen::~QEglFSKmsGbmScreen()
 {
     const int remainingScreenCount = qGuiApp->screens().count();
-    qCDebug(qLcEglfsKmsDebug, "Screen dtor. Remaining screens: %d", remainingScreenCount);
+    qCDebug(qLcEglfsKmsDebug, "Screen dtor. %p Remaining screens: %d", this, remainingScreenCount);
     if (!remainingScreenCount && !device()->screenConfig()->separateScreens())
         static_cast<QEglFSKmsGbmDevice *>(device())->destroyGlobalCursor();
+
+    if (m_cloneSource) {
+        // Remove this screen from the screen that has it as a clone destination
+        QList<CloneDestination> &dests = m_cloneSource->m_cloneDests;
+        auto newEnd = std::remove_if(dests.begin(), dests.end(),
+                                     [this](CloneDestination &dest) {
+                                         return dest.screen == this;
+                                     });
+        dests.erase(newEnd, dests.end());
+    }
+
+    // Other screens can no longer have this screen as a clone source
+    for (CloneDestination &dest : m_cloneDests) {
+        dest.screen->m_cloneSource = nullptr;
+        // Mode must be set again before flipping
+        dest.screen->m_output.mode_set = false;
+    }
 }
 
 QPlatformCursor *QEglFSKmsGbmScreen::cursor() const
@@ -157,6 +175,7 @@ gbm_surface *QEglFSKmsGbmScreen::createSurface(EGLConfig eglConfig)
                                            gbmFlags());
         }
 
+#ifndef Q_OS_VXWORKS
         // Fallback for some drivers, its required to request with modifiers
         if (!m_gbm_surface) {
             uint64_t modifier = DRM_FORMAT_MOD_LINEAR;
@@ -167,6 +186,7 @@ gbm_surface *QEglFSKmsGbmScreen::createSurface(EGLConfig eglConfig)
                                     gbmFormat,
                                     &modifier, 1);
         }
+#endif
         // Fail here, as it would fail with the next usage of the GBM surface, which is very unexpected
         if (!m_gbm_surface)
             qFatal("Could not create GBM surface!");
@@ -176,10 +196,19 @@ gbm_surface *QEglFSKmsGbmScreen::createSurface(EGLConfig eglConfig)
 
 void QEglFSKmsGbmScreen::resetSurface()
 {
-    m_flipPending = false;
+    m_flipPending = false; // not necessarily true but enough to keep bo_next
     m_gbm_bo_current = nullptr;
-    m_gbm_bo_next = nullptr;
     m_gbm_surface = nullptr;
+
+    // Leave m_gbm_bo_next untouched. waitForFlip() should
+    // still do its work, when called. Otherwise we end up
+    // in device-is-busy errors if there is a new QWindow
+    // created afterwards. (QTBUG-122663)
+
+    // If not using atomic, will need a new drmModeSetCrtc if a new window
+    // gets created later on (and so there's a new fb).
+    if (!device()->hasAtomicSupport())
+        needsNewModeSetForNextFb = true;
 }
 
 void QEglFSKmsGbmScreen::initCloning(QPlatformScreen *screenThisScreenClones,
@@ -194,9 +223,12 @@ void QEglFSKmsGbmScreen::initCloning(QPlatformScreen *screenThisScreenClones,
     if (clonesAnother) {
         m_cloneSource = static_cast<QEglFSKmsGbmScreen *>(screenThisScreenClones);
         qCDebug(qLcEglfsKmsDebug, "Screen %s clones %s", qPrintable(name()), qPrintable(m_cloneSource->name()));
+    } else {
+        m_cloneSource = nullptr;
     }
 
     // clone sources need to know their additional destinations
+    m_cloneDests.clear();
     for (QPlatformScreen *s : screensCloningThisScreen) {
         CloneDestination d;
         d.screen = static_cast<QEglFSKmsGbmScreen *>(s);
@@ -209,8 +241,9 @@ void QEglFSKmsGbmScreen::ensureModeSet(uint32_t fb)
     QKmsOutput &op(output());
     const int fd = device()->fd();
 
-    if (!op.mode_set) {
+    if (!op.mode_set || needsNewModeSetForNextFb) {
         op.mode_set = true;
+        needsNewModeSetForNextFb = false;
 
         bool doModeSet = true;
         drmModeCrtcPtr currentMode = drmModeGetCrtc(fd, op.crtc_id);
@@ -258,8 +291,11 @@ void QEglFSKmsGbmScreen::nonThreadedPageFlipHandler(int fd,
     // note that with cloning involved this callback is called also for screens that clone another one
     Q_UNUSED(fd);
     QEglFSKmsGbmScreen *screen = static_cast<QEglFSKmsGbmScreen *>(user_data);
-    screen->flipFinished();
-    screen->pageFlipped(sequence, tv_sec, tv_usec);
+    // The screen might have been deleted when DRM calls this handler
+    if (QEglFSKmsScreen::isScreenKnown(screen)) {
+        screen->flipFinished();
+        screen->pageFlipped(sequence, tv_sec, tv_usec);
+    }
 }
 
 void QEglFSKmsGbmScreen::waitForFlipWithEventReader(QEglFSKmsGbmScreen *screen)
@@ -267,7 +303,21 @@ void QEglFSKmsGbmScreen::waitForFlipWithEventReader(QEglFSKmsGbmScreen *screen)
     m_flipMutex.lock();
     QEglFSKmsGbmDevice *dev = static_cast<QEglFSKmsGbmDevice *>(device());
     dev->eventReader()->startWaitFlip(screen, &m_flipMutex, &m_flipCond);
-    m_flipCond.wait(&m_flipMutex);
+
+    // We should only wait forever on this screen, clones should have a timeout
+    // (e.g. I clone might have been created just before the flip,
+    // we might wait for it but it might not know about waking us up)
+    bool succ = false;
+    if (screen == this)
+        succ = m_flipCond.wait(&m_flipMutex);
+    else
+        succ = m_flipCond.wait(&m_flipMutex, 300);
+
+    if (!succ)
+        qCWarning(qLcEglfsKmsDebug) << "timeout on waitForFlipWithEventReader, screen to wait for:"
+                                    << screen << ", screen waiting (shouldn't be the same screen):"
+                                    << this;
+
     m_flipMutex.unlock();
     screen->flipFinished();
 }
@@ -293,7 +343,7 @@ void QEglFSKmsGbmScreen::waitForFlip()
                 waitForFlipWithEventReader(d.screen);
         }
     } else {
-        QMutexLocker lock(&m_nonThreadedFlipMutex);
+        QMutexLocker lock(&s_nonThreadedFlipMutex);
         while (m_gbm_bo_next) {
             drmEventContext drmEvent;
             memset(&drmEvent, 0, sizeof(drmEvent));
@@ -346,15 +396,10 @@ static void addAtomicFlip(drmModeAtomicReq *request, const QKmsOutput &output, u
 
 void QEglFSKmsGbmScreen::flip()
 {
-    // For headless screen just return silently. It is not necessarily an error
+    // For headless or cloned screen just return silently. It is not necessarily an error
     // to end up here, so show no warnings.
-    if (m_headless)
+    if (m_headless || m_cloneSource)
         return;
-
-    if (m_cloneSource) {
-        qWarning("Screen %s clones another screen. swapBuffers() not allowed.", qPrintable(name()));
-        return;
-    }
 
     if (!m_gbm_surface) {
         qWarning("Cannot sync before platform init!");

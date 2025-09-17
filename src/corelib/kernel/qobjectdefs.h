@@ -11,6 +11,7 @@
 
 #include <QtCore/qnamespace.h>
 #include <QtCore/qobjectdefs_impl.h>
+#include <QtCore/qtcoreexports.h>
 #include <QtCore/qtmetamacros.h>
 
 QT_BEGIN_NAMESPACE
@@ -262,6 +263,7 @@ struct Q_CORE_EXPORT QMetaObject
     int indexOfSignal(const char *signal) const;
     int indexOfSlot(const char *slot) const;
     int indexOfEnumerator(const char *name) const;
+
     int indexOfProperty(const char *name) const;
     int indexOfClassInfo(const char *name) const;
 
@@ -290,10 +292,32 @@ struct Q_CORE_EXPORT QMetaObject
     // internal slot-name based connect
     static void connectSlotsByName(QObject *o);
 
+#ifdef Q_QDOC
+    template<typename PointerToMemberFunction>
+    static QMetaObject::Connection connect(const QObject *sender, const QMetaMethod &signal, const QObject *receiver, PointerToMemberFunction method, Qt::ConnectionType type = Qt::AutoConnection);
+    template<typename Functor>
+    static QMetaObject::Connection connect(const QObject *sender, const QMetaMethod &signal, const QObject *context, Functor functor, Qt::ConnectionType type = Qt::AutoConnection);
+#else
+    template <typename Func>
+    static inline Connection
+        connect(const QObject *sender, const QMetaMethod &signal,
+                const typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *context, Func &&slot,
+                Qt::ConnectionType type = Qt::AutoConnection);
+#endif // Q_QDOC
+
     // internal index-based signal activation
     static void activate(QObject *sender, int signal_index, void **argv);
     static void activate(QObject *sender, const QMetaObject *, int local_signal_index, void **argv);
     static void activate(QObject *sender, int signal_offset, int local_signal_index, void **argv);
+    template <typename Ret, typename... Args> static inline void
+    activate(QObject *sender, const QMetaObject *mo, int local_signal_index, Ret *ret, const Args &... args)
+    {
+        void *_a[] = {
+            const_cast<void *>(reinterpret_cast<const volatile void *>(ret)),
+            const_cast<void *>(reinterpret_cast<const volatile void *>(std::addressof(args)))...
+        };
+        activate(sender, mo, local_signal_index, _a);
+    }
 
 #if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
     static bool invokeMethod(QObject *obj, const char *member,
@@ -614,8 +638,9 @@ private:
                               ExpectedArguments>::value,
                 "Incompatible arguments");
 
-        auto h = QtPrivate::invokeMethodHelper(ret, args...);
+        auto h = QtPrivate::invokeMethodHelper(ret, std::forward<Args>(args)...);
 
+        // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
         auto callable = new QtPrivate::QCallableObject<std::decay_t<Func>, ActualArguments,
                 typename Callable::ReturnType>(std::forward<Func>(function));
         return invokeMethodImpl(object, callable, type, h.parameterCount(), h.parameters.data(),
@@ -635,7 +660,13 @@ private:
     static QObject *newInstanceImpl(const QMetaObject *mobj, qsizetype parameterCount,
                                     const void **parameters, const char **typeNames,
                                     const QtPrivate::QMetaTypeInterface **metaTypes);
+
+    static QMetaObject::Connection connectImpl(const QObject *sender, const QMetaMethod& signal,
+                                            const QObject *receiver, void **slotPtr,
+                                            QtPrivate::QSlotObjectBase *slot, Qt::ConnectionType type);
+
     friend class QTimer;
+    friend class QChronoTimer;
 };
 
 class Q_CORE_EXPORT QMetaObject::Connection {
@@ -664,6 +695,32 @@ public:
     void swap(Connection &other) noexcept { qt_ptr_swap(d_ptr, other.d_ptr); }
 };
 
+template <typename Func>
+QMetaObject::Connection
+    QMetaObject::connect(const QObject *sender, const QMetaMethod &signal,
+                         const typename QtPrivate::ContextTypeForFunctor<Func>::ContextType *context, Func &&slot,
+                         Qt::ConnectionType type)
+{
+    using Slot = std::decay_t<Func>;
+    using FunctionSlotType = QtPrivate::FunctionPointer<Slot>;
+    void **pSlot = nullptr;
+    QtPrivate::QSlotObjectBase *slotObject;
+    if constexpr (FunctionSlotType::ArgumentCount != -1) {
+        slotObject = new QtPrivate::QCallableObject<Slot, typename FunctionSlotType::Arguments, typename FunctionSlotType::ReturnType>(std::forward<Func>(slot));
+        if constexpr (FunctionSlotType::IsPointerToMemberFunction) {
+            pSlot = const_cast<void **>(reinterpret_cast<void *const *>(&slot));
+        } else {
+            Q_ASSERT_X((type & Qt::UniqueConnection) == 0, "",
+                "QObject::connect: Unique connection requires the slot to be a pointer to "
+                "a member function of a QObject subclass.");
+        }
+    } else {
+        using FunctorSlotType = QtPrivate::FunctionPointer<decltype(&Slot::operator())>;
+        slotObject = new QtPrivate::QCallableObject<Slot, typename FunctorSlotType::Arguments, typename FunctorSlotType::ReturnType>(std::forward<Func>(slot));
+    }
+    return QMetaObject::connectImpl(sender, signal, context, pSlot, slotObject, type);
+}
+
 inline void swap(QMetaObject::Connection &lhs, QMetaObject::Connection &rhs) noexcept
 {
     lhs.swap(rhs);
@@ -680,6 +737,24 @@ namespace QtPrivate {
         static int test(int (Object::*)(QMetaObject::Call, int, void **));
         enum { Value =  sizeof(test(&Object::qt_metacall)) == sizeof(int) };
     };
+
+    template <class TgtType, class SrcType>
+    inline TgtType qobject_cast_helper(SrcType *object)
+    {
+        using ObjType = std::remove_cv_t<std::remove_pointer_t<TgtType>> ;
+        static_assert(std::is_pointer_v<TgtType>,
+                "qobject_cast requires to cast towards a pointer type");
+        static_assert(HasQ_OBJECT_Macro<ObjType>::Value,
+                "qobject_cast requires the type to have a Q_OBJECT macro");
+
+        if constexpr (std::is_final_v<ObjType>) {
+            if (object && object->metaObject() == &ObjType::staticMetaObject)
+                return static_cast<TgtType>(object);
+            return nullptr;
+        } else {
+            return static_cast<TgtType>(ObjType::staticMetaObject.cast(object));
+        }
+    }
 }
 
 QT_END_NAMESPACE

@@ -2,69 +2,72 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "qsqlconnectiondialog.h"
-#include "ui_qsqlconnectiondialog.h"
+#include <ui_qsqlconnectiondialog.h>
 
+#include <QCheckBox>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QSqlDatabase>
 
 QSqlConnectionDialog::QSqlConnectionDialog(QWidget *parent)
     : QDialog(parent)
+    , m_ui{std::make_unique<Ui::QSqlConnectionDialogUi>()}
 {
-    ui.setupUi(this);
+    m_ui->setupUi(this);
 
     QStringList drivers = QSqlDatabase::drivers();
 
     if (!drivers.contains("QSQLITE"))
-        ui.dbCheckBox->setEnabled(false);
+        m_ui->dbCheckBox->setEnabled(false);
 
-    ui.comboDriver->addItems(drivers);
+    m_ui->comboDriver->addItems(drivers);
 }
 
 QSqlConnectionDialog::~QSqlConnectionDialog()
-{
-}
+    = default;
 
 QString QSqlConnectionDialog::driverName() const
 {
-    return ui.comboDriver->currentText();
+    return m_ui->comboDriver->currentText();
 }
 
 QString QSqlConnectionDialog::databaseName() const
 {
-    return ui.editDatabase->text();
+    return m_ui->editDatabase->text();
 }
 
 QString QSqlConnectionDialog::userName() const
 {
-    return ui.editUsername->text();
+    return m_ui->editUsername->text();
 }
 
 QString QSqlConnectionDialog::password() const
 {
-    return ui.editPassword->text();
+    return m_ui->editPassword->text();
 }
 
 QString QSqlConnectionDialog::hostName() const
 {
-    return ui.editHostname->text();
+    return m_ui->editHostname->text();
 }
 
 int QSqlConnectionDialog::port() const
 {
-    return ui.portSpinBox->value();
+    return m_ui->portSpinBox->value();
 }
 
 bool QSqlConnectionDialog::useInMemoryDatabase() const
 {
-    return ui.dbCheckBox->isChecked();
+    return m_ui->dbCheckBox->isChecked();
 }
 
-void QSqlConnectionDialog::on_okButton_clicked()
+void QSqlConnectionDialog::accept()
 {
-    if (ui.comboDriver->currentText().isEmpty()) {
+    if (m_ui->comboDriver->currentText().isEmpty()) {
         QMessageBox::information(this, tr("No database driver selected"),
                                  tr("Please select a database driver"));
-        ui.comboDriver->setFocus();
+        m_ui->comboDriver->setFocus();
     } else {
-        accept();
+        QDialog::accept();
     }
 }

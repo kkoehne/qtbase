@@ -186,7 +186,6 @@
 #include <QtCore/qrect.h>
 #include <QtCore/qset.h>
 #include <QtCore/qstack.h>
-#include <QtCore/qtimer.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/QMetaMethod>
 #include <QtWidgets/qapplication.h>
@@ -215,6 +214,8 @@
 #endif
 #include <private/qgesturemanager_p.h>
 #include <private/qpathclipper_p.h>
+
+#include <QtCore/qpointer.h>
 
 // #define GESTURE_DEBUG
 #ifndef GESTURE_DEBUG
@@ -3251,6 +3252,7 @@ bool QGraphicsScene::event(QEvent *event)
         // ### this should only be cleared if we received a new mouse move event,
         // which relies on us fixing the replay mechanism in QGraphicsView.
         d->cachedItemsUnderMouse.clear();
+        break;
     default:
         break;
     }
@@ -4769,7 +4771,7 @@ static inline void setClip(QPainter *painter, QGraphicsItem *item)
     QRectF clipRect;
     const QPainterPath clipPath(item->shape());
     if (QPathClipper::pathToRect(clipPath, &clipRect))
-        painter->setClipRect(clipRect, Qt::IntersectClip);
+        painter->setClipRect(clipRect.normalized(), Qt::IntersectClip);
     else
         painter->setClipPath(clipPath, Qt::IntersectClip);
 }
@@ -5829,7 +5831,7 @@ int QGraphicsScenePrivate::findClosestTouchPointId(const QPointF &scenePos)
 
 void QGraphicsScenePrivate::touchEventHandler(QTouchEvent *sceneTouchEvent)
 {
-    typedef QPair<QEventPoint::States, QList<QEventPoint> > StatesAndTouchPoints;
+    typedef std::pair<QEventPoint::States, QList<QEventPoint> > StatesAndTouchPoints;
     QHash<QGraphicsItem *, StatesAndTouchPoints> itemsNeedingEvents;
 
     const auto &touchPoints = sceneTouchEvent->points();

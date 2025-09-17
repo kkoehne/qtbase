@@ -167,6 +167,9 @@ class Q_WIDGETS_EXPORT QListWidget : public QListView
     Q_PROPERTY(int currentRow READ currentRow WRITE setCurrentRow NOTIFY currentRowChanged
                USER true)
     Q_PROPERTY(bool sortingEnabled READ isSortingEnabled WRITE setSortingEnabled)
+#if QT_CONFIG(draganddrop)
+    Q_PROPERTY(Qt::DropActions supportedDragActions READ supportedDragActions WRITE setSupportedDragActions)
+#endif
 
     friend class QListWidgetItem;
     friend class QListModel;
@@ -221,6 +224,10 @@ public:
     QModelIndex indexFromItem(const QListWidgetItem *item) const;
     QListWidgetItem *itemFromIndex(const QModelIndex &index) const;
 
+#if QT_CONFIG(draganddrop)
+    void setSupportedDragActions(Qt::DropActions actions);
+    Qt::DropActions supportedDragActions() const;
+#endif
 protected:
 #if QT_CONFIG(draganddrop)
     void dropEvent(QDropEvent *event) override;
@@ -258,16 +265,6 @@ private:
 
     Q_DECLARE_PRIVATE(QListWidget)
     Q_DISABLE_COPY(QListWidget)
-
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemPressed(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemClicked(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemDoubleClicked(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemActivated(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemEntered(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemChanged(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &current))
-    Q_PRIVATE_SLOT(d_func(), void _q_sort())
-    Q_PRIVATE_SLOT(d_func(), void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight))
 };
 
 inline void QListWidget::removeItemWidget(QListWidgetItem *aItem)

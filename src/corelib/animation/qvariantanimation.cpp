@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qvariantanimation.h"
 #include "qvariantanimation_p.h"
@@ -152,6 +153,9 @@ template<> Q_INLINE_TEMPLATE QLineF _q_interpolate(const QLineF &f, const QLineF
 QVariantAnimationPrivate::QVariantAnimationPrivate() : duration(250), interpolator(&defaultInterpolator)
 { }
 
+QVariantAnimationPrivate::~QVariantAnimationPrivate()
+    = default;
+
 void QVariantAnimationPrivate::convertValues(int t)
 {
     auto type = QMetaType(t);
@@ -203,7 +207,7 @@ void QVariantAnimationPrivate::recalculateCurrentInterval(bool force/*=false*/)
         //let's update currentInterval
         QVariantAnimation::KeyValues::const_iterator it = std::lower_bound(keyValues.constBegin(),
                                                                            keyValues.constEnd(),
-                                                                           qMakePair(progress, QVariant()),
+                                                                           std::pair{progress, QVariant{}},
                                                                            animationValueLessThan);
         if (it == keyValues.constBegin()) {
             //the item pointed to by it is the start element in the range
@@ -211,7 +215,7 @@ void QVariantAnimationPrivate::recalculateCurrentInterval(bool force/*=false*/)
                 currentInterval.start = *it;
                 currentInterval.end = *(it+1);
             } else {
-                currentInterval.start = qMakePair(qreal(0), defaultStartEndValue);
+                currentInterval.start = {qreal(0), defaultStartEndValue};
                 currentInterval.end = *it;
             }
         } else if (it == keyValues.constEnd()) {
@@ -223,7 +227,7 @@ void QVariantAnimationPrivate::recalculateCurrentInterval(bool force/*=false*/)
             } else {
                 //we use the default end value here
                 currentInterval.start = *it;
-                currentInterval.end = qMakePair(qreal(1), defaultStartEndValue);
+                currentInterval.end = {qreal(1), defaultStartEndValue};
             }
         } else {
             currentInterval.start = *(it-1);
@@ -264,9 +268,10 @@ void QVariantAnimationPrivate::setCurrentValueForProgress(const qreal progress)
 
 QVariant QVariantAnimationPrivate::valueAt(qreal step) const
 {
-    QVariantAnimation::KeyValues::const_iterator result =
-        std::lower_bound(keyValues.constBegin(), keyValues.constEnd(), qMakePair(step, QVariant()), animationValueLessThan);
-    if (result != keyValues.constEnd() && !animationValueLessThan(qMakePair(step, QVariant()), *result))
+    const auto sought = std::pair{step, QVariant()};
+    const auto result = std::lower_bound(keyValues.cbegin(), keyValues.cend(), sought,
+                                         animationValueLessThan);
+    if (result != keyValues.cend() && !animationValueLessThan(sought, *result))
         return result->second;
 
     return QVariant();
@@ -334,7 +339,7 @@ QVariantAnimation::~QVariantAnimation()
     elastic effect on the values of the interpolated variant.
 
     QVariantAnimation will use the QEasingCurve::valueForProgress() to
-    transform the "normalized progress" (currentTime / totalDuration)
+    transform the "normalized progress" (currentTime() / totalDuration())
     of the animation into the effective progress actually
     used by the animation. It is this effective progress that will be
     the progress when interpolated() is called. Also, the steps in the
@@ -552,7 +557,7 @@ QVariant QVariantAnimation::keyValueAt(qreal step) const
 /*!
     \typedef QVariantAnimation::KeyValue
 
-    This is a typedef for QPair<qreal, QVariant>.
+    This is a typedef for std::pair<qreal, QVariant>.
 */
 /*!
     \typedef QVariantAnimation::KeyValues

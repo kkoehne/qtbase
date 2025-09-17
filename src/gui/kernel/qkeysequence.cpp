@@ -189,11 +189,8 @@ void Q_GUI_EXPORT qt_set_sequence_auto_mnemonic(bool b) { qt_sequence_no_mnemoni
     When creating key sequences for non-standard shortcuts, you should use
     human-readable strings in preference to hard-coded integer values.
 
-    QKeySequence objects can be cast to a QString to obtain a human-readable
-    translated version of the sequence. Similarly, the toString() function
-    produces human-readable strings for use in menus. On Apple platforms, the
-    appropriate symbols are used to describe keyboard shortcuts using special
-    keys on the Macintosh keyboard.
+    QKeySequence object can be serialized to human-readable strings with the
+    toString() function.
 
     An alternative way to specify hard-coded key codes is to use the Unicode
     code point of the character; for example, 'A' gives the same key sequence
@@ -225,13 +222,13 @@ void Q_GUI_EXPORT qt_set_sequence_auto_mnemonic(bool b) { qt_sequence_no_mnemoni
     \row    \li Close            \li Ctrl+F4, Ctrl+W                      \li Ctrl+W, Ctrl+F4          \li Ctrl+W       \li Ctrl+W
     \row    \li Save             \li Ctrl+S                               \li Ctrl+S                   \li Ctrl+S       \li Ctrl+S
     \row    \li Quit             \li                                      \li Ctrl+Q                   \li Ctrl+Q       \li Ctrl+Q
-    \row    \li SaveAs           \li                                      \li Ctrl+Shift+S             \li              \li Ctrl+Shift+S
+    \row    \li SaveAs           \li Ctrl+Shift+S                         \li Ctrl+Shift+S             \li Ctrl+Shift+S \li Ctrl+Shift+S
     \row    \li New              \li Ctrl+N                               \li Ctrl+N                   \li Ctrl+N       \li Ctrl+N
-    \row    \li Delete           \li Del                                  \li Del, Meta+D              \li Del, Ctrl+D  \li Del, Ctrl+D
+    \row    \li Delete           \li Del                                  \li Forward Delete, Meta+D   \li Del, Ctrl+D  \li Del, Ctrl+D
     \row    \li Cut              \li Ctrl+X, Shift+Del                    \li Ctrl+X, Meta+K           \li Ctrl+X, F20, Shift+Del \li Ctrl+X, F20, Shift+Del
     \row    \li Copy             \li Ctrl+C, Ctrl+Ins                     \li Ctrl+C                   \li Ctrl+C, F16, Ctrl+Ins  \li Ctrl+C, F16, Ctrl+Ins
     \row    \li Paste            \li Ctrl+V, Shift+Ins                    \li Ctrl+V, Meta+Y           \li Ctrl+V, F18, Shift+Ins \li Ctrl+V, F18, Shift+Ins
-    \row    \li Preferences      \li                                      \li Ctrl+,                   \li              \li
+    \row    \li Preferences      \li                                      \li Ctrl+,                   \li Ctrl+Shift+, \li
     \row    \li Undo             \li Ctrl+Z, Alt+Backspace                \li Ctrl+Z                   \li Ctrl+Z, F14  \li Ctrl+Z, F14
     \row    \li Redo             \li Ctrl+Y, Shift+Ctrl+Z, Alt+Shift+Backspace \li Ctrl+Shift+Z        \li Ctrl+Shift+Z \li Ctrl+Shift+Z
     \row    \li Back             \li Alt+Left, Backspace                  \li Ctrl+[                   \li Alt+Left     \li Alt+Left
@@ -287,7 +284,7 @@ void Q_GUI_EXPORT qt_set_sequence_auto_mnemonic(bool b) { qt_sequence_no_mnemoni
     \row    \li DeleteCompleteLine   \li (none)                           \li (none)                 \li Ctrl+U         \li Ctrl+U
     \row    \li InsertParagraphSeparator     \li Enter                    \li Enter                  \li Enter          \li Enter
     \row    \li InsertLineSeparator          \li Shift+Enter              \li Meta+Enter, Meta+O     \li Shift+Enter    \li Shift+Enter
-    \row    \li Backspace             \li (none)                          \li Meta+H                 \li (none)         \li (none)
+    \row    \li Backspace             \li (none)                          \li Delete, Meta+H         \li (none)         \li (none)
     \row    \li Cancel                \li Escape                          \li Escape, Ctrl+.         \li Escape         \li Escape
     \endtable
 
@@ -576,6 +573,8 @@ static constexpr struct {
 
     { Qt::Key_MicVolumeUp,                QT_TRANSLATE_NOOP("QShortcut", "Microphone Volume Up") },
     { Qt::Key_MicVolumeDown,              QT_TRANSLATE_NOOP("QShortcut", "Microphone Volume Down") },
+
+    { Qt::Key_Keyboard,                   QT_TRANSLATE_NOOP("QShortcut", "Keyboard") },
 
     { Qt::Key_New,                        QT_TRANSLATE_NOOP("QShortcut", "New") },
     { Qt::Key_Open,                       QT_TRANSLATE_NOOP("QShortcut", "Open") },
@@ -1018,7 +1017,7 @@ int QKeySequence::assign(const QString &ks, QKeySequence::SequenceFormat format)
         }
         QString part = keyseq.left(-1 == p ? keyseq.size() : p - diff);
         keyseq = keyseq.right(-1 == p ? 0 : keyseq.size() - (p + 1));
-        d->key[n] = QKeySequencePrivate::decodeString(std::move(part), format);
+        d->key[n] = QKeySequencePrivate::decodeString(std::move(part), format).toCombined();
         ++n;
     }
     return n;
@@ -1036,15 +1035,7 @@ Q_DECLARE_TYPEINFO(QModifKeyName, Q_RELOCATABLE_TYPE);
 Q_GLOBAL_STATIC(QList<QModifKeyName>, globalModifs)
 Q_GLOBAL_STATIC(QList<QModifKeyName>, globalPortableModifs)
 
-/*!
-  Constructs a single key from the string \a str.
-*/
-int QKeySequence::decodeString(const QString &str)
-{
-    return QKeySequencePrivate::decodeString(str, NativeText);
-}
-
-int QKeySequencePrivate::decodeString(QString accel, QKeySequence::SequenceFormat format)
+QKeyCombination QKeySequencePrivate::decodeString(QString accel, QKeySequence::SequenceFormat format)
 {
     Q_ASSERT(!accel.isEmpty());
 
@@ -1111,10 +1102,16 @@ int QKeySequencePrivate::decodeString(QString accel, QKeySequence::SequenceForma
         return Qt::Key_unknown;
 #endif
 
+    int singlePlus = -1;
     qsizetype i = 0;
     qsizetype lastI = 0;
     while ((i = sl.indexOf(u'+', i + 1)) != -1) {
-        const QStringView sub = QStringView{sl}.mid(lastI, i - lastI + 1);
+        QStringView sub = QStringView{ sl }.mid(lastI, i - lastI + 1);
+        while (sub.size() > 1 && sub.at(0) == u' ') {
+            sub = sub.mid(1);
+            ++lastI;
+        }
+
         // If we get here the shortcuts contains at least one '+'. We break up
         // along the following strategy:
         //      Meta+Ctrl++   ( "Meta+", "Ctrl+", "+" )
@@ -1126,33 +1123,49 @@ int QKeySequencePrivate::decodeString(QString accel, QKeySequence::SequenceForma
         // Only '+' can have length 1.
         if (sub.size() == 1) {
             // Make sure we only encounter a single '+' at the end of the accel
-            if (accel.lastIndexOf(u'+') != accel.size()-1)
+            if (singlePlus >= 0)
                 return Qt::Key_unknown;
+            singlePlus = lastI;
         } else {
-            // Identify the modifier
-            bool validModifier = false;
-            for (int j = 0; j < modifs.size(); ++j) {
-                const QModifKeyName &mkf = modifs.at(j);
-                if (sub == mkf.name) {
-                    ret |= mkf.qt_key;
-                    validModifier = true;
-                    break; // Shortcut, since if we find an other it would/should just be a dup
-                }
-            }
 
+            const auto identifyModifier = [&](QStringView sub) {
+                for (int j = 0; j < modifs.size(); ++j) {
+                    const QModifKeyName &mkf = modifs.at(j);
+                    if (sub == mkf.name) {
+                        ret |= mkf.qt_key;
+                        return true; // Shortcut, since if we find another it would/should just be a dup
+                    }
+                }
+                return false;
+            };
+
+            bool validModifier = identifyModifier(sub);
+
+            if (!validModifier) {
+                // Try harder with slower code that trims spaces
+                const QString cleanedSub = sub.toString().remove(u' ');
+                validModifier = identifyModifier(cleanedSub);
+            }
             if (!validModifier)
                 return Qt::Key_unknown;
         }
         lastI = i + 1;
     }
 
-    qsizetype p = accel.lastIndexOf(u'+', accel.size() - 2); // -2 so that Ctrl++ works
+    qsizetype p = accel.lastIndexOf(u'+', singlePlus > 0 ? singlePlus - 1 : accel.size() - 1);
     QStringView accelRef(accel);
     if (p > 0)
         accelRef = accelRef.mid(p + 1);
 
+    while (accelRef.size() > 1 && accelRef.at(0) == u' ')
+        accelRef = accelRef.mid(1);
+    while (accelRef.size() > 1 && accelRef.endsWith(u' '))
+        accelRef.chop(1);
+
     int fnum = 0;
-    if (accelRef.size() == 1) {
+    if (accelRef.isEmpty())
+        return Qt::Key_unknown;
+    else if (accelRef.size() == 1) {
 #if defined(Q_OS_APPLE)
         int qtKey = qtkeyForAppleSymbol(accelRef.at(0));
         if (qtKey != -1) {
@@ -1189,17 +1202,7 @@ int QKeySequencePrivate::decodeString(QString accel, QKeySequence::SequenceForma
         if (!found)
             return Qt::Key_unknown;
     }
-    return ret;
-}
-
-/*!
-    Creates a shortcut string for \a key. For example,
-    Qt::CTRL+Qt::Key_O gives "Ctrl+O". The strings, "Ctrl", "Shift", etc. are
-    translated (using QObject::tr()) in the "QShortcut" context.
- */
-QString QKeySequence::encodeString(int key)
-{
-    return QKeySequencePrivate::encodeString(key, NativeText);
+    return QKeyCombination::fromCombined(ret);
 }
 
 static inline void addKey(QString &str, const QString &theKey, QKeySequence::SequenceFormat format)
@@ -1216,14 +1219,18 @@ static inline void addKey(QString &str, const QString &theKey, QKeySequence::Seq
     str += theKey;
 }
 
-QString QKeySequencePrivate::encodeString(int key, QKeySequence::SequenceFormat format)
+QString QKeySequencePrivate::encodeString(QKeyCombination keyCombination, QKeySequence::SequenceFormat format)
 {
     bool nativeText = (format == QKeySequence::NativeText);
     QString s;
 
+    const auto key = keyCombination.key();
+
     // Handle -1 (Invalid Key) and Qt::Key_unknown gracefully
-    if (key == -1 || key == Qt::Key_unknown)
+    if (keyCombination.toCombined() == -1 || key == Qt::Key_unknown)
         return s;
+
+    const auto modifiers = keyCombination.keyboardModifiers();
 
 #if defined(Q_OS_APPLE)
     if (nativeText) {
@@ -1248,33 +1255,33 @@ QString QKeySequencePrivate::encodeString(int key, QKeySequence::SequenceFormat 
         }
 
         for (int i = 0; modifierOrder[i] != 0; ++i) {
-            if (key & modifierOrder[i])
+            if (modifiers & modifierOrder[i])
                 s += appleSymbolForQtKey(qtkeyOrder[i]);
         }
     } else
 #endif
     {
         // On other systems the order is Meta, Control, Alt, Shift
-        if ((key & Qt::META) == Qt::META)
+        if (modifiers & Qt::MetaModifier)
             s = nativeText ? QCoreApplication::translate("QShortcut", "Meta") : QString::fromLatin1("Meta");
-        if ((key & Qt::CTRL) == Qt::CTRL)
+        if (modifiers & Qt::ControlModifier)
             addKey(s, nativeText ? QCoreApplication::translate("QShortcut", "Ctrl") : QString::fromLatin1("Ctrl"), format);
-        if ((key & Qt::ALT) == Qt::ALT)
+        if (modifiers & Qt::AltModifier)
             addKey(s, nativeText ? QCoreApplication::translate("QShortcut", "Alt") : QString::fromLatin1("Alt"), format);
-        if ((key & Qt::SHIFT) == Qt::SHIFT)
+        if (modifiers & Qt::ShiftModifier)
             addKey(s, nativeText ? QCoreApplication::translate("QShortcut", "Shift") : QString::fromLatin1("Shift"), format);
     }
-    if ((key & Qt::KeypadModifier) == Qt::KeypadModifier)
+    if (modifiers & Qt::KeypadModifier)
         addKey(s, nativeText ? QCoreApplication::translate("QShortcut", "Num") : QString::fromLatin1("Num"), format);
 
-    QString p = keyName(key, format);
+    QString keyName = QKeySequencePrivate::keyName(key, format);
 
 #if defined(Q_OS_APPLE)
     if (nativeText)
-        s += p;
+        s += keyName;
     else
 #endif
-    addKey(s, p, format);
+    addKey(s, keyName, format);
     return s;
 }
 
@@ -1286,10 +1293,9 @@ QString QKeySequencePrivate::encodeString(int key, QKeySequence::SequenceFormat 
 
     This static method is used by encodeString() and by the D-Bus menu exporter.
 */
-QString QKeySequencePrivate::keyName(int key, QKeySequence::SequenceFormat format)
+QString QKeySequencePrivate::keyName(Qt::Key key, QKeySequence::SequenceFormat format)
 {
     bool nativeText = (format == QKeySequence::NativeText);
-    key &= ~(Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier | Qt::KeypadModifier);
     QString p;
 
     if (key && key < Qt::Key_Escape && key != Qt::Key_Space) {
@@ -1400,9 +1406,7 @@ QKeySequence &QKeySequence::operator=(const QKeySequence &other)
 /*!
     \fn void QKeySequence::swap(QKeySequence &other)
     \since 4.8
-
-    Swaps key sequence \a other with this key sequence. This operation is very
-    fast and never fails.
+    \memberswap{key sequence}
 */
 
 /*!
@@ -1427,10 +1431,7 @@ bool QKeySequence::operator==(const QKeySequence &other) const
 
 /*!
     \since 5.6
-    \relates QKeySequence
-
-    Calculates the hash value of \a key, using
-    \a seed to seed the calculation.
+    \qhashold{QKeySequence}
 */
 size_t qHash(const QKeySequence &key, size_t seed) noexcept
 {
@@ -1518,7 +1519,7 @@ QString QKeySequence::toString(SequenceFormat format) const
     // look like our latin case on Windows and X11
     int end = count();
     for (int i = 0; i < end; ++i) {
-        finalString += d->encodeString(d->key[i], format);
+        finalString += d->encodeString(QKeyCombination::fromCombined(d->key[i]), format);
         finalString += ", "_L1;
     }
     finalString.truncate(finalString.size() - 2);

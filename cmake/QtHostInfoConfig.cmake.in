@@ -1,3 +1,6 @@
+# Copyright (C) 2024 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 @PACKAGE_INIT@
 
 set(@var_prefix@BINDIR "@INSTALL_BINDIR@")
@@ -15,6 +18,8 @@ set(@var_prefix@SYSCONFDIR "@INSTALL_SYSCONFDIR@")
 set(@var_prefix@EXAMPLESDIR "@INSTALL_EXAMPLESDIR@")
 set(@var_prefix@TESTSDIR "@INSTALL_TESTSDIR@")
 set(@var_prefix@DESCRIPTIONSDIR "@INSTALL_DESCRIPTIONSDIR@")
+set(@var_prefix@SHAREDIR "@INSTALL_SHAREDIR@")
+set(@var_prefix@QT_SHAREDIR "@INSTALL_QT_SHAREDIR@")
 set(@var_prefix@QMAKE_MKSPEC "@QT_QMAKE_TARGET_MKSPEC@")
 set(@var_prefix@ARCH "@TEST_architecture_arch@")
 set(@var_prefix@SUBARCHS "@TEST_subarch_result@")

@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QBACKINGSTORE_COCOA_H
 #define QBACKINGSTORE_COCOA_H
@@ -44,7 +45,8 @@ public:
                          const QRegion &region,
                          const QPoint &offset,
                          QPlatformTextureList *textures,
-                         bool translucentBackground) override;
+                         bool translucentBackground,
+                         qreal sourceTransformFactor) override;
 
     QImage toImage() const override;
     QPlatformGraphicsBuffer *graphicsBuffer() const override;
@@ -54,6 +56,7 @@ private:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
     QSize m_requestedSize;
+    QRegion m_staticContents;
 
     class GraphicsBuffer : public QIOSurfaceGraphicsBuffer
     {
@@ -78,7 +81,8 @@ private:
     bool recreateBackBufferIfNeeded();
     void finalizeBackBuffer();
 
-    void preserveFromFrontBuffer(const QRegion &region, const QPoint &offset = QPoint());
+    void blitBuffer(GraphicsBuffer *sourceBuffer, const QRegion &sourceRegion,
+                    GraphicsBuffer *destinationBuffer, const QPoint &destinationOffset = QPoint());
 
     void backingPropertiesChanged();
     QMacNotificationObserver m_backingPropertiesObserver;

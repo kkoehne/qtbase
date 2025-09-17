@@ -1,10 +1,13 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDIR_H
 #define QDIR_H
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qstring.h>
+#include <QtCore/qdirlisting.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qfileinfo.h>
 #include <QtCore/qstringlist.h>
@@ -29,8 +32,9 @@ public:
                   Writable    = 0x020,
                   Executable  = 0x040,
                   PermissionMask    = 0x070,
-
-                  Modified    = 0x080,
+#if QT_DEPRECATED_SINCE(6, 11)
+                  Modified QT_DEPRECATED_VERSION_X_6_11("This flag is not handled in QDir; you can simply remove it from your code.") = 0x080,
+#endif
                   Hidden      = 0x100,
                   System      = 0x200,
 
@@ -167,10 +171,16 @@ public:
     QFileInfoList entryInfoList(const QStringList &nameFilters, Filters filters = NoFilter,
                                 SortFlags sort = NoSort) const;
 
+#if QT_CORE_REMOVED_SINCE(6, 10)
     bool mkdir(const QString &dirName) const;
     bool mkdir(const QString &dirName, QFile::Permissions permissions) const;
+#endif
+    bool mkdir(const QString &dirName, std::optional<QFile::Permissions> p = std::nullopt) const;
     bool rmdir(const QString &dirName) const;
+#if QT_CORE_REMOVED_SINCE(6, 10)
     bool mkpath(const QString &dirPath) const;
+#endif
+    bool mkpath(const QString &dirPath, std::optional<QFile::Permissions> p = std::nullopt) const;
     bool rmpath(const QString &dirPath) const;
 
     bool removeRecursively();
@@ -185,8 +195,10 @@ public:
     inline bool isAbsolute() const { return !isRelative(); }
     bool makeAbsolute();
 
+#if QT_CORE_REMOVED_SINCE(6, 8)
     bool operator==(const QDir &dir) const;
     inline bool operator!=(const QDir &dir) const { return !operator==(dir); }
+#endif
 
     bool remove(const QString &fileName);
     bool rename(const QString &oldName, const QString &newName);
@@ -237,7 +249,11 @@ protected:
     QSharedDataPointer<QDirPrivate> d_ptr;
 
 private:
+    friend Q_CORE_EXPORT bool comparesEqual(const QDir &lhs, const QDir &rhs);
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(QDir)
     friend class QDirIterator;
+    friend class QDirListing;
+    friend class QDirListingPrivate;
     // Q_DECLARE_PRIVATE equivalent for shared data pointers
     QDirPrivate *d_func();
     const QDirPrivate *d_func() const { return d_ptr.constData(); }

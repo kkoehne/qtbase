@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include "baselineprotocol.h"
 #include <QLibraryInfo>
 #include <QImage>
@@ -38,32 +38,14 @@ PlatformInfo PlatformInfo::localHostInfo()
     pi.insert(PI_OSName, QLS("Linux"));
 #elif defined(Q_OS_WIN)
     pi.insert(PI_OSName, QLS("Windows"));
-#elif defined(Q_OS_DARWIN)
-    pi.insert(PI_OSName, QLS("Darwin"));
+#elif defined(Q_OS_MACOS)
+    pi.insert(PI_OSName, QLS("macOS"));
 #else
-    pi.insert(PI_OSName, QLS("Other"));
+    pi.insert(PI_OSName, QSysInfo::productType());
 #endif
     pi.insert(PI_OSVersion, QSysInfo::kernelVersion());
 
     QString gc = qEnvironmentVariable("BASELINE_GIT_COMMIT");
-#if QT_CONFIG(process)
-    if (gc.isEmpty()) {
-        QProcess git;
-        QString cmd;
-        QStringList args;
-    #if defined(Q_OS_WIN)
-        cmd = QLS("cmd.exe");
-        args << QLS("/c") << QLS("git");
-    #else
-        cmd = QLS("git");
-    #endif
-        args << QLS("log") << QLS("--max-count=1") << QLS("--pretty=%H [%an] [%ad] %s");
-        git.start(cmd, args);
-        git.waitForFinished(3000);
-        if (!git.exitCode())
-            gc = QString::fromLocal8Bit(git.readAllStandardOutput().constData()).simplified();
-    }
-#endif // QT_CONFIG(process)
     pi.insert(PI_GitCommit, gc.isEmpty() ? QLS("Unknown") : gc);
 
     if (qEnvironmentVariableIsSet("JENKINS_HOME"))
@@ -231,7 +213,14 @@ void ImageItem::readImageFromStream(QDataStream &in)
 
 QDataStream & operator<< (QDataStream &stream, const ImageItem &ii)
 {
-    stream << ii.testFunction << ii.itemName << ii.itemChecksum << quint8(ii.status) << ii.imageChecksums << ii.misc;
+    stream << ii.testFunction << ii.itemName << ii.itemChecksum << quint8(ii.status) << ii.imageChecksums;
+
+    // This is where we used to stream the `misc` field. We now stream the metadata as QByteArray
+    QByteArray byteArray;
+    QDataStream out(&byteArray, QIODevice::WriteOnly);
+    out << ii.metaData;
+    stream << byteArray;
+
     ii.writeImageToStream(stream);
     return stream;
 }
@@ -239,7 +228,14 @@ QDataStream & operator<< (QDataStream &stream, const ImageItem &ii)
 QDataStream & operator>> (QDataStream &stream, ImageItem &ii)
 {
     quint8 encStatus;
-    stream >> ii.testFunction >> ii.itemName >> ii.itemChecksum >> encStatus >> ii.imageChecksums >> ii.misc;
+    stream >> ii.testFunction >> ii.itemName >> ii.itemChecksum >> encStatus >> ii.imageChecksums;
+
+    // This is where we used to stream the `misc` field. We now stream the metadata as QByteArray
+    QByteArray metaDataBytes;
+    stream >> metaDataBytes;
+    QDataStream metaDataStream(metaDataBytes);
+    metaDataStream >> ii.metaData;
+
     ii.status = ImageItem::ItemStatus(encStatus);
     ii.readImageFromStream(stream);
     return stream;
@@ -261,18 +257,21 @@ bool BaselineProtocol::disconnect()
 }
 
 
-bool BaselineProtocol::connect(const QString &testCase, bool *dryrun, const PlatformInfo& clientInfo)
+bool BaselineProtocol::connect(const QString &testCase, bool *dryrun, const PlatformInfo &clientInfo, const QString &server)
 {
     errMsg.clear();
-    QByteArray serverName(qgetenv("QT_LANCELOT_SERVER"));
-    if (serverName.isNull())
-        serverName = "lancelot.test.qt-project.org";
+    QString serverName = server;
+    if (serverName.isEmpty()) {
+        serverName = qEnvironmentVariable("QT_LANCELOT_SERVER");
+        if (serverName.isEmpty())
+            serverName = QStringLiteral("lancelot.test.qt-project.org");
+    }
 
     socket.connectToHost(serverName, ServerPort);
     if (!socket.waitForConnected(Timeout)) {
         QThread::sleep(std::chrono::seconds{3});  // Wait a bit and try again, the server might just be restarting
         if (!socket.waitForConnected(Timeout)) {
-            errMsg += QLS("TCP connectToHost failed. Host:") + QLS(serverName) + QLS(" port:") + QString::number(ServerPort);
+            errMsg += QLS("TCP connectToHost failed. Host:") + serverName + QLS(" port:") + QString::number(ServerPort);
             return false;
         }
     }
@@ -381,6 +380,11 @@ bool BaselineProtocol::submitMismatch(const ImageItem &item, QByteArray *serverM
     return false;
 }
 
+bool BaselineProtocol::finalizeTesting(QByteArray *serverMsg)
+{
+    Command cmd;
+    return sendBlock(Command::FinalizeTesting, {}) && receiveBlock(&cmd, serverMsg) && cmd == Ack;
+}
 
 bool BaselineProtocol::sendItem(Command cmd, const ImageItem &item)
 {

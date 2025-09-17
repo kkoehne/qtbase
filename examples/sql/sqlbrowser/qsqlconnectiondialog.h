@@ -5,16 +5,22 @@
 #define QSQLCONNECTIONDIALOG_H
 
 #include <QDialog>
-#include <QMessageBox>
 
-#include "ui_qsqlconnectiondialog.h"
+#include <memory>
 
-class QSqlConnectionDialog: public QDialog
+QT_BEGIN_NAMESPACE
+namespace Ui
+{
+class QSqlConnectionDialogUi;
+}
+QT_END_NAMESPACE
+
+class QSqlConnectionDialog : public QDialog
 {
     Q_OBJECT
 public:
-    QSqlConnectionDialog(QWidget *parent = nullptr);
-    ~QSqlConnectionDialog();
+    explicit QSqlConnectionDialog(QWidget *parent = nullptr);
+    ~QSqlConnectionDialog() override;
 
     QString driverName() const;
     QString databaseName() const;
@@ -24,13 +30,10 @@ public:
     int port() const;
     bool useInMemoryDatabase() const;
 
-private slots:
-    void on_okButton_clicked();
-    void on_cancelButton_clicked() { reject(); }
-    void on_dbCheckBox_clicked() { ui.connGroupBox->setEnabled(!ui.dbCheckBox->isChecked()); }
+    void accept() override;
 
 private:
-    Ui::QSqlConnectionDialogUi ui;
+    const std::unique_ptr<Ui::QSqlConnectionDialogUi> m_ui;
 };
 
 #endif

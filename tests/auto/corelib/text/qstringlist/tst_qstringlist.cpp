@@ -1,7 +1,8 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+#include <qlatin1stringmatcher.h>
 #include <qlist.h>
 #include <qregularexpression.h>
 #include <qstringlist.h>
@@ -10,6 +11,8 @@
 #include <locale.h>
 
 #include <algorithm>
+
+using namespace Qt::StringLiterals;
 
 class tst_QStringList : public QObject
 {
@@ -21,6 +24,7 @@ private slots:
     void replaceInStrings();
     void removeDuplicates();
     void removeDuplicates_data();
+    void contains_data();
     void contains();
     void indexOf_data();
     void indexOf();
@@ -110,6 +114,15 @@ void tst_QStringList::indexOf()
     QCOMPARE(list.indexOf(QStringView(search), from), expectedResult);
     QCOMPARE(list.indexOf(QLatin1String(search.toLatin1()), from), expectedResult);
     QCOMPARE(list.indexOf(QRegularExpression(QRegularExpression::escape(search)), from), expectedResult);
+
+    QString searchUpper = search.toUpper();
+    QCOMPARE(list.indexOf(searchUpper, from, Qt::CaseInsensitive), expectedResult);
+    QCOMPARE(list.indexOf(QStringView(searchUpper), from, Qt::CaseInsensitive), expectedResult);
+    QCOMPARE(list.indexOf(QLatin1StringView(searchUpper.toLatin1()), from, Qt::CaseInsensitive),
+             expectedResult);
+    const QRegularExpression re(QRegularExpression::escape(searchUpper),
+                                QRegularExpression::CaseInsensitiveOption);
+    QCOMPARE(list.indexOf(re, from), expectedResult);
 }
 
 void tst_QStringList::lastIndexOf_data()
@@ -147,27 +160,41 @@ void tst_QStringList::lastIndexOf()
     QCOMPARE(list.lastIndexOf(QStringView(search), from), expectedResult);
     QCOMPARE(list.lastIndexOf(QLatin1String(search.toLatin1()), from), expectedResult);
     QCOMPARE(list.lastIndexOf(QRegularExpression(QRegularExpression::escape(search)), from), expectedResult);
+
+    const QString searchUpper = search.toUpper();
+    QCOMPARE(list.lastIndexOf(searchUpper, from, Qt::CaseInsensitive), expectedResult);
+    QCOMPARE(list.lastIndexOf(QStringView(searchUpper), from, Qt::CaseInsensitive), expectedResult);
+    QCOMPARE(list.lastIndexOf(QLatin1String(searchUpper.toLatin1()), from, Qt::CaseInsensitive),
+             expectedResult);
+    const QRegularExpression re(QRegularExpression::escape(searchUpper),
+                                QRegularExpression::CaseInsensitiveOption);
+    QCOMPARE(list.lastIndexOf(re, from), expectedResult);
 }
 
 void tst_QStringList::filter()
 {
-    QStringList list1, list2;
-    list1 << "Bill Gates" << "Joe Blow" << "Bill Clinton";
-    list1 = list1.filter( "Bill" );
-    list2 << "Bill Gates" << "Bill Clinton";
-    QCOMPARE( list1, list2 );
+    const QStringList list = {u"Bill Gates"_s, u"Joe Blow"_s, u"Bill Clinton"_s, u"bIll"_s};
 
-    QStringList list5, list6;
-    list5 << "Bill Gates" << "Joe Blow" << "Bill Clinton";
-    list5 = list5.filter( QRegularExpression("[i]ll") );
-    list6 << "Bill Gates" << "Bill Clinton";
-    QCOMPARE( list5, list6 );
+    { // CaseSensitive
+        const QStringList expected{u"Bill Gates"_s, u"Bill Clinton"_s};
+        QCOMPARE(list.filter(u"Bill"_s), expected);
+        QCOMPARE(list.filter(u"Bill"), expected);
+        QCOMPARE(list.filter("Bill"_L1), expected);
+        QCOMPARE(list.filter(QRegularExpression(u"[i]ll"_s)), expected);
+        QCOMPARE(list.filter(QStringMatcher(u"Bill")), expected);
+        QCOMPARE(list.filter(QLatin1StringMatcher("Bill"_L1)), expected);
+    }
 
-    QStringList list7, list8;
-    list7 << "Bill Gates" << "Joe Blow" << "Bill Clinton";
-    list7 = list7.filter( QStringView(QString("Bill")) );
-    list8 << "Bill Gates" << "Bill Clinton";
-    QCOMPARE( list7, list8 );
+    { // CaseInsensitive
+        const QStringList expected = {u"Bill Gates"_s, u"Bill Clinton"_s, u"bIll"_s};
+        QCOMPARE(list.filter(u"bill"_s, Qt::CaseInsensitive), expected);
+        QCOMPARE(list.filter(u"bill", Qt::CaseInsensitive), expected);
+        QCOMPARE(list.filter("bill"_L1, Qt::CaseInsensitive), expected);
+        QCOMPARE(list.filter(QRegularExpression(u"[i]ll"_s, QRegularExpression::CaseInsensitiveOption)),
+                             expected);
+        QCOMPARE(list.filter(QStringMatcher(u"Bill", Qt::CaseInsensitive)), expected);
+        QCOMPARE(list.filter(QLatin1StringMatcher("bill"_L1, Qt::CaseInsensitive)), expected);
+    }
 }
 
 void tst_QStringList::sort()
@@ -240,37 +267,35 @@ void tst_QStringList::replaceInStrings()
     QCOMPARE(copy, (QStringList{"ylphy", "bety", "gymmy"}));
 }
 
+void tst_QStringList::contains_data()
+{
+    QTest::addColumn<QString>("needle");
+    QTest::addColumn<Qt::CaseSensitivity>("cs");
+    QTest::addColumn<bool>("expected");
+
+    QTest::newRow("arthur") << u"arthur"_s << Qt::CaseSensitive << true;
+    QTest::newRow("ArthuR") << u"ArthuR"_s << Qt::CaseSensitive << false;
+    QTest::newRow("arthur") << u"arthur"_s << Qt::CaseInsensitive << true;
+    QTest::newRow("ArthuR") << u"ArthuR"_s << Qt::CaseInsensitive << true;
+    QTest::newRow("ARTHUR") << u"ARTHUR"_s << Qt::CaseInsensitive << true;
+    QTest::newRow("Hans") << u"Hans"_s << Qt::CaseSensitive << false;
+    QTest::newRow("hans") << u"hans"_s << Qt::CaseInsensitive << false;
+    QTest::newRow("dent") << u"dent"_s << Qt::CaseInsensitive << true;
+}
+
 void tst_QStringList::contains()
 {
-    QStringList list;
-    list << "arthur" << "Arthur" << "arthuR" << "ARTHUR" << "Dent" << "Hans Dent";
+    QFETCH(QString, needle);
+    QFETCH(Qt::CaseSensitivity, cs);
+    QFETCH(bool, expected);
 
-    QVERIFY(list.contains("arthur"));
-    QVERIFY(!list.contains("ArthuR"));
-    QVERIFY(!list.contains("Hans"));
-    QVERIFY(list.contains("arthur", Qt::CaseInsensitive));
-    QVERIFY(list.contains("ArthuR", Qt::CaseInsensitive));
-    QVERIFY(list.contains("ARTHUR", Qt::CaseInsensitive));
-    QVERIFY(list.contains("dent", Qt::CaseInsensitive));
-    QVERIFY(!list.contains("hans", Qt::CaseInsensitive));
+    const QStringList list = {
+        u"arthur"_s, u"Arthur"_s, u"arthuR"_s, u"ARTHUR"_s, u"Dent"_s, u"Hans Dent"_s
+    };
 
-    QVERIFY(list.contains(QLatin1String("arthur")));
-    QVERIFY(!list.contains(QLatin1String("ArthuR")));
-    QVERIFY(!list.contains(QLatin1String("Hans")));
-    QVERIFY(list.contains(QLatin1String("arthur"), Qt::CaseInsensitive));
-    QVERIFY(list.contains(QLatin1String("ArthuR"), Qt::CaseInsensitive));
-    QVERIFY(list.contains(QLatin1String("ARTHUR"), Qt::CaseInsensitive));
-    QVERIFY(list.contains(QLatin1String("dent"), Qt::CaseInsensitive));
-    QVERIFY(!list.contains(QLatin1String("hans"), Qt::CaseInsensitive));
-
-    QVERIFY(list.contains(QStringView(QString("arthur"))));
-    QVERIFY(!list.contains(QStringView(QString("ArthuR"))));
-    QVERIFY(!list.contains(QStringView(QString("Hans"))));
-    QVERIFY(list.contains(QStringView(QString("arthur")), Qt::CaseInsensitive));
-    QVERIFY(list.contains(QStringView(QString("ArthuR")), Qt::CaseInsensitive));
-    QVERIFY(list.contains(QStringView(QString("ARTHUR")), Qt::CaseInsensitive));
-    QVERIFY(list.contains(QStringView(QString("dent")), Qt::CaseInsensitive));
-    QVERIFY(!list.contains(QStringView(QString("hans")), Qt::CaseInsensitive));
+    QCOMPARE(list.contains(needle, cs), expected);
+    QCOMPARE(list.contains(QStringView(needle), cs), expected);
+    QCOMPARE(list.contains(QLatin1StringView(needle.toLatin1()), cs), expected);
 }
 
 void tst_QStringList::removeDuplicates_data()

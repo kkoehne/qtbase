@@ -23,9 +23,9 @@
 #include <QtWidgets/QSpacerItem>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QVBoxLayout>
+#include <gridpanel_p.h>
 #include <previewconfigurationwidget_p.h>
 #include "fontpanel.h"
-#include "gridpanel_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -109,7 +109,7 @@ public:
 
         gridLayout->addWidget(m_removeTemplatePathButton, 1, 1, 1, 1);
 
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(spacerItem, 1, 2, 1, 1);
 
@@ -129,15 +129,15 @@ public:
 
         line = new QFrame(PreferencesDialog);
         line->setObjectName("line");
-        line->setFrameShape(QFrame::HLine);
-        line->setFrameShadow(QFrame::Sunken);
+        line->setFrameShape(QFrame::Shape::HLine);
+        line->setFrameShadow(QFrame::Shadow::Sunken);
 
         vboxLayout->addWidget(line);
 
         m_dialogButtonBox = new QDialogButtonBox(PreferencesDialog);
         m_dialogButtonBox->setObjectName("m_dialogButtonBox");
-        m_dialogButtonBox->setOrientation(Qt::Horizontal);
-        m_dialogButtonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        m_dialogButtonBox->setOrientation(Qt::Orientation::Horizontal);
+        m_dialogButtonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         vboxLayout->addWidget(m_dialogButtonBox);
 

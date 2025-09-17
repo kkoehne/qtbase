@@ -96,7 +96,7 @@ QT_BEGIN_NAMESPACE
     \sa activated()
 */
 
-static bool simpleContextMatcher(QObject *object, Qt::ShortcutContext context)
+bool QShortcutPrivate::simpleContextMatcher(QObject *object, Qt::ShortcutContext context)
 {
     auto guiShortcut = qobject_cast<QShortcut *>(object);
     if (QGuiApplication::applicationState() != Qt::ApplicationActive || guiShortcut == nullptr)
@@ -576,5 +576,7 @@ bool QShortcut::event(QEvent *e)
 }
 
 QT_END_NAMESPACE
+
+#undef QAPP_CHECK
 
 #include "moc_qshortcut.cpp"

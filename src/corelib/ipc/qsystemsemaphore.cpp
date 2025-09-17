@@ -1,11 +1,13 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsystemsemaphore.h"
 #include "qsystemsemaphore_p.h"
 
 #if QT_CONFIG(systemsemaphore)
 #include <QtCore/q20memory.h>
+#include <errno.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -68,24 +70,13 @@ inline void QSystemSemaphorePrivate::destructBackend()
   \sa {Inter-Process Communication}, QSharedMemory, QSemaphore
  */
 
-#if QT_DEPRECATED_SINCE(6, 10)
 /*!
-  \deprecated
-
-  Requests a system semaphore identified by the legacy key \a key. This
-  constructor does the same as:
-
-  \code
-    QSystemSemaphore(QSystemSemaphore::legacyNativeKey(key), initialValue, mode)
-  \endcode
-
-  except that it stores the legacy native key to retrieve using key().
+  Requests a system semaphore identified by the legacy key \a key.
  */
 QSystemSemaphore::QSystemSemaphore(const QString &key, int initialValue, AccessMode mode)
     : QSystemSemaphore(legacyNativeKey(key), initialValue, mode)
 {
 }
-#endif
 
 /*!
   Requests a system semaphore for the specified \a key. The parameters
@@ -226,9 +217,7 @@ QNativeIpcKey QSystemSemaphore::nativeIpcKey() const
     return d->nativeKey;
 }
 
-#if QT_DEPRECATED_SINCE(6, 10)
 /*!
-  \deprecated
   This function works the same as the constructor. It reconstructs
   this QSystemSemaphore object. If the new \a key is different from
   the old key, calling this function is like calling the destructor of
@@ -244,7 +233,6 @@ void QSystemSemaphore::setKey(const QString &key, int initialValue, AccessMode m
 }
 
 /*!
-  \deprecated
   Returns the legacy key assigned to this system semaphore. The key is the
   name by which the semaphore can be accessed from other processes.
 
@@ -254,7 +242,6 @@ QString QSystemSemaphore::key() const
 {
     return QNativeIpcKeyPrivate::legacyKey(d->nativeKey);
 }
-#endif
 
 /*!
   Acquires one of the resources guarded by this semaphore, if there is

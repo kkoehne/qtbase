@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+#ifdef QPROPERTY_MACRO
 //! [0]
 Q_PROPERTY(type name
            (READ getFunction [WRITE setFunction] |
@@ -25,33 +26,40 @@ Q_PROPERTY(bool enabled READ isEnabled WRITE setEnabled)
 Q_PROPERTY(QCursor cursor READ cursor WRITE setCursor RESET unsetCursor)
 //! [1]
 
-
 //! [2]
 Q_PROPERTY(QDate date READ getDate WRITE setDate)
 //! [2]
+#endif
 
+#if __has_include(<QPushButton>)
+#include <QPushButton>
+void button_example()
+{
+    //! [3]
+    QPushButton *button = new QPushButton;
+    QObject *object = button;
 
-//! [3]
-QPushButton *button = new QPushButton;
-QObject *object = button;
-
-button->setDown(true);
-object->setProperty("down", true);
-//! [3]
-
-
-//! [4]
-QObject *object = ...
-const QMetaObject *metaobject = object->metaObject();
-int count = metaobject->propertyCount();
-for (int i=0; i<count; ++i) {
-    QMetaProperty metaproperty = metaobject->property(i);
-    const char *name = metaproperty.name();
-    QVariant value = object->property(name);
-    ...
+    button->setDown(true);
+    object->setProperty("down", true);
+    //! [3]
 }
-//! [4]
+#endif
 
+#include <QMetaProperty>
+void qobject_example()
+{
+    //! [4]
+    QObject *object = new QObject;
+    const QMetaObject *metaobject = object->metaObject();
+    int count = metaobject->propertyCount();
+    for (int i=0; i<count; ++i) {
+        QMetaProperty metaproperty = metaobject->property(i);
+        const char *name = metaproperty.name();
+        QVariant value = object->property(name);
+        //...
+    }
+    //! [4]
+}
 
 //! [5]
 class MyClass : public QObject
@@ -68,6 +76,9 @@ public:
 
     void setPriority(Priority priority)
     {
+        if (m_priority == priority)
+            return;
+
         m_priority = priority;
         emit priorityChanged(priority);
     }
@@ -82,25 +93,26 @@ private:
 };
 //! [5]
 
+void example(){
+    //! [6]
+    MyClass *myinstance = new MyClass;
+    QObject *object = myinstance;
 
-//! [6]
-MyClass *myinstance = new MyClass;
-QObject *object = myinstance;
+    myinstance->setPriority(MyClass::VeryHigh);
+    object->setProperty("priority", "VeryHigh");
+    //! [6]
+}
 
-myinstance->setPriority(MyClass::VeryHigh);
-object->setProperty("priority", "VeryHigh");
-//! [6]
-
-
+#ifdef QPROPERTY_MACRO
 //! [7]
-Q_CLASSINFO("Version", "3.0.0")
+Q_CLASSINFO("DefaultProperty", "content")
 //! [7]
 
 //! [8]
     Q_PROPERTY(QColor color MEMBER m_color NOTIFY colorChanged)
     Q_PROPERTY(qreal spacing MEMBER m_spacing NOTIFY spacingChanged)
     Q_PROPERTY(QString text MEMBER m_text NOTIFY textChanged)
-    ...
+    //...
 signals:
     void colorChanged();
     void spacingChanged();
@@ -111,4 +123,4 @@ private:
     qreal   m_spacing;
     QString m_text;
 //! [8]
-
+#endif

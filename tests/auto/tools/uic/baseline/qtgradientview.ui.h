@@ -44,12 +44,12 @@ public:
         hboxLayout->setObjectName("hboxLayout");
         newButton = new QToolButton(QtGradientView);
         newButton->setObjectName("newButton");
-        QSizePolicy sizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Minimum);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(newButton->sizePolicy().hasHeightForWidth());
         newButton->setSizePolicy(sizePolicy);
-        newButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        newButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
         newButton->setAutoRaise(true);
 
         hboxLayout->addWidget(newButton);
@@ -58,7 +58,7 @@ public:
         editButton->setObjectName("editButton");
         sizePolicy.setHeightForWidth(editButton->sizePolicy().hasHeightForWidth());
         editButton->setSizePolicy(sizePolicy);
-        editButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        editButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
         editButton->setAutoRaise(true);
 
         hboxLayout->addWidget(editButton);
@@ -67,7 +67,7 @@ public:
         renameButton->setObjectName("renameButton");
         sizePolicy.setHeightForWidth(renameButton->sizePolicy().hasHeightForWidth());
         renameButton->setSizePolicy(sizePolicy);
-        renameButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        renameButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
         renameButton->setAutoRaise(true);
 
         hboxLayout->addWidget(renameButton);
@@ -76,12 +76,12 @@ public:
         removeButton->setObjectName("removeButton");
         sizePolicy.setHeightForWidth(removeButton->sizePolicy().hasHeightForWidth());
         removeButton->setSizePolicy(sizePolicy);
-        removeButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        removeButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
         removeButton->setAutoRaise(true);
 
         hboxLayout->addWidget(removeButton);
 
-        spacerItem = new QSpacerItem(71, 26, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(71, 26, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 

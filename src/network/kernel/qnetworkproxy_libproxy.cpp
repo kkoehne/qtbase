@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qnetworkproxy.h"
 
@@ -10,6 +11,7 @@
 #include <QtCore/QMutex>
 #include <QtCore/QSemaphore>
 #include <QtCore/QUrl>
+#include <QtCore/private/qlatch_p.h>
 #include <QtCore/private/qeventdispatcher_unix_p.h>
 #include <QtCore/private/qthread_p.h>
 #include <QtCore/qapplicationstatic.h>
@@ -61,7 +63,7 @@ private:
         // we leave the conversion to/from QUrl to the calling thread
         const char *url;
         char **proxies;
-        QSemaphore replyReady;
+        QLatch replyReady{1};
     };
 
     void run() override;
@@ -119,7 +121,7 @@ QList<QUrl> QLibProxyWrapper::getProxies(const QUrl &url)
             requestReady.release();
 
             // wait for the reply
-            data.replyReady.acquire();
+            data.replyReady.wait();
         } else {
             // non-threaded mode
             data.proxies = px_proxy_factory_get_proxies(factory, data.url);
@@ -147,7 +149,7 @@ void QLibProxyWrapper::run()
         if (isInterruptionRequested())
             break;
         request->proxies = px_proxy_factory_get_proxies(factory, request->url);
-        request->replyReady.release();
+        request->replyReady.countDown();
     }
 
     px_proxy_factory_free(factory);
@@ -166,13 +168,15 @@ QList<QNetworkProxy> QNetworkProxyFactory::systemProxyForQuery(const QNetworkPro
         break;
     // fake URLs to get libproxy to tell us the SOCKS proxy
     case QNetworkProxyQuery::TcpSocket:
-        queryUrl.setScheme(QStringLiteral("tcp"));
+        if (queryUrl.scheme().isEmpty())
+            queryUrl.setScheme(QStringLiteral("tcp"));
         queryUrl.setHost(query.peerHostName());
         queryUrl.setPort(query.peerPort());
         requiredCapabilities |= QNetworkProxy::TunnelingCapability;
         break;
     case QNetworkProxyQuery::UdpSocket:
-        queryUrl.setScheme(QStringLiteral("udp"));
+        if (queryUrl.scheme().isEmpty())
+            queryUrl.setScheme(QStringLiteral("udp"));
         queryUrl.setHost(query.peerHostName());
         queryUrl.setPort(query.peerPort());
         requiredCapabilities |= QNetworkProxy::UdpTunnelingCapability;

@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QtCore/qmath.h> // pi, e
@@ -77,7 +77,7 @@ void tst_toString::numeric_data()
     }
     QTest::newRow("2e9") << T(2000000000);
     QTest::newRow("c.s/m") << T(299792458);
-    QTest::newRow("Avogadro") << T(6.022045e+23); // things/mol (.996 << 79, so ints overflow to max)
+    QTest::newRow("Avogadro") << T(6.02214076e+23); // things/mol (c. 2^{79}, so ints overflow)
 
     QTest::newRow("lowest") << std::numeric_limits<T>::lowest();
     QTest::newRow("max") << std::numeric_limits<T>::max();

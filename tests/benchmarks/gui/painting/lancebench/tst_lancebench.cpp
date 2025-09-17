@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "paintcommands.h"
 
@@ -83,7 +83,8 @@ void tst_LanceBench::initTestCase()
     std::sort(qpsFiles.begin(), qpsFiles.end());
     for (const QString& fileName : std::as_const(qpsFiles)) {
         QFile file(scriptsDir + fileName);
-        file.open(QFile::ReadOnly);
+        QVERIFY2(file.open(QFile::ReadOnly),
+                 qPrintable(QString::fromLatin1("Failed to open %1").arg(fileName)));
         QByteArray cont = file.readAll();
         scripts.insert(fileName, QString::fromUtf8(cont).split(QLatin1Char('\n'), Qt::SkipEmptyParts));
     }

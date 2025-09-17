@@ -464,11 +464,13 @@ public:
         PM_ExclusiveIndicatorWidth,
         PM_ExclusiveIndicatorHeight,
 
-        PM_DialogButtonsSeparator,
-        PM_DialogButtonsButtonWidth,
-        PM_DialogButtonsButtonHeight,
+#if QT_DEPRECATED_SINCE(6, 8)
+        PM_DialogButtonsSeparator Q_DECL_ENUMERATOR_DEPRECATED_X("Not used and no effect since Qt 4"),
+        PM_DialogButtonsButtonWidth Q_DECL_ENUMERATOR_DEPRECATED_X("Not used and no effect since Qt 4"),
+        PM_DialogButtonsButtonHeight Q_DECL_ENUMERATOR_DEPRECATED_X("Not used and no effect since Qt 4"),
+#endif
 
-        PM_MdiSubWindowFrameWidth,
+        PM_MdiSubWindowFrameWidth = 44,
         PM_MdiSubWindowMinimizedWidth,
 
         PM_HeaderMargin,
@@ -600,6 +602,7 @@ public:
         SH_ScrollView_FrameOnlyAroundContents,
         SH_MenuBar_AltKeyNavigation,
         SH_ComboBox_ListMouseTracking,
+        SH_ComboBox_ListMouseTracking_Current = SH_ComboBox_ListMouseTracking,
         SH_Menu_MouseTracking,
         SH_MenuBar_MouseTracking,
         SH_ItemView_ChangeHighlightOnFocus,
@@ -702,6 +705,7 @@ public:
         SH_TabBar_AllowWheelScrolling,
         SH_Table_AlwaysDrawLeftTopGridLines,
         SH_SpinBox_SelectOnStep,
+        SH_ComboBox_ListMouseTracking_Active,
         // Add new style hint values here
 
         SH_CustomBase = 0xf0000000
@@ -838,6 +842,7 @@ private:
     friend class QProxyStyle;
     friend class QProxyStylePrivate;
     friend class QStyleFactory;
+    friend class QStyleSheetProxySaver;
     void setProxy(QStyle *style);
 };
 

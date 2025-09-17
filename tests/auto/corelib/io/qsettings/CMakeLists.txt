@@ -22,6 +22,7 @@ set(qsettings_resource_files
     "float.ini"
     "qt5settings.ini"
     "utf8settings.ini"
+    "incorrectsection.ini"
 )
 
 qt_internal_add_test(tst_qsettings
@@ -29,6 +30,10 @@ qt_internal_add_test(tst_qsettings
         tst_qsettings.cpp
     INCLUDE_DIRECTORIES
         ../../kernel/qmetatype
+    NO_BATCH # QTBUG-121815
+    DEFINES
+        QTEST_THROW_ON_FAIL
+        QTEST_THROW_ON_SKIP
     LIBRARIES
         Qt::CorePrivate
         Qt::Gui

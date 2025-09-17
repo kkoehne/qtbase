@@ -194,6 +194,9 @@ class Q_WIDGETS_EXPORT QTableWidget : public QTableView
     Q_OBJECT
     Q_PROPERTY(int rowCount READ rowCount WRITE setRowCount)
     Q_PROPERTY(int columnCount READ columnCount WRITE setColumnCount)
+#if QT_CONFIG(draganddrop)
+    Q_PROPERTY(Qt::DropActions supportedDragActions READ supportedDragActions WRITE setSupportedDragActions)
+#endif
 
     friend class QTableModel;
 public:
@@ -265,6 +268,11 @@ public:
     const QTableWidgetItem *itemPrototype() const;
     void setItemPrototype(const QTableWidgetItem *item);
 
+#if QT_CONFIG(draganddrop)
+    Qt::DropActions supportedDragActions() const;
+    void setSupportedDragActions(Qt::DropActions actions);
+#endif
+
 public Q_SLOTS:
     void scrollToItem(const QTableWidgetItem *item, QAbstractItemView::ScrollHint hint = EnsureVisible);
     void insertRow(int row);
@@ -312,16 +320,6 @@ private:
 
     Q_DECLARE_PRIVATE(QTableWidget)
     Q_DISABLE_COPY(QTableWidget)
-
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemPressed(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemClicked(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemDoubleClicked(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemActivated(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemEntered(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitItemChanged(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitCurrentItemChanged(const QModelIndex &previous, const QModelIndex &current))
-    Q_PRIVATE_SLOT(d_func(), void _q_sort())
-    Q_PRIVATE_SLOT(d_func(), void _q_dataChanged(const QModelIndex &topLeft, const QModelIndex &bottomRight))
 };
 
 inline void QTableWidget::removeCellWidget(int arow, int acolumn)

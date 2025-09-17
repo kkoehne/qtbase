@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <QTestEventLoop>
@@ -85,11 +85,7 @@ private:
     HandshakePtr dtls;
 
     const QCryptographicHash::Algorithm defaultHash =
-#ifdef QT_CRYPTOGRAPHICHASH_ONLY_SHA1
-        QCryptographicHash::Sha1;
-#else
         QCryptographicHash::Sha256;
-#endif
 
     using CookieParams = QDtlsClientVerifier::GeneratorParameters;
 

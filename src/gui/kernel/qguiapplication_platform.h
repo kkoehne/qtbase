@@ -23,14 +23,35 @@ typedef struct _XDisplay Display;
 struct xcb_connection_t;
 #endif
 
-#if defined(Q_OS_UNIX)
+#if QT_CONFIG(wayland)
 struct wl_display;
 struct wl_compositor;
 struct wl_seat;
 struct wl_keyboard;
 struct wl_pointer;
 struct wl_touch;
+
+#if QT_CONFIG(xkbcommon)
+struct xkb_context;
 #endif
+
+#endif
+
+#if defined(Q_OS_VISIONOS) || defined(Q_QDOC)
+#  ifdef __OBJC__
+Q_FORWARD_DECLARE_OBJC_CLASS(CP_OBJECT_cp_layer_renderer_capabilities);
+typedef CP_OBJECT_cp_layer_renderer_capabilities *cp_layer_renderer_capabilities_t;
+Q_FORWARD_DECLARE_OBJC_CLASS(CP_OBJECT_cp_layer_renderer_configuration);
+typedef CP_OBJECT_cp_layer_renderer_configuration *cp_layer_renderer_configuration_t;
+Q_FORWARD_DECLARE_OBJC_CLASS(CP_OBJECT_cp_layer_renderer);
+typedef CP_OBJECT_cp_layer_renderer *cp_layer_renderer_t;
+#  else
+typedef struct cp_layer_renderer_capabilities_s *cp_layer_renderer_capabilities_t;
+typedef struct cp_layer_renderer_configuration_s *cp_layer_renderer_configuration_t;
+typedef struct cp_layer_renderer_s *cp_layer_renderer_t;
+#  endif
+#endif
+
 
 QT_BEGIN_NAMESPACE
 
@@ -46,7 +67,7 @@ struct Q_GUI_EXPORT QX11Application
 };
 #endif
 
-#if defined(Q_OS_UNIX) || defined(Q_CLANG_QDOC)
+#if QT_CONFIG(wayland) || defined(Q_QDOC)
 struct Q_GUI_EXPORT QWaylandApplication
 {
     QT_DECLARE_NATIVE_INTERFACE(QWaylandApplication, 1, QGuiApplication)
@@ -58,6 +79,24 @@ struct Q_GUI_EXPORT QWaylandApplication
     virtual wl_touch *touch() const = 0;
     virtual uint lastInputSerial() const = 0;
     virtual wl_seat *lastInputSeat() const = 0;
+#if QT_CONFIG(xkbcommon)
+    virtual xkb_context *xkbContext() const = 0;
+#endif
+};
+#endif
+
+#if defined(Q_OS_VISIONOS) || defined(Q_QDOC)
+struct Q_GUI_EXPORT QVisionOSApplication
+{
+    QT_DECLARE_NATIVE_INTERFACE(QVisionOSApplication, 1, QGuiApplication)
+    struct ImmersiveSpaceCompositorLayer {
+        virtual void configure(cp_layer_renderer_capabilities_t, cp_layer_renderer_configuration_t) const {}
+        virtual void render(cp_layer_renderer_t) = 0;
+        virtual void handleSpatialEvents(const QJsonObject &) {};
+    };
+    virtual void setImmersiveSpaceCompositorLayer(ImmersiveSpaceCompositorLayer *layer) = 0;
+    virtual void openImmersiveSpace() = 0;
+    virtual void dismissImmersiveSpace() = 0;
 };
 #endif
 

@@ -7,6 +7,7 @@
 #include <qapplication.h>
 #include <qbrush.h>
 #include <qpainter.h>
+#include <qpainterstateguard.h>
 #include <qpalette.h>
 #include <qpoint.h>
 #include <qrect.h>
@@ -23,6 +24,7 @@
 #include <qtextlayout.h>
 #include <private/qabstractitemdelegate_p.h>
 #include <private/qabstractitemmodel_p.h>
+#include <private/qstylehelper_p.h>
 #include <private/qtextengine_p.h>
 #include <qdebug.h>
 #include <qlocale.h>
@@ -231,7 +233,7 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     \row    \li \l Qt::AccessibleDescriptionRole \li QString
     \row    \li \l Qt::AccessibleTextRole \li QString
     \endomit
-    \row    \li \l Qt::BackgroundRole \li QBrush (\since 4.2)
+    \row    \li \l Qt::BackgroundRole \li QBrush
     \row    \li \l Qt::CheckStateRole \li Qt::CheckState
     \row    \li \l Qt::DecorationRole \li QIcon, QPixmap and QColor
     \row    \li \l Qt::DisplayRole \li QString and types with a string representation
@@ -242,7 +244,7 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     \row    \li \l Qt::StatusTipRole \li
     \endomit
     \row    \li \l Qt::TextAlignmentRole \li Qt::Alignment
-    \row    \li \l Qt::ForegroundRole \li QBrush (\since 4.2)
+    \row    \li \l Qt::ForegroundRole \li QBrush
     \omit
     \row    \li \l Qt::ToolTipRole
     \row    \li \l Qt::WhatsThisRole
@@ -257,17 +259,27 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
 
     When subclassing QItemDelegate to create a delegate that displays items
     using a custom renderer, it is important to ensure that the delegate can
-    render items suitably for all the required states; e.g. selected,
+    render items suitably for all the required states; such as selected,
     disabled, checked. The documentation for the paint() function contains
     some hints to show how this can be achieved.
 
-    You can provide custom editors by using a QItemEditorFactory. The
-    \l{Color Editor Factory Example} shows how a custom editor can be
-    made available to delegates with the default item editor
-    factory. This way, there is no need to subclass QItemDelegate.  An
-    alternative is to reimplement createEditor(), setEditorData(),
-    setModelData(), and updateEditorGeometry(). This process is
-    described in the \l{Spin Box Delegate Example}.
+    You can provide custom editors by using a QItemEditorFactory. The following
+    code shows how a custom editor can be made available to delegates with the
+    default item editor factory.
+
+    \snippet code/src_gui_itemviews_qitemeditorfactory.cpp setDefaultFactory
+
+    After the default factory has been set, all standard item delegates
+    will use it (also the delegates that were created before setting the
+    default factory).
+
+    This way, you can avoid subclassing QItemDelegate, and all values of the
+    specified type (for example QMetaType::QDateTime) will be edited using the
+    provided editor (like \c{MyFancyDateTimeEdit} in the above example).
+
+    An alternative is to reimplement createEditor(), setEditorData(),
+    setModelData(), and updateEditorGeometry(). This process is described
+    in the \l{A simple delegate}{Model/View Programming overview documentation}.
 
     \section1 QStyledItemDelegate vs. QItemDelegate
 
@@ -281,8 +293,7 @@ QSizeF QItemDelegatePrivate::doTextLayout(int lineWidth) const
     for either class should be equal unless the custom delegate needs to use
     the style for drawing.
 
-    \sa {Delegate Classes}, QStyledItemDelegate, QAbstractItemDelegate,
-        {Spin Box Delegate Example}, {Settings Editor Example}
+    \sa {Delegate Classes}, QStyledItemDelegate, QAbstractItemDelegate
 */
 
 /*!
@@ -306,7 +317,6 @@ QItemDelegate::~QItemDelegate()
 /*!
   \property QItemDelegate::clipping
   \brief if the delegate should clip the paint events
-  \since 4.2
 
   This property will set the paint clip to the size of the item.
   The default value is on. It is useful for cases such
@@ -748,8 +758,6 @@ void QItemDelegate::drawCheck(QPainter *painter,
 }
 
 /*!
-    \since 4.2
-
     Renders the item background for the given \a index,
     using the given \a painter and style \a option.
 */
@@ -768,10 +776,9 @@ void QItemDelegate::drawBackground(QPainter *painter,
     } else {
         QVariant value = index.data(Qt::BackgroundRole);
         if (value.canConvert<QBrush>()) {
-            QPointF oldBO = painter->brushOrigin();
+            QPainterStateGuard psg(painter);
             painter->setBrushOrigin(option.rect.topLeft());
             painter->fillRect(option.rect, qvariant_cast<QBrush>(value));
-            painter->setBrushOrigin(oldBO);
         }
     }
 }
@@ -928,7 +935,8 @@ QPixmap QItemDelegate::decoration(const QStyleOptionViewItem &option, const QVar
     case QMetaType::QIcon: {
         QIcon::Mode mode = d->iconMode(option.state);
         QIcon::State state = d->iconState(option.state);
-        return qvariant_cast<QIcon>(variant).pixmap(option.decorationSize, mode, state); }
+        const auto dpr = QStyleHelper::getDpr(option.widget);
+        return qvariant_cast<QIcon>(variant).pixmap(option.decorationSize, dpr, mode, state); }
     case QMetaType::QColor: {
         static QPixmap pixmap(option.decorationSize);
         pixmap.fill(qvariant_cast<QColor>(variant));
@@ -1068,37 +1076,14 @@ QRect QItemDelegate::textRectangle(QPainter * /*painter*/, const QRect &rect,
 }
 
 /*!
-    \fn bool QItemDelegate::eventFilter(QObject *editor, QEvent *event)
+    \reimp
 
-    Returns \c true if the given \a editor is a valid QWidget and the
-    given \a event is handled; otherwise returns \c false. The following
-    key press events are handled by default:
-
-    \list
-        \li \uicontrol Tab
-        \li \uicontrol Backtab
-        \li \uicontrol Enter
-        \li \uicontrol Return
-        \li \uicontrol Esc
-    \endlist
-
-    In the case of \uicontrol Tab, \uicontrol Backtab, \uicontrol Enter and \uicontrol Return
-    key press events, the \a editor's data is committed to the model
-    and the editor is closed. If the \a event is a \uicontrol Tab key press
-    the view will open an editor on the next item in the
-    view. Likewise, if the \a event is a \uicontrol Backtab key press the
-    view will open an editor on the \e previous item in the view.
-
-    If the event is a \uicontrol Esc key press event, the \a editor is
-    closed \e without committing its data.
-
-    \sa commitData(), closeEditor()
+    See details in QAbstractItemDelegate::handleEditorEvent().
 */
 
 bool QItemDelegate::eventFilter(QObject *object, QEvent *event)
 {
-    Q_D(QItemDelegate);
-    return d->editorEventFilter(object, event);
+    return handleEditorEvent(object, event);
 }
 
 /*!

@@ -5,42 +5,15 @@
 #include "qbitmap.h"
 #include "qpixmapcache.h"
 #include "qpainter.h"
+#include "qpainterstateguard.h"
 #include "qpalette.h"
+#include "qstylehelper_p.h"
 #include <private/qpaintengineex_p.h>
 #include <qvarlengtharray.h>
 #include <qmath.h>
 #include <private/qhexstring_p.h>
 
 QT_BEGIN_NAMESPACE
-
-namespace {
-class PainterStateGuard {
-    Q_DISABLE_COPY_MOVE(PainterStateGuard)
-public:
-    explicit PainterStateGuard(QPainter *p) : m_painter(p) {}
-    ~PainterStateGuard()
-    {
-        for ( ; m_level > 0; --m_level)
-            m_painter->restore();
-    }
-
-    void save()
-    {
-        m_painter->save();
-        ++m_level;
-    }
-
-    void restore()
-    {
-        m_painter->restore();
-        --m_level;
-    }
-
-private:
-    QPainter *m_painter;
-    int m_level= 0;
-};
-} // namespace
 
 /*!
     \headerfile <qdrawutil.h>
@@ -91,10 +64,9 @@ void qDrawShadeLine(QPainter *p, int x1, int y1, int x2, int y2,
         qWarning("qDrawShadeLine: Invalid parameters");
         return;
     }
-    PainterStateGuard painterGuard(p);
-    const qreal devicePixelRatio = p->device()->devicePixelRatio();
+    QPainterStateGuard painterGuard(p);
+    const qreal devicePixelRatio = QStyleHelper::getDpr(p);
     if (!qFuzzyCompare(devicePixelRatio, qreal(1))) {
-        painterGuard.save();
         const qreal inverseScale = qreal(1) / devicePixelRatio;
         p->scale(inverseScale, inverseScale);
         x1 = qRound(devicePixelRatio * x1);
@@ -106,7 +78,6 @@ void qDrawShadeLine(QPainter *p, int x1, int y1, int x2, int y2,
         p->translate(0.5, 0.5);
     }
     int tlw = lineWidth*2 + midLineWidth;        // total line width
-    QPen oldPen = p->pen();                        // save pen
     if (sunken)
         p->setPen(pal.color(QPalette::Dark));
     else
@@ -174,7 +145,6 @@ void qDrawShadeLine(QPainter *p, int x1, int y1, int x2, int y2,
             p->drawPolyline(a);
         }
     }
-    p->setPen(oldPen);
 }
 
 /*!
@@ -222,10 +192,9 @@ void qDrawShadeRect(QPainter *p, int x, int y, int w, int h,
         return;
     }
 
-    PainterStateGuard painterGuard(p);
-    const qreal devicePixelRatio = p->device()->devicePixelRatio();
+    QPainterStateGuard painterGuard(p);
+    const qreal devicePixelRatio = QStyleHelper::getDpr(p);
     if (!qFuzzyCompare(devicePixelRatio, qreal(1))) {
-        painterGuard.save();
         const qreal inverseScale = qreal(1) / devicePixelRatio;
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
@@ -236,8 +205,6 @@ void qDrawShadeRect(QPainter *p, int x, int y, int w, int h,
         midLineWidth = qRound(devicePixelRatio * midLineWidth);
         p->translate(0.5, 0.5);
     }
-
-    QPen oldPen = p->pen();
     if (sunken)
         p->setPen(pal.dark().color());
     else
@@ -287,16 +254,12 @@ void qDrawShadeRect(QPainter *p, int x, int y, int w, int h,
         }
     }
     if (fill) {
-        QBrush oldBrush = p->brush();
         int tlw = lineWidth + midLineWidth;
         p->setPen(Qt::NoPen);
         p->setBrush(*fill);
         p->drawRect(x+tlw, y+tlw, w-2*tlw, h-2*tlw);
-        p->setBrush(oldBrush);
     }
-    p->setPen(oldPen);                        // restore pen
 }
-
 
 /*!
     \fn void qDrawShadePanel(QPainter *painter, int x, int y, int width, int height,
@@ -337,11 +300,10 @@ void qDrawShadePanel(QPainter *p, int x, int y, int w, int h,
         qWarning("qDrawShadePanel: Invalid parameters");
     }
 
-    PainterStateGuard painterGuard(p);
-    const qreal devicePixelRatio = p->device()->devicePixelRatio();
+    QPainterStateGuard painterGuard(p);
+    const qreal devicePixelRatio = QStyleHelper::getDpr(p);
     bool isTranslated = false;
     if (!qFuzzyCompare(devicePixelRatio, qreal(1))) {
-        painterGuard.save();
         const qreal inverseScale = qreal(1) / devicePixelRatio;
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
@@ -361,7 +323,6 @@ void qDrawShadePanel(QPainter *p, int x, int y, int w, int h,
         if (fill->color() == light)
             light = pal.midlight().color();
     }
-    QPen oldPen = p->pen();                        // save pen
     QList<QLineF> lines;
     lines.reserve(2*lineWidth);
 
@@ -406,9 +367,7 @@ void qDrawShadePanel(QPainter *p, int x, int y, int w, int h,
             p->translate(-0.5, -0.5);
         p->fillRect(x+lineWidth, y+lineWidth, w-lineWidth*2, h-lineWidth*2, *fill);
     }
-    p->setPen(oldPen);                        // restore pen
 }
-
 
 /*!
   \internal
@@ -434,11 +393,10 @@ static void qDrawWinShades(QPainter *p,
     if (w < 2 || h < 2)                        // can't do anything with that
         return;
 
-    PainterStateGuard painterGuard(p);
-    const qreal devicePixelRatio = p->device()->devicePixelRatio();
+    QPainterStateGuard painterGuard(p);
+    const qreal devicePixelRatio = QStyleHelper::getDpr(p);
     bool isTranslated = false;
     if (!qFuzzyCompare(devicePixelRatio, qreal(1))) {
-        painterGuard.save();
         const qreal inverseScale = qreal(1) / devicePixelRatio;
         p->scale(inverseScale, inverseScale);
         x = qRound(devicePixelRatio * x);
@@ -449,7 +407,6 @@ static void qDrawWinShades(QPainter *p,
         isTranslated = true;
     }
 
-    QPen oldPen = p->pen();
     QPoint a[3] = { QPoint(x, y+h-2), QPoint(x, y), QPoint(x+w-2, y) };
     p->setPen(c1);
     p->drawPolyline(a, 3);
@@ -469,7 +426,6 @@ static void qDrawWinShades(QPainter *p,
             p->fillRect(QRect(x+2, y+2, w-4, h-4), *fill);
         }
     }
-    p->setPen(oldPen);
 }
 
 
@@ -574,41 +530,76 @@ void qDrawWinPanel(QPainter *p, int x, int y, int w, int h,
 */
 
 void qDrawPlainRect(QPainter *p, int x, int y, int w, int h, const QColor &c,
-                     int lineWidth, const QBrush *fill)
+                    int lineWidth, const QBrush *fill)
 {
     if (w == 0 || h == 0)
         return;
     if (Q_UNLIKELY(w < 0 || h < 0 || lineWidth < 0)) {
         qWarning("qDrawPlainRect: Invalid parameters");
+        return;
     }
 
-    PainterStateGuard painterGuard(p);
-    const qreal devicePixelRatio = p->device()->devicePixelRatio();
-    if (!qFuzzyCompare(devicePixelRatio, qreal(1))) {
-        painterGuard.save();
-        const qreal inverseScale = qreal(1) / devicePixelRatio;
-        p->scale(inverseScale, inverseScale);
-        x = qRound(devicePixelRatio * x);
-        y = qRound(devicePixelRatio * y);
-        w = devicePixelRatio * w;
-        h = devicePixelRatio * h;
-        lineWidth = qRound(devicePixelRatio * lineWidth);
-        p->translate(0.5, 0.5);
+    QPainterStateGuard painterGuard(p);
+    if (lineWidth == 0 && !fill)
+        return;
+    if (lineWidth > 0)
+        p->setPen(QPen(c, lineWidth, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
+    p->setBrush(fill ? *fill : Qt::NoBrush);
+    const QRectF r(x, y, w, h);
+    const auto lw2 = lineWidth / 2.;
+    const QRectF rect = r.marginsRemoved(QMarginsF(lw2, lw2, lw2, lw2));
+    p->drawRect(rect);
+}
+
+/*!
+    \fn void qDrawPlainRoundedRect(QPainter *painter, int x, int y,
+                     int width, int height, qreal rx, qreal ry,
+                     const QColor &lineColor, int lineWidth,
+                     const QBrush *fill)
+    \since 6.7
+    \relates <qdrawutil.h>
+
+    Draws the plain rounded rectangle beginning at (\a x, \a y)
+    with the given \a width and \a height,
+    using the horizontal \a rx and vertical radius \a ry,
+    specified \a painter, \a lineColor and \a lineWidth.
+    The rectangle's interior is filled with the \a
+    fill brush unless \a fill is \nullptr.
+
+    \warning This function does not look at QWidget::style() or
+    QApplication::style(). Use the drawing functions in QStyle to make
+    widgets that follow the current GUI style.
+
+    Alternatively you can use a QFrame widget and apply the
+    QFrame::setFrameStyle() function to display a plain rectangle:
+
+    \snippet code/src_gui_painting_qdrawutil.cpp 4
+
+    \sa qDrawShadeRect(), QStyle
+*/
+
+// ### Qt7: Pass QPen instead of QColor for frame drawing
+void qDrawPlainRoundedRect(QPainter *p, int x, int y, int w, int h,
+                           qreal rx, qreal ry, const QColor &c,
+                           int lineWidth, const QBrush *fill)
+{
+    if (w == 0 || h == 0)
+        return;
+    if (Q_UNLIKELY(w < 0 || h < 0 || lineWidth < 0)) {
+        qWarning("qDrawPlainRect: Invalid parameters");
+        return;
     }
 
-    QPen   oldPen   = p->pen();
-    QBrush oldBrush = p->brush();
-    p->setPen(c);
-    p->setBrush(Qt::NoBrush);
-    for (int i=0; i<lineWidth; i++)
-        p->drawRect(x+i, y+i, w-i*2 - 1, h-i*2 - 1);
-    if (fill) {                                // fill with fill color
-        p->setPen(Qt::NoPen);
-        p->setBrush(*fill);
-        p->drawRect(x+lineWidth, y+lineWidth, w-lineWidth*2, h-lineWidth*2);
-    }
-    p->setPen(oldPen);
-    p->setBrush(oldBrush);
+    QPainterStateGuard painterGuard(p);
+    if (lineWidth == 0 && !fill)
+        return;
+    if (lineWidth > 0)
+        p->setPen(QPen(c, lineWidth));
+    p->setBrush(fill ? *fill : Qt::NoBrush);
+    const QRectF r(x, y, w, h);
+    const auto lw2 = lineWidth / 2.;
+    const QRectF rect = r.marginsRemoved(QMarginsF(lw2, lw2, lw2, lw2));
+    p->drawRoundedRect(rect, rx, ry);
 }
 
 /*****************************************************************************
@@ -819,6 +810,32 @@ void qDrawPlainRect(QPainter *p, const QRect &r, const QColor &c,
                     lineWidth, fill);
 }
 
+/*!
+    \fn void qDrawPlainRoundedRect(QPainter *painter, const QRect &rect,
+                                   qreal rx, qreal ry,
+                                   const QColor &lineColor, int lineWidth,
+                                   const QBrush *fill)
+    \since 6.7
+    \relates <qdrawutil.h>
+    \overload
+
+    Draws the plain rectangle specified by \a rect using
+    the horizontal \a rx and vertical radius \a ry,
+    the given \a painter, \a lineColor and \a lineWidth.
+    The rectangle's interior is filled with the
+    \a fill brush unless \a fill is \nullptr.
+
+    \warning This function does not look at QWidget::style() or
+    QApplication::style(). Use the drawing functions in QStyle to make
+    widgets that follow the current GUI style.
+
+    Alternatively you can use a QFrame widget and apply the
+    QFrame::setFrameStyle() function to display a plain rectangle:
+
+    \snippet code/src_gui_painting_qdrawutil.cpp 9
+
+    \sa qDrawShadeRect(), QStyle
+*/
 
 /*!
     \class QTileRules

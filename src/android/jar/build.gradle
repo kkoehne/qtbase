@@ -7,7 +7,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.0.2'
+        classpath 'com.android.tools.build:gradle:8.10.1'
     }
 }
 
@@ -23,17 +23,25 @@ repositories {
 }
 
 android {
-    compileSdkVersion 33
-    buildToolsVersion "33.0.3"
+    compileSdk 35
+    namespace = "org.qtproject.qt.android"
 
     defaultConfig {
-        minSdkVersion 23
-        targetSdkVersion 33
+        minSdkVersion 28
     }
 
     sourceSets {
         main {
-            java.srcDir 'src/'
+            java.srcDirs = ['src/', '../../../../qtbase/src/network/android/jar/src',
+                            '../../../../qtbase/src/plugins/networkinformation/android/jar/src',
+                            '../../../../qtwebview/src/jar/src',
+                            '../../../../qtdeclarative/src/quick/platform/android/jar/src',
+                            '../../../../qtconnectivity/src/android/nfc/src',
+                            '../../../../qtconnectivity/src/android/bluetooth/src',
+                            '../../../../qtspeech/src/plugins/tts/android/jar/src',
+                            '../../../../qtmultimedia/src/android/jar/src',
+                            '../../../../qtpositioning/src/plugins/position/android/jar/src'
+            ]
             resources.srcDir 'libs/'
             manifest.srcFile 'AndroidManifest.xml'
             res.srcDirs = ['res/']
@@ -47,7 +55,7 @@ android {
 
     android {
         lintOptions {
-            abortOnError true
+            abortOnError = true
         }
     }
 }

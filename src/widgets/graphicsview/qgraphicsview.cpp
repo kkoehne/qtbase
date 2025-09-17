@@ -389,6 +389,8 @@ void QGraphicsViewPrivate::recalculateContentSize()
     const qreal oldLeftIndent = leftIndent;
     const qreal oldTopIndent = topIndent;
 
+    const auto singleStep = defaultSingleStep();
+
     // If the whole scene fits horizontally, we center the scene horizontally,
     // and ignore the horizontal scroll bars.
     const int left =  q_round_bound(viewRect.left());
@@ -413,7 +415,7 @@ void QGraphicsViewPrivate::recalculateContentSize()
 
         hbar->setRange(left, right);
         hbar->setPageStep(width);
-        hbar->setSingleStep(width / 20);
+        hbar->setSingleStep(width / singleStep);
 
         if (oldLeftIndent != 0)
             hbar->setValue(-oldLeftIndent);
@@ -443,7 +445,7 @@ void QGraphicsViewPrivate::recalculateContentSize()
 
         vbar->setRange(top, bottom);
         vbar->setPageStep(height);
-        vbar->setSingleStep(height / 20);
+        vbar->setSingleStep(height / singleStep);
 
         if (oldTopIndent != 0)
             vbar->setValue(-oldTopIndent);
@@ -483,8 +485,8 @@ void QGraphicsViewPrivate::centerView(QGraphicsView::ViewportAnchor anchor)
         if (q->underMouse()) {
             // Last scene pos: lastMouseMoveScenePoint
             // Current mouse pos:
-            QPointF transformationDiff = q->mapToScene(viewport->rect().center())
-                                         - q->mapToScene(viewport->mapFromGlobal(QCursor::pos()));
+            QPointF transformationDiff = mapToScene(viewport->rect().toRectF().center())
+                                         - mapToScene(viewport->mapFromGlobal(QCursor::pos().toPointF()));
             q->centerOn(lastMouseMoveScenePoint + transformationDiff);
         } else {
             q->centerOn(lastCenterPoint);
@@ -504,8 +506,7 @@ void QGraphicsViewPrivate::centerView(QGraphicsView::ViewportAnchor anchor)
 */
 void QGraphicsViewPrivate::updateLastCenterPoint()
 {
-    Q_Q(QGraphicsView);
-    lastCenterPoint = q->mapToScene(viewport->rect().center());
+    lastCenterPoint = mapToScene(viewport->rect().toRectF().center());
 }
 
 /*!
@@ -609,8 +610,7 @@ void QGraphicsViewPrivate::replayLastMouseEvent()
 {
     if (!useLastMouseEvent || !scene)
         return;
-    QSinglePointEvent *spe = static_cast<QSinglePointEvent *>(&lastMouseEvent);
-    mouseMoveEventHandler(static_cast<QMouseEvent *>(spe));
+    mouseMoveEventHandler(&*lastMouseEvent);
 }
 
 /*!
@@ -619,7 +619,8 @@ void QGraphicsViewPrivate::replayLastMouseEvent()
 void QGraphicsViewPrivate::storeMouseEvent(QMouseEvent *event)
 {
     useLastMouseEvent = true;
-    lastMouseEvent = *event;
+    // *event may alias *lastMouseEvent
+    lastMouseEvent.storeUnlessAlias(*event);
 }
 
 void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
@@ -631,7 +632,7 @@ void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
 #endif
 
     storeMouseEvent(event);
-    lastMouseEvent.setAccepted(false);
+    lastMouseEvent->setAccepted(false);
 
     if (!sceneInteractionAllowed)
         return;
@@ -663,7 +664,7 @@ void QGraphicsViewPrivate::mouseMoveEventHandler(QMouseEvent *event)
         QCoreApplication::sendEvent(scene, &mouseEvent);
 
     // Remember whether the last event was accepted or not.
-    lastMouseEvent.setAccepted(mouseEvent.isAccepted());
+    lastMouseEvent->setAccepted(mouseEvent.isAccepted());
 
     if (mouseEvent.isAccepted() && mouseEvent.buttons() != 0) {
         // The event was delivered to a mouse grabber; the press is likely to
@@ -820,7 +821,7 @@ void QGraphicsViewPrivate::_q_setViewportCursor(const QCursor &cursor)
 void QGraphicsViewPrivate::_q_unsetViewportCursor()
 {
     Q_Q(QGraphicsView);
-    const auto items = q->items(lastMouseEvent.position().toPoint());
+    const auto items = q->items(lastMouseEvent->position().toPoint());
     for (QGraphicsItem *item : items) {
         if (item->isEnabled() && item->hasCursor()) {
             _q_setViewportCursor(item->cursor());
@@ -886,16 +887,14 @@ void QGraphicsViewPrivate::populateSceneDragDropEvent(QGraphicsSceneDragDropEven
 /*!
     \internal
 */
-QRect QGraphicsViewPrivate::mapToViewRect(const QGraphicsItem *item, const QRectF &rect) const
+QTransform QGraphicsViewPrivate::mapToViewTransform(const QGraphicsItem *item) const
 {
     Q_Q(const QGraphicsView);
     if (dirtyScroll)
         const_cast<QGraphicsViewPrivate *>(this)->updateScroll();
 
-    if (item->d_ptr->itemIsUntransformable()) {
-        QTransform itv = item->deviceTransform(q->viewportTransform());
-        return itv.mapRect(rect).toAlignedRect();
-    }
+    if (item->d_ptr->itemIsUntransformable())
+        return item->deviceTransform(q->viewportTransform());
 
     // Translate-only
     // COMBINE
@@ -909,21 +908,20 @@ QRect QGraphicsViewPrivate::mapToViewRect(const QGraphicsItem *item, const QRect
         offset += itemd->pos;
     } while ((parentItem = itemd->parent));
 
-    QRectF baseRect = rect.translated(offset.x(), offset.y());
+    QTransform move = QTransform::fromTranslate(offset.x(), offset.y());
     if (!parentItem) {
-        if (identityMatrix) {
-            baseRect.translate(-scrollX, -scrollY);
-            return baseRect.toAlignedRect();
-        }
-        return matrix.mapRect(baseRect).translated(-scrollX, -scrollY).toAlignedRect();
+        move.translate(-scrollX, -scrollY);
+        return identityMatrix ? move : matrix * move;
     }
-
     QTransform tr = parentItem->sceneTransform();
     if (!identityMatrix)
         tr *= matrix;
-    QRectF r = tr.mapRect(baseRect);
-    r.translate(-scrollX, -scrollY);
-    return r.toAlignedRect();
+    return move * tr * QTransform::fromTranslate(-scrollX, -scrollY);
+}
+
+QRect QGraphicsViewPrivate::mapToViewRect(const QGraphicsItem *item, const QRectF &rect) const
+{
+    return mapToViewTransform(item).mapRect(rect).toAlignedRect();
 }
 
 /*!
@@ -1117,7 +1115,7 @@ void QGraphicsViewPrivate::freeStyleOptionsArray(QStyleOptionGraphicsItem *array
         delete [] array;
 }
 
-extern QPainterPath qt_regionToPath(const QRegion &region);
+Q_GUI_EXPORT extern QPainterPath qt_regionToPath(const QRegion &region);
 
 /*!
     ### Adjustments in findItems: mapToScene(QRect) forces us to adjust the
@@ -1559,7 +1557,7 @@ void QGraphicsView::setRubberBandSelectionMode(Qt::ItemSelectionMode mode)
    is currently doing an itemselection with rubber band. When the user is not using the
    rubber band this functions returns (a null) QRectF().
 
-   Notice that part of this QRect can be outise the visual viewport. It can e.g
+   Notice that part of this QRect can be outside the visual viewport. It can e.g
    contain negative values.
 
    \sa rubberBandSelectionMode, rubberBandChanged()
@@ -1892,14 +1890,14 @@ void QGraphicsView::centerOn(const QPointF &pos)
             qint64 horizontal = 0;
             horizontal += horizontalScrollBar()->minimum();
             horizontal += horizontalScrollBar()->maximum();
-            horizontal -= int(viewPoint.x() - width / 2.0);
+            horizontal -= qRound(viewPoint.x() - width / 2.0);
             horizontalScrollBar()->setValue(horizontal);
         } else {
-            horizontalScrollBar()->setValue(int(viewPoint.x() - width / 2.0));
+            horizontalScrollBar()->setValue(qRound(viewPoint.x() - width / 2.0));
         }
     }
     if (!d->topIndent)
-        verticalScrollBar()->setValue(int(viewPoint.y() - height / 2.0));
+        verticalScrollBar()->setValue(qRound(viewPoint.y() - height / 2.0));
     d->lastCenterPoint = oldCenterPoint;
 }
 
@@ -2216,7 +2214,7 @@ QList<QGraphicsItem *> QGraphicsView::items() const
 
     This function is most commonly called from within mouse event handlers in
     a subclass in QGraphicsView. \a pos is in untransformed viewport
-    coordinates, just like QMouseEvent::pos().
+    coordinates, just like QMouseEvent::position().
 
     \snippet code/src_gui_graphicsview_qgraphicsview.cpp 5
 
@@ -2906,7 +2904,7 @@ bool QGraphicsView::viewportEvent(QEvent *event)
         if (d->scene && d->sceneInteractionAllowed) {
             // Convert and deliver the touch event to the scene.
             QTouchEvent *touchEvent = static_cast<QTouchEvent *>(event);
-            QMutableTouchEvent::from(touchEvent)->setTarget(viewport());
+            QMutableTouchEvent::setTarget(touchEvent, viewport());
             QGraphicsViewPrivate::translateTouchEvent(d, touchEvent);
             QCoreApplication::sendEvent(d->scene, touchEvent);
         } else {
@@ -3187,7 +3185,7 @@ void QGraphicsView::mouseDoubleClickEvent(QMouseEvent *event)
     event->setAccepted(isAccepted);
 
     // Update the last mouse event accepted state.
-    d->lastMouseEvent.setAccepted(isAccepted);
+    d->lastMouseEvent->setAccepted(isAccepted);
 }
 
 /*!
@@ -3201,7 +3199,7 @@ void QGraphicsView::mousePressEvent(QMouseEvent *event)
     // scroll-dragging; even in non-interactive mode, scroll hand dragging is
     // allowed, so we store the event at the very top of this function.
     d->storeMouseEvent(event);
-    d->lastMouseEvent.setAccepted(false);
+    d->lastMouseEvent->setAccepted(false);
 
     if (d->sceneInteractionAllowed) {
         // Store some of the event's button-down data.
@@ -3239,7 +3237,7 @@ void QGraphicsView::mousePressEvent(QMouseEvent *event)
             event->setAccepted(isAccepted);
 
             // Update the last mouse event accepted state.
-            d->lastMouseEvent.setAccepted(isAccepted);
+            d->lastMouseEvent->setAccepted(isAccepted);
 
             if (isAccepted)
                 return;
@@ -3288,7 +3286,7 @@ void QGraphicsView::mouseMoveEvent(QMouseEvent *event)
         if (d->handScrolling) {
             QScrollBar *hBar = horizontalScrollBar();
             QScrollBar *vBar = verticalScrollBar();
-            QPoint delta = event->position().toPoint() - d->lastMouseEvent.position().toPoint();
+            QPoint delta = event->position().toPoint() - d->lastMouseEvent->position().toPoint();
             hBar->setValue(hBar->value() + (isRightToLeft() ? delta.x() : -delta.x()));
             vBar->setValue(vBar->value() - delta.y());
 
@@ -3322,7 +3320,7 @@ void QGraphicsView::mouseReleaseEvent(QMouseEvent *event)
 #endif
         d->handScrolling = false;
 
-        if (d->scene && d->sceneInteractionAllowed && !d->lastMouseEvent.isAccepted() && d->handScrollMotions <= 6) {
+        if (d->scene && d->sceneInteractionAllowed && !d->lastMouseEvent->isAccepted() && d->handScrollMotions <= 6) {
             // If we've detected very little motion during the hand drag, and
             // no item accepted the last event, we'll interpret that as a
             // click to the scene, and reset the selection.
@@ -3358,8 +3356,9 @@ void QGraphicsView::mouseReleaseEvent(QMouseEvent *event)
     else
         QCoreApplication::sendEvent(d->scene, &mouseEvent);
 
-    // Update the last mouse event selected state.
-    d->lastMouseEvent.setAccepted(mouseEvent.isAccepted());
+    // Update the last and current mouse events' accepted state.
+    d->lastMouseEvent->setAccepted(mouseEvent.isAccepted());
+    event->setAccepted(mouseEvent.isAccepted());
 
 #ifndef QT_NO_CURSOR
     if (mouseEvent.isAccepted() && mouseEvent.buttons() == 0 && viewport()->testAttribute(Qt::WA_SetCursor)) {

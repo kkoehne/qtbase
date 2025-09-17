@@ -77,7 +77,7 @@ public:
     {
         if (QPageSetupWidget->objectName().isEmpty())
             QPageSetupWidget->setObjectName("QPageSetupWidget");
-        QPageSetupWidget->resize(416, 515);
+        QPageSetupWidget->resize(416, 670);
         gridLayout_3 = new QGridLayout(QPageSetupWidget);
         gridLayout_3->setContentsMargins(0, 0, 0, 0);
         gridLayout_3->setObjectName("gridLayout_3");
@@ -132,7 +132,7 @@ public:
 
         gridLayout_2->addWidget(paperSource, 2, 1, 1, 1);
 
-        horizontalSpacer_4 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer_4 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout_2->addItem(horizontalSpacer_4, 1, 2, 1, 1);
 
@@ -146,7 +146,7 @@ public:
 
         horizontalLayout_4->addWidget(unitCombo);
 
-        horizontalSpacer_3 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer_3 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_4->addItem(horizontalSpacer_3);
 
@@ -183,7 +183,7 @@ public:
 
         verticalLayout->addWidget(reversePortrait);
 
-        verticalSpacer_5 = new QSpacerItem(0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        verticalSpacer_5 = new QSpacerItem(0, 0, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         verticalLayout->addItem(verticalSpacer_5);
 
@@ -198,54 +198,54 @@ public:
         gridLayout->setObjectName("gridLayout");
         topMargin = new QDoubleSpinBox(groupBox);
         topMargin->setObjectName("topMargin");
-        topMargin->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        topMargin->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
         topMargin->setMaximum(999.990000000000009);
 
         gridLayout->addWidget(topMargin, 0, 1, 1, 1);
 
         horizontalLayout = new QHBoxLayout();
         horizontalLayout->setObjectName("horizontalLayout");
-        horizontalSpacer_7 = new QSpacerItem(0, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer_7 = new QSpacerItem(0, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(horizontalSpacer_7);
 
         leftMargin = new QDoubleSpinBox(groupBox);
         leftMargin->setObjectName("leftMargin");
-        leftMargin->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        leftMargin->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
         leftMargin->setMaximum(999.990000000000009);
 
         horizontalLayout->addWidget(leftMargin);
 
-        horizontalSpacer = new QSpacerItem(0, 0, QSizePolicy::MinimumExpanding, QSizePolicy::Minimum);
+        horizontalSpacer = new QSpacerItem(0, 0, QSizePolicy::Policy::MinimumExpanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(horizontalSpacer);
 
         rightMargin = new QDoubleSpinBox(groupBox);
         rightMargin->setObjectName("rightMargin");
-        rightMargin->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        rightMargin->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
         rightMargin->setMaximum(999.990000000000009);
 
         horizontalLayout->addWidget(rightMargin);
 
-        horizontalSpacer_8 = new QSpacerItem(0, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer_8 = new QSpacerItem(0, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(horizontalSpacer_8);
 
 
         gridLayout->addLayout(horizontalLayout, 1, 0, 1, 3);
 
-        horizontalSpacer_2 = new QSpacerItem(0, 20, QSizePolicy::MinimumExpanding, QSizePolicy::Minimum);
+        horizontalSpacer_2 = new QSpacerItem(0, 20, QSizePolicy::Policy::MinimumExpanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(horizontalSpacer_2, 0, 2, 1, 1);
 
         bottomMargin = new QDoubleSpinBox(groupBox);
         bottomMargin->setObjectName("bottomMargin");
-        bottomMargin->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        bottomMargin->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
         bottomMargin->setMaximum(999.990000000000009);
 
         gridLayout->addWidget(bottomMargin, 2, 1, 1, 1);
 
-        horizontalSpacer_5 = new QSpacerItem(0, 20, QSizePolicy::MinimumExpanding, QSizePolicy::Minimum);
+        horizontalSpacer_5 = new QSpacerItem(0, 20, QSizePolicy::Policy::MinimumExpanding, QSizePolicy::Policy::Minimum);
 
         gridLayout->addItem(horizontalSpacer_5, 0, 0, 1, 1);
 
@@ -264,7 +264,7 @@ public:
 
         gridLayout_4->addWidget(pagesPerSheetCombo, 0, 1, 1, 1);
 
-        horizontalSpacer_6 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer_6 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         gridLayout_4->addItem(horizontalSpacer_6, 0, 2, 1, 1);
 
@@ -286,7 +286,7 @@ public:
 
         gridLayout_3->addWidget(pagesPerSheetButtonGroup, 5, 0, 1, 2);
 
-        verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         gridLayout_3->addItem(verticalSpacer, 6, 0, 1, 1);
 

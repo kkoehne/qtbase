@@ -86,7 +86,7 @@
     \keyword ipc
     \keyword shared memory
 
-    \brief Overview of the techniques for sharing memory between processes
+    \brief Overview of the techniques for sharing memory between processes.
 
     Qt provides two techniques to share memory with other processes in the same
     system: \l{QSharedMemory} and memory-mapped files using \l{QFile}. Memory
@@ -139,7 +139,7 @@
 
     To achieve locking of the shared memory segment, applications will need to
     deploy their own mechanisms. One way may be to use \l QLockFile. Another
-    and less costly solution is to use QBasicAtomicInteger or \c{std::atomic} in
+    and less costly solution is to use QAtomicInteger or \c{std::atomic} in
     a pre-determined offset in the segment itself. Higher-level locking
     primitives may be available on some operating systems; for example, on
     Linux, applications can set the "pshared" flag in the mutex attribute
@@ -390,7 +390,7 @@
     Qt's own build. For Windows systems, it was always the Windows backend. For
     Unix systems, it defaulted to the System V backend if the configuration
     script determined it was available. If it was not available, it fell back
-    to the POSIX one (since Qt 4.8). The POSIX backend could be explicitly
+    to the POSIX one. The POSIX backend could be explicitly
     selected using the \c{-feature-ipc_posix} option to the Qt configure
     script; if it was enabled, the \c{QT_POSIX_IPC} macro would be defined.
 

@@ -42,7 +42,7 @@ class Q_GUI_EXPORT QGuiApplication : public QCoreApplication
     Q_PROPERTY(QString desktopFileName READ desktopFileName WRITE setDesktopFileName)
     Q_PROPERTY(Qt::LayoutDirection layoutDirection READ layoutDirection WRITE setLayoutDirection
                NOTIFY layoutDirectionChanged)
-    Q_PROPERTY(QString platformName READ platformName STORED false)
+    Q_PROPERTY(QString platformName READ platformName STORED false CONSTANT)
     Q_PROPERTY(bool quitOnLastWindowClosed  READ quitOnLastWindowClosed
                WRITE setQuitOnLastWindowClosed)
     Q_PROPERTY(QScreen *primaryScreen READ primaryScreen NOTIFY primaryScreenChanged STORED false)
@@ -163,7 +163,10 @@ Q_SIGNALS:
 #endif
 protected:
     bool event(QEvent *) override;
+#  if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    QT_DEPRECATED_VERSION_X_6_10("This feature will be removed in Qt 7")
     bool compressEvent(QEvent *, QObject *receiver, QPostEventList *) override;
+#  endif
 
     QGuiApplication(QGuiApplicationPrivate &p);
 

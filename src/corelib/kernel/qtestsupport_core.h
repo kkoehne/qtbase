@@ -6,7 +6,8 @@
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdeadlinetimer.h>
-#include <QtCore/qthread.h>
+
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
@@ -15,22 +16,38 @@ namespace QTest {
 Q_CORE_EXPORT void qSleep(int ms);
 Q_CORE_EXPORT void qSleep(std::chrono::milliseconds msecs);
 
+extern Q_CORE_EXPORT std::atomic<std::chrono::milliseconds> defaultTryTimeout;
+
+namespace Internal {
+enum class WaitForResult {
+    Failed = -1,
+    NotYet = 0,
+    Done = 1,
+};
+
+inline bool waitForMore(bool) { return true; }
+inline bool waitForMore(WaitForResult value) { return value == WaitForResult::NotYet; }
+
+inline bool waitForSucceeded(bool value) { return value; }
+inline bool waitForSucceeded(WaitForResult value) { return value >= WaitForResult::Done; }
+}
+
 template <typename Functor>
-[[nodiscard]] static bool
-qWaitFor(Functor predicate, QDeadlineTimer deadline = QDeadlineTimer(std::chrono::seconds{5}))
+[[nodiscard]] bool
+qWaitFor(Functor predicate, QDeadlineTimer deadline = QDeadlineTimer(
+    defaultTryTimeout.load(std::memory_order_relaxed)))
 {
+    using Internal::waitForMore;
+    using Internal::waitForSucceeded;
+
     // We should not spin the event loop in case the predicate is already true,
     // otherwise we might send new events that invalidate the predicate.
-    if (predicate())
+    if (waitForSucceeded(predicate()))
         return true;
 
-    // qWait() is expected to spin the event loop, even when called with a small
-    // timeout like 1ms, so we we can't use a simple while-loop here based on
-    // the deadline timer not having timed out. Use do-while instead.
+    // qWait() is expected to spin the event loop at least once, even when
+    // called with a small timeout like 1ns.
 
-    using namespace std::chrono;
-
-    auto remaining = 0ms;
     do {
         // We explicitly do not pass the remaining time to processEvents, as
         // that would keep spinning processEvents for the whole duration if
@@ -41,28 +58,25 @@ qWaitFor(Functor predicate, QDeadlineTimer deadline = QDeadlineTimer(std::chrono
         QCoreApplication::processEvents(QEventLoop::AllEvents);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 
-        if (predicate())
+        if (auto predresult = predicate(); waitForSucceeded(predresult))
             return true;
+        else if (!waitForMore(predresult))
+            return false;
 
-        if (deadline.isForever()) { // No point checking remaining time
-            qSleep(10ms);
-            continue;
-        }
+        using namespace std::chrono;
 
-        remaining = ceil<milliseconds>(deadline.remainingTimeAsDuration());
-        if (remaining == 0ms)
-            break;
+        if (const auto remaining = deadline.remainingTimeAsDuration(); remaining > 0ns)
+            qSleep((std::min)(10ms, ceil<milliseconds>(remaining)));
 
-        qSleep(std::min(10ms, remaining));
     } while (!deadline.hasExpired());
 
-    return predicate(); // Last chance
+    return waitForSucceeded(predicate()); // Last chance
 }
 
 template <typename Functor>
-[[nodiscard]] static bool qWaitFor(Functor predicate, int timeout)
+[[nodiscard]] bool qWaitFor(Functor predicate, int timeout)
 {
-    return qWaitFor(predicate, QDeadlineTimer(timeout));
+    return qWaitFor(predicate, QDeadlineTimer{timeout, Qt::PreciseTimer});
 }
 
 Q_CORE_EXPORT void qWait(int ms);

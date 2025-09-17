@@ -1,5 +1,6 @@
 // Copyright (C) 2012 BogDan Vatra <bogdan@kde.org>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "androidjnimain.h"
 #include "androidjnimenu.h"
@@ -20,6 +21,8 @@ QT_BEGIN_NAMESPACE
 
 using namespace QtAndroid;
 
+Q_DECLARE_JNI_CLASS(QtMenuInterface, "org/qtproject/qt/android/QtMenuInterface");
+
 namespace QtAndroidMenu
 {
     static QList<QAndroidPlatformMenu *> pendingContextMenus;
@@ -30,8 +33,6 @@ namespace QtAndroidMenu
     static QAndroidPlatformMenuBar *visibleMenuBar = nullptr;
     static QWindow *activeTopLevelWindow = nullptr;
     Q_CONSTINIT static QRecursiveMutex menuBarMutex;
-
-    static jmethodID openContextMenuMethodID = 0;
 
     static jmethodID clearMenuMethodID = 0;
     static jmethodID addMenuItemMethodID = 0;
@@ -46,29 +47,35 @@ namespace QtAndroidMenu
 
     void resetMenuBar()
     {
-        QJniObject::callStaticMethod<void>(applicationClass(), "resetOptionsMenu");
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtMenuInterface>("resetOptionsMenu");
     }
 
     void openOptionsMenu()
     {
-        QJniObject::callStaticMethod<void>(applicationClass(), "openOptionsMenu");
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtMenuInterface>("openOptionsMenu");
     }
 
-    void showContextMenu(QAndroidPlatformMenu *menu, const QRect &anchorRect, JNIEnv *env)
+    void showContextMenu(QAndroidPlatformMenu *menu, const QRect &anchorRect)
     {
         QMutexLocker lock(&visibleMenuMutex);
         if (visibleMenu)
             pendingContextMenus.append(visibleMenu);
         visibleMenu = menu;
         menu->aboutToShow();
-        env->CallStaticVoidMethod(applicationClass(), openContextMenuMethodID, anchorRect.x(), anchorRect.y(), anchorRect.width(), anchorRect.height());
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtMenuInterface, void>("openContextMenu", anchorRect.x(),
+                                                              anchorRect.y(), anchorRect.width(),
+                                                              anchorRect.height());
     }
 
     void hideContextMenu(QAndroidPlatformMenu *menu)
     {
         QMutexLocker lock(&visibleMenuMutex);
         if (visibleMenu == menu) {
-            QJniObject::callStaticMethod<void>(applicationClass(), "closeContextMenu");
+            AndroidBackendRegister *reg = QtAndroid::backendRegister();
+            reg->callInterface<QtJniTypes::QtMenuInterface>("closeContextMenu");
             pendingContextMenus.clear();
         } else {
             pendingContextMenus.removeOne(menu);
@@ -211,8 +218,10 @@ namespace QtAndroidMenu
          return order;
     }
 
-    static jboolean onPrepareOptionsMenu(JNIEnv *env, jobject /*thiz*/, jobject menu)
+    static jboolean onPrepareOptionsMenu(JNIEnv *env, jobject thiz, jobject menu)
     {
+        Q_UNUSED(thiz)
+
         env->CallVoidMethod(menu, clearMenuMethodID);
         QMutexLocker lock(&menuBarMutex);
         if (!visibleMenuBar)
@@ -249,8 +258,11 @@ namespace QtAndroidMenu
         return order ? JNI_TRUE : JNI_FALSE;
     }
 
-    static jboolean onOptionsItemSelected(JNIEnv *env, jobject /*thiz*/, jint menuId, jboolean checked)
+    static jboolean onOptionsItemSelected(JNIEnv *env, jobject thiz, jint menuId, jboolean checked)
     {
+        Q_UNUSED(env)
+        Q_UNUSED(thiz)
+
         QMutexLocker lock(&menuBarMutex);
         if (!visibleMenuBar)
             return JNI_FALSE;
@@ -260,7 +272,7 @@ namespace QtAndroidMenu
             QAndroidPlatformMenuItem *item = static_cast<QAndroidPlatformMenuItem *>(menus.front()->menuItemForId(menuId));
             if (item) {
                 if (item->menu()) {
-                    showContextMenu(item->menu(), QRect(), env);
+                    showContextMenu(item->menu(), QRect());
                 } else {
                     if (item->isCheckable())
                         item->setChecked(checked);
@@ -270,18 +282,23 @@ namespace QtAndroidMenu
         } else {
             QAndroidPlatformMenu *menu = static_cast<QAndroidPlatformMenu *>(visibleMenuBar->menuForId(menuId));
             if (menu)
-                showContextMenu(menu, QRect(), env);
+                showContextMenu(menu, QRect());
         }
 
         return JNI_TRUE;
     }
 
-    static void onOptionsMenuClosed(JNIEnv */*env*/, jobject /*thiz*/, jobject /*menu*/)
+    static void onOptionsMenuClosed(JNIEnv *env, jobject thiz, jobject menu)
     {
+        Q_UNUSED(env)
+        Q_UNUSED(thiz)
+        Q_UNUSED(menu)
     }
 
-    static void onCreateContextMenu(JNIEnv *env, jobject /*thiz*/, jobject menu)
+    static void onCreateContextMenu(JNIEnv *env, jobject thiz, jobject menu)
     {
+        Q_UNUSED(thiz)
+
         env->CallVoidMethod(menu, clearMenuMethodID);
         QMutexLocker lock(&visibleMenuMutex);
         if (!visibleMenu)
@@ -295,8 +312,9 @@ namespace QtAndroidMenu
         addAllMenuItemsToMenu(env, menu, visibleMenu);
     }
 
-    static void fillContextMenu(JNIEnv *env, jobject /*thiz*/, jobject menu)
+    static void fillContextMenu(JNIEnv *env, jobject thiz, jobject menu)
     {
+        Q_UNUSED(thiz)
         env->CallVoidMethod(menu, clearMenuMethodID);
         QMutexLocker lock(&visibleMenuMutex);
         if (!visibleMenu)
@@ -305,13 +323,16 @@ namespace QtAndroidMenu
         addAllMenuItemsToMenu(env, menu, visibleMenu);
     }
 
-    static jboolean onContextItemSelected(JNIEnv *env, jobject /*thiz*/, jint menuId, jboolean checked)
+    static jboolean onContextItemSelected(JNIEnv *env, jobject thiz, jint menuId, jboolean checked)
     {
+        Q_UNUSED(env)
+        Q_UNUSED(thiz)
+
         QMutexLocker lock(&visibleMenuMutex);
         QAndroidPlatformMenuItem * item = static_cast<QAndroidPlatformMenuItem *>(visibleMenu->menuItemForId(menuId));
         if (item) {
             if (item->menu()) {
-                showContextMenu(item->menu(), QRect(), env);
+                showContextMenu(item->menu(), QRect());
             } else {
                 if (item->isCheckable())
                     item->setChecked(checked);
@@ -328,8 +349,12 @@ namespace QtAndroidMenu
         return JNI_TRUE;
     }
 
-    static void onContextMenuClosed(JNIEnv *env, jobject /*thiz*/, jobject /*menu*/)
+    static void onContextMenuClosed(JNIEnv *env, jobject thiz, jobject menu)
     {
+        Q_UNUSED(env)
+        Q_UNUSED(thiz)
+        Q_UNUSED(menu)
+
         QMutexLocker lock(&visibleMenuMutex);
         if (!visibleMenu)
             return;
@@ -337,7 +362,7 @@ namespace QtAndroidMenu
         visibleMenu->aboutToHide();
         visibleMenu = 0;
         if (!pendingContextMenus.empty())
-            showContextMenu(pendingContextMenus.takeLast(), QRect(), env);
+            showContextMenu(pendingContextMenus.takeLast(), QRect());
     }
 
     static JNINativeMethod methods[] = {
@@ -378,16 +403,14 @@ namespace QtAndroidMenu
         return false; \
     }
 
-    bool registerNatives(JNIEnv *env)
+    bool registerNatives(QJniEnvironment &env)
     {
         jclass appClass = applicationClass();
 
-        if (env->RegisterNatives(appClass, methods,  sizeof(methods) / sizeof(methods[0])) < 0) {
+        if (!env.registerNativeMethods(appClass, methods,  sizeof(methods) / sizeof(methods[0]))) {
             __android_log_print(ANDROID_LOG_FATAL,"Qt", "RegisterNatives failed");
             return false;
         }
-
-        GET_AND_CHECK_STATIC_METHOD(openContextMenuMethodID, appClass, "openContextMenu", "(IIII)V");
 
         jclass clazz;
         FIND_AND_CHECK_CLASS("android/view/Menu");

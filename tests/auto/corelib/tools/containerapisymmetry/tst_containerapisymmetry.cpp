@@ -1,5 +1,5 @@
 // Copyright (C) 2017 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -12,10 +12,15 @@
 #include "qstring.h"
 #include "qvarlengtharray.h"
 
+#include <private/qcomparisontesthelper_p.h>
+
 #include <algorithm>
 #include <functional>
 #include <iostream>
 #include <list>
+#ifdef __cpp_lib_ranges
+#include <ranges>
+#endif
 #include <set>
 #include <sstream>
 #include <map>
@@ -52,6 +57,8 @@ struct Movable
     {
         ++instanceCount;
     }
+
+    Movable &operator=(const Movable &m) = default;
 
     ~Movable()
     {
@@ -214,6 +221,20 @@ public:
     using QVarLengthArray<T>::QVarLengthArray;
 };
 
+// The class does not provide operator<=> in C++20 mode
+struct LessOnly
+{
+    float val;
+private:
+    friend auto compareThreeWay(LessOnly lhs, LessOnly rhs) noexcept
+    { return Qt::compareThreeWay(lhs.val, rhs.val); }
+
+    friend bool operator==(LessOnly lhs, LessOnly rhs) noexcept
+    { return lhs.val == rhs.val; }
+    friend bool operator<(LessOnly lhs, LessOnly rhs) noexcept
+    { return lhs.val < rhs.val; }
+};
+
 class tst_ContainerApiSymmetry : public QObject
 {
     Q_OBJECT
@@ -329,6 +350,26 @@ private Q_SLOTS:
 
 private:
     template <typename Container>
+    void copesWithValueTypesWithConstMembers_impl();
+
+    struct ConstMember {
+    #ifndef __cpp_aggregate_paren_init // also check that we can emplace aggregates (C++20 only)
+        explicit ConstMember(int n) : n(n) {}
+    #endif
+        const int n;
+
+        friend bool operator==(const ConstMember &lhs, const ConstMember &rhs) noexcept
+        { return lhs.n == rhs.n; }
+        friend bool operator!=(const ConstMember &lhs, const ConstMember &rhs) noexcept
+        { return !(lhs == rhs); }
+    };
+
+private Q_SLOTS:
+    void copesWithValueTypesWithConstMembers_std_vector() { copesWithValueTypesWithConstMembers_impl<std::vector<ConstMember>>(); }
+    void copesWithValueTypesWithConstMembers_QVarLengthArray() { copesWithValueTypesWithConstMembers_impl<QVarLengthArray<ConstMember, 2>>(); }
+
+private:
+    template <typename Container>
     void assign_impl() const;
 
 private Q_SLOTS:
@@ -409,6 +450,64 @@ private Q_SLOTS:
     void keyValueRange_QMultiMap() { keyValueRange_impl<QMultiMap<int, int>>(); }
     void keyValueRange_QHash() { keyValueRange_impl<QHash<int, int>>(); }
     void keyValueRange_QMultiHash() { keyValueRange_impl<QMultiHash<int, int>>(); }
+
+private:
+    template <typename Container>
+    void opEqNaN_impl() const;
+
+private Q_SLOTS:
+    void opEqNaN_QList_Float() { opEqNaN_impl<QList<float>>(); }
+    void opEqNaN_QList_Float16() { opEqNaN_impl<QList<qfloat16>>(); }
+    void opEqNaN_QList_Double() { opEqNaN_impl<QList<double>>(); }
+    void opEqNaN_QVarLengthArray_Float() { opEqNaN_impl<QVarLengthArray<float>>(); }
+    void opEqNaN_QVarLengthArray_Float16() { opEqNaN_impl<QVarLengthArray<qfloat16>>(); }
+    void opEqNaN_QVarLengthArray_Double() { opEqNaN_impl<QVarLengthArray<double>>(); }
+    void opEqNaN_QSet_Float() { opEqNaN_impl<QSet<float>>(); }
+    void opEqNaN_QSet_Float16() { opEqNaN_impl<QSet<qfloat16>>(); }
+    void opEqNaN_QSet_Double() { opEqNaN_impl<QSet<double>>(); }
+
+private:
+    template <typename Container>
+    void try_emplace_impl() const;
+
+private Q_SLOTS:
+    void try_emplace_QHash() { try_emplace_impl<QHash<int, int>>(); }
+    void try_emplace_unordered_map() { try_emplace_impl<std::unordered_map<int, int>>(); }
+
+private:
+    template <typename Container, typename Ordering>
+    void comparisonTest_impl();
+
+private Q_SLOTS:
+    void comparisonTest_QList_int()
+    { comparisonTest_impl<QList<int>, Qt::strong_ordering>(); }
+    void comparisonTest_QList_float()
+    { comparisonTest_impl<QList<float>, Qt::partial_ordering>(); }
+    void comparisonTest_QList_QDateTime()
+    { comparisonTest_impl<QList<QDateTime>, Qt::weak_ordering>(); }
+    void comparisonTest_QList_intptr()
+    { comparisonTest_impl<QList<const int *>, Qt::strong_ordering>(); }
+    void comparisonTest_QList_LessOnly()
+    { comparisonTest_impl<QList<LessOnly>, Qt::weak_ordering>(); }
+
+    void comparisonTest_QVarLengthArray_int()
+    { comparisonTest_impl<QVarLengthArray<int>, Qt::strong_ordering>(); }
+    void comparisonTest_QVarLengthArray_float()
+    { comparisonTest_impl<QVarLengthArray<float>, Qt::partial_ordering>(); }
+    void comparisonTest_QVarLengthArray_QDateTime()
+    { comparisonTest_impl<QVarLengthArray<QDateTime>, Qt::weak_ordering>(); }
+    void comparisonTest_QVarLengthArray_intptr()
+    { comparisonTest_impl<QVarLengthArray<const int *>, Qt::strong_ordering>(); }
+    void comparisonTest_QVarLengthArray_LessOnly()
+    { comparisonTest_impl<QVarLengthArray<LessOnly>, Qt::weak_ordering>(); }
+
+private:
+    template <typename Container>
+    void insert_or_assign_impl() const;
+
+private Q_SLOTS:
+    void insert_or_assign_QHash() { insert_or_assign_impl<QHash<int, int>>(); }
+    void insert_or_assign_unordered_map() { insert_or_assign_impl<std::unordered_map<int, int>>(); }
 };
 
 void tst_ContainerApiSymmetry::init()
@@ -702,6 +801,20 @@ void tst_ContainerApiSymmetry::ranged_ctor_associative_impl() const
     QCOMPARE(c3a, reference);
     QCOMPARE(c3b, reference);
     QCOMPARE(c4,  reference);
+
+#ifdef __cpp_lib_ranges
+    {
+        auto view1 = values1 | std::views::transform(std::identity{});
+        Container c5(std::ranges::begin(view1),
+                     std::ranges::end(view1));
+        QCOMPARE(c5, reference);
+
+        auto view2 = values1 | std::views::filter([](auto &&){ return true; });
+        Container c6(std::ranges::begin(view2),
+                     std::ranges::end(view2));
+        QCOMPARE(c6, reference);
+    }
+#endif
 }
 
 template <typename Container>
@@ -760,6 +873,76 @@ void tst_ContainerApiSymmetry::resize_impl() const
     }
 }
 
+template <typename T>
+[[maybe_unused]]
+constexpr bool is_vector_v = false;
+template <typename...Args>
+constexpr bool is_vector_v<std::vector<Args...>> = true;
+
+template <typename Container, typename Value>
+void wrap_resize(Container &c, typename Container::size_type n, const Value &v)
+{
+#ifdef __GLIBCXX__ // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=83981
+    if constexpr (is_vector_v<Container>) {
+        while (c.size() < n)
+            c.push_back(v);
+    } else
+#endif
+    {
+        c.resize(n, v);
+    }
+}
+
+template <typename Container>
+void tst_ContainerApiSymmetry::copesWithValueTypesWithConstMembers_impl()
+{
+    // The problem:
+    //
+    //   using V = ConstMember;
+    //   V v{42};
+    //   assert(v.n == 42); // OK
+    //   new (&v) V{24};
+    //   assert(v.n == 24); // UB in C++17: v.n could still be 42 (C++17 [basic.life]/8)
+    //                      // OK in C++20 (C++20 [basic.life]/8)
+    //   assert(std::launder(&v)->n == 24); // OK
+    //   assert(v.n == 24); // _still_ UB!
+    //
+    // Containers:
+    // - must not expose this problem
+    // - must compile in the first place, even though V
+    //   - is not assignable
+    //   - is not default-constructible
+
+    using S = typename Container::size_type;
+    using V = typename Container::value_type;
+
+    Container c;
+    // the following are all functions that by rights should not require the type to be
+    // - default-constructible
+    // - assignable
+    // make sure they work
+    c.reserve(S(5));
+    c.shrink_to_fit();
+    wrap_resize(c, 1, V(42));
+    QCOMPARE(c[0], V(42));
+    wrap_resize(c, 2, V(48));
+    QCOMPARE(c[0], V(42));
+    QCOMPARE(c[1], V(48));
+    c.clear();
+    c.emplace_back(24);
+    QCOMPARE(c.front(), V(24));
+    c.push_back(V(41));
+    QCOMPARE(c.back(), V(41));
+    {
+        const auto v142 = V(142);
+        c.push_back(v142);
+    }
+    QCOMPARE(c.size(), S(3));
+    QCOMPARE(c[0],  V(24));
+    QCOMPARE(c[1],  V(41));
+    QCOMPARE(c[2], V(142));
+}
+
 template <typename Container>
 void tst_ContainerApiSymmetry::assign_impl() const
 {
@@ -801,16 +984,30 @@ void tst_ContainerApiSymmetry::assign_impl() const
         QCOMPARE_EQ(c.capacity(), grownCapacity);
     }
     {
-        // range version for non input iterator
+        // range version for forward iterator
         auto c = make<Container>(4);
-        auto iter = make<Container>(1);
+        auto src = std::forward_list<V>();
 
-        iter.assign(8, tData);
-        RET_CHECK(c.assign(iter.begin(), iter.end())); // may reallocate
+        src.assign(8, tData);
+        RET_CHECK(c.assign(src.begin(), src.end())); // may reallocate
         CHECK(c, tData, c.size(), S(8));
 
         const S oldCapacity = c.capacity();
-        c.assign(iter.begin(), iter.begin());
+        c.assign(src.begin(), src.begin());
+        CHECK(c, tData, c.size(), S(0));
+        QCOMPARE_EQ(c.capacity(), oldCapacity);
+    }
+    {
+        // range version for random-access iterator
+        auto c = make<Container>(4);
+        auto src = std::vector<V>();
+
+        src.assign(8, tData);
+        RET_CHECK(c.assign(src.begin(), src.end())); // may reallocate
+        CHECK(c, tData, c.size(), S(8));
+
+        const S oldCapacity = c.capacity();
+        c.assign(src.begin(), src.begin());
         CHECK(c, tData, c.size(), S(0));
         QCOMPARE_EQ(c.capacity(), oldCapacity);
     }
@@ -1052,6 +1249,9 @@ void tst_ContainerApiSymmetry::member_erase_set_impl() const
     QCOMPARE(it, c.cbegin());
 }
 
+template <typename T>
+using KeyValueRangeType = decltype(std::declval<T>().asKeyValueRange());
+
 template <typename Container>
 void tst_ContainerApiSymmetry::keyValueRange_impl() const
 {
@@ -1117,6 +1317,7 @@ void tst_ContainerApiSymmetry::keyValueRange_impl() const
     // auto &&, mutating
     keys.clear(); values.clear();
     for (auto &&[key, value] : c.asKeyValueRange()) {
+        static_assert(!std::is_const_v<std::remove_reference_t<decltype(value)>>);
         keys << key;
         values << value;
         QCOMPARE(key, value - 1);
@@ -1142,6 +1343,7 @@ void tst_ContainerApiSymmetry::keyValueRange_impl() const
     // auto &&, non-mutating (const map)
     keys.clear(); values.clear();
     for (auto &&[key, value] : std::as_const(c).asKeyValueRange()) {
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(value)>>);
         keys << key;
         values << value;
         QCOMPARE(key, value - 2);
@@ -1164,6 +1366,7 @@ void tst_ContainerApiSymmetry::keyValueRange_impl() const
     // auto &&, non-mutating (rvalue map)
     keys.clear(); values.clear();
     for (auto &&[key, value] : returnC().asKeyValueRange()) {
+        static_assert(!std::is_const_v<std::remove_reference_t<decltype(value)>>);
         keys << key;
         values << value;
         QCOMPARE(key, value - 2);
@@ -1171,6 +1374,281 @@ void tst_ContainerApiSymmetry::keyValueRange_impl() const
     }
     QVERIFY(verify(keys, COUNT));
     QVERIFY(verify(values, COUNT, 2));
+
+    // auto &&, non-mutating (const rvalue map)
+    keys.clear(); values.clear();
+    for (auto &&[key, value] : const_cast<const Container &&>(returnC()).asKeyValueRange()) {
+        static_assert(!std::is_const_v<std::remove_reference_t<decltype(value)>>); // non-const
+        keys << key;
+        values << value;
+        QCOMPARE(key, value - 2);
+        QCOMPARE(c.value(key), value);
+    }
+    QVERIFY(verify(keys, COUNT));
+    QVERIFY(verify(values, COUNT, 2));
+
+#if defined(__cpp_lib_ranges) && __cpp_lib_ranges > 202110L // P2415R2
+    static_assert(std::ranges::viewable_range<KeyValueRangeType<Container>>);
+    static_assert(std::ranges::viewable_range<KeyValueRangeType<Container &>>);
+    static_assert(std::ranges::viewable_range<KeyValueRangeType<const Container>>);
+    static_assert(std::ranges::viewable_range<KeyValueRangeType<const Container &>>);
+
+    static_assert(!std::ranges::view<KeyValueRangeType<Container>>);
+    static_assert(std::ranges::view<KeyValueRangeType<Container &>>);
+    static_assert(!std::ranges::view<KeyValueRangeType<const Container>>);
+    static_assert(std::ranges::view<KeyValueRangeType<const Container &>>);
+
+    const auto keyValueTest = [](auto &&pair)
+    {
+        return pair.first == pair.second - 2;
+    };
+
+    {
+        auto range = c.asKeyValueRange();
+        static_assert(std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), COUNT);
+
+        const bool ok = std::ranges::all_of(
+            range | std::views::transform(keyValueTest),
+            std::identity{}
+        );
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = std::as_const(c).asKeyValueRange();
+        static_assert(std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), COUNT);
+
+        const bool ok = std::ranges::all_of(
+            range | std::views::transform(keyValueTest),
+            std::identity{}
+        );
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = returnC().asKeyValueRange();
+        static_assert(!std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), COUNT);
+
+        const bool ok = std::ranges::all_of(
+            range | std::views::transform(keyValueTest),
+            std::identity{}
+        );
+        QVERIFY(ok);
+    }
+
+    {
+        auto range = const_cast<const Container &&>(returnC()).asKeyValueRange();
+        static_assert(!std::ranges::view<decltype(range)>);
+        QCOMPARE(std::ranges::distance(range), COUNT);
+
+        const bool ok = std::ranges::all_of(
+            range | std::views::transform(keyValueTest),
+            std::identity{}
+            );
+        QVERIFY(ok);
+    }
+#endif
+}
+
+template<typename Container>
+void tst_ContainerApiSymmetry::opEqNaN_impl() const
+{
+    using V = typename Container::value_type;
+    static_assert(std::is_floating_point_v<V> || std::is_same_v<V, qfloat16>);
+    const Container lhs {std::numeric_limits<V>::quiet_NaN()};
+    const Container rhs {std::numeric_limits<V>::quiet_NaN()};
+
+    QCOMPARE_NE(lhs, rhs);
+}
+
+template <typename Container>
+void tst_ContainerApiSymmetry::try_emplace_impl() const
+{
+    using K = typename Container::key_type;
+    using V = typename Container::mapped_type;
+    Container c;
+    auto p = c.try_emplace(K(), V());
+    QVERIFY(p.second);
+    QCOMPARE(p.first->first, K());
+    QCOMPARE(p.first->second, V());
+
+    auto it = c.try_emplace(c.begin(), K(), V());
+    QCOMPARE(it->first, K());
+    QCOMPARE(it->second, V());
+
+    K k{};
+    V v{};
+    p = c.try_emplace(k, v);
+    QVERIFY(!p.second);
+    QCOMPARE(p.first->first, K());
+    QCOMPARE(p.first->second, V());
+
+    it = c.try_emplace(c.begin(), k, v);
+    QCOMPARE(it->first, K());
+    QCOMPARE(it->second, V());
+}
+
+template <typename ValueType, typename Ordering>
+std::vector<ValueType> makeComparisonData(Ordering)
+{ return {}; }
+
+template <>
+std::vector<int> makeComparisonData(Qt::strong_ordering order)
+{
+    if (order == Qt::strong_ordering::equivalent)
+        return {1, 2, 3, 4};
+    else if (order == Qt::strong_ordering::less)
+        return {1, 2, 1};
+    else /* greater */
+        return {1, 2, 4};
+}
+
+template <>
+std::vector<float> makeComparisonData(Qt::partial_ordering order)
+{
+    if (order == Qt::partial_ordering::equivalent)
+        return {1.f, 2.f, 3.f, 4.f};
+    else if (order == Qt::partial_ordering::less)
+        return {1.f, 2.f, 1.f};
+    else if (order == Qt::partial_ordering::greater)
+        return {1.f, 2.f, 4.f};
+    else /* unordered */
+        return {std::numeric_limits<float>::quiet_NaN(), 2.f, 3.f, 4.f};
+}
+
+template <>
+std::vector<QDateTime> makeComparisonData(Qt::weak_ordering order)
+{
+    using namespace std::chrono_literals;
+    QTimeZone utcPlusOne = QTimeZone::fromDurationAheadOfUtc(3600s);
+    // These two QDateTimes represent the same moment of time, but using
+    // different time zones. So, they are equivalent, but not equal.
+    QDateTime nullUtc = QDateTime::fromMSecsSinceEpoch(0, QTimeZone::UTC);
+    QDateTime nullUtcPlusOne = QDateTime::fromMSecsSinceEpoch(0, utcPlusOne);
+
+    if (order == Qt::weak_ordering::equivalent)
+        return {nullUtc, nullUtc.addDays(1), nullUtc.addDays(2), nullUtc.addDays(3)};
+    else if (order == Qt::weak_ordering::less)
+        return {nullUtcPlusOne, nullUtc.addDays(1), nullUtc};
+    else /* greater */
+        return {nullUtcPlusOne, nullUtc.addDays(1), nullUtc.addDays(3)};
+}
+
+static constexpr std::array<int, 4> intArray = {0, 0, 0, 0};
+
+template <>
+std::vector<const int *> makeComparisonData(Qt::strong_ordering order)
+{
+    if (order == Qt::strong_ordering::equivalent)
+        return {&intArray[0], &intArray[1], &intArray[2], &intArray[3]};
+    else if (order == Qt::strong_ordering::less)
+        return {&intArray[0], &intArray[1], &intArray[0]};
+    else /* greater */
+        return {&intArray[0], &intArray[1], &intArray[3]};
+}
+
+template <>
+std::vector<LessOnly> makeComparisonData(Qt::weak_ordering order)
+{
+    if (order == Qt::weak_ordering::equivalent)
+        return {LessOnly{1.f}, LessOnly{2.f}, LessOnly{3.f}, LessOnly{4.f}};
+    else if (order == Qt::weak_ordering::less)
+        return {LessOnly{1.f}, LessOnly{2.f}, LessOnly{1.f}};
+    else /* greater */
+        return {LessOnly{1.f}, LessOnly{2.f}, LessOnly{4.f}};
+}
+
+template<typename Container, typename Ordering>
+void tst_ContainerApiSymmetry::comparisonTest_impl()
+{
+    QTestPrivate::testAllComparisonOperatorsCompile<Container>();
+
+    using V = typename Container::value_type;
+    const auto eq_vec = makeComparisonData<V>(Ordering::equivalent);
+
+    Container lhs{eq_vec.begin(), eq_vec.end()};
+    Container rhs{eq_vec.begin(), eq_vec.end()};
+    QCOMPARE_EQ(compareThreeWay(lhs, rhs), Ordering::equivalent);
+    QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, Ordering::equivalent);
+
+
+    const auto lt_vec = makeComparisonData<V>(Ordering::less);
+    rhs = {lt_vec.begin(), lt_vec.end()};
+    QCOMPARE_EQ(compareThreeWay(lhs, rhs), Ordering::greater);
+    QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, Ordering::greater);
+
+    const auto gt_vec = makeComparisonData<V>(Ordering::greater);
+    rhs = {gt_vec.begin(), gt_vec.end()};
+    QCOMPARE_EQ(compareThreeWay(lhs, rhs), Ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, Ordering::less);
+
+    if constexpr (std::is_same_v<Ordering, Qt::partial_ordering>) {
+        const auto un_vec = makeComparisonData<V>(Ordering::unordered);
+        rhs = {un_vec.begin(), un_vec.end()};
+        QCOMPARE_EQ(compareThreeWay(lhs, rhs), Ordering::unordered);
+#ifdef __cpp_lib_three_way_comparison
+        QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, Ordering::unordered);
+#else
+        // partial_ordering::unordered works incorrectly for containers in C++17
+        // mode, but that is in line with how std containers behave
+        QVERIFY(!(lhs == rhs));
+        QVERIFY(lhs != rhs);
+        QVERIFY(!(lhs < rhs));
+        QVERIFY(!(lhs > rhs));
+        // Behaves like this, because in C++17 op<=() and op>=() are calculated
+        // based on op<() and op==().
+        QVERIFY(lhs <= rhs);
+        QVERIFY(lhs >= rhs);
+#endif
+
+        // comparison with itself should still yield unordered
+        lhs = {un_vec.begin(), un_vec.end()};
+        QCOMPARE_EQ(compareThreeWay(lhs, rhs), Ordering::unordered);
+#ifdef __cpp_lib_three_way_comparison
+        QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, Ordering::unordered);
+#else
+        // partial_ordering::unordered works incorrectly for containers in C++17
+        // mode, but that is in line with how std containers behave
+        QVERIFY(!(lhs == rhs));
+        QVERIFY(lhs != rhs);
+        QVERIFY(!(lhs < rhs));
+        QVERIFY(!(lhs > rhs));
+        // Behaves like this, because in C++17 op<=() and op>=() are calculated
+        // based on op<() and op==().
+        QVERIFY(lhs <= rhs);
+        QVERIFY(lhs >= rhs);
+#endif
+    }
+}
+
+template <typename Container>
+void tst_ContainerApiSymmetry::insert_or_assign_impl() const
+{
+    using K = typename Container::key_type;
+    using V = typename Container::mapped_type;
+    Container c;
+    auto p = c.insert_or_assign(K(), V());
+    QVERIFY(p.second);
+    QCOMPARE(p.first->first, K());
+    QCOMPARE(p.first->second, V());
+
+    auto it = c.insert_or_assign(c.begin(), K(), V() + 1);
+    QCOMPARE(it->first, K());
+    QCOMPARE(it->second, V() + 1);
+
+    K k{};
+    V v{};
+    p = c.insert_or_assign(k, v);
+    QVERIFY(!p.second);
+    QCOMPARE(p.first->first, K());
+    QCOMPARE(p.first->second, V());
+
+    it = c.insert_or_assign(c.begin(), k, v + 2);
+    QCOMPARE(it->first, K());
+    QCOMPARE(it->second, V() + 2);
 }
 
 QTEST_APPLESS_MAIN(tst_ContainerApiSymmetry)

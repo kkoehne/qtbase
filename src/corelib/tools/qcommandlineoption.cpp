@@ -116,8 +116,7 @@ QCommandLineOption::QCommandLineOption(const QStringList &names)
     The default value for the option is set to \a defaultValue.
 
     In Qt versions before 5.4, this constructor was \c explicit. In Qt 5.4
-    and later, it no longer is and can be used for C++11-style uniform
-    initialization:
+    and later, it no longer is and can be used for uniform initialization:
 
     \snippet code/src_corelib_tools_qcommandlineoption.cpp cxx11-init
 
@@ -152,8 +151,7 @@ QCommandLineOption::QCommandLineOption(const QString &name, const QString &descr
     The default value for the option is set to \a defaultValue.
 
     In Qt versions before 5.4, this constructor was \c explicit. In Qt 5.4
-    and later, it no longer is and can be used for C++11-style uniform
-    initialization:
+    and later, it no longer is and can be used for uniform initialization:
 
     \snippet code/src_corelib_tools_qcommandlineoption.cpp cxx11-init-list
 
@@ -199,9 +197,7 @@ QCommandLineOption &QCommandLineOption::operator=(const QCommandLineOption &othe
 
 /*!
     \fn void QCommandLineOption::swap(QCommandLineOption &other)
-
-    Swaps option \a other with this option. This operation is very
-    fast and never fails.
+    \memberswap{option}
 */
 
 /*!
@@ -390,6 +386,10 @@ void QCommandLineOption::setFlags(Flags flags)
     This allows flags such as \c{-DDEFINE=VALUE} or \c{-I/include/path} to be
     interpreted as short flags even when the parser is in
     QCommandLineParser::ParseAsLongOptions mode.
+
+    \value IgnoreOptionsAfter [since 6.9] No options beyond this one will be parsed. Useful
+    for cases where you need to send extra command line arguments to a secondary
+    application. If a value is provided for this option, it will be ignored.
 
     \sa QCommandLineOption::setFlags(), QCommandLineOption::flags()
 */

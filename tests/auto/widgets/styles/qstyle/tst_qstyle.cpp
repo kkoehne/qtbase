@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -44,6 +44,7 @@ class tst_QStyle : public QObject
     Q_OBJECT
 
 private slots:
+    void init();
     void drawItemPixmap();
     void cleanup();
 #ifndef QT_NO_STYLE_FUSION
@@ -87,6 +88,11 @@ public:
 protected:
     void paintEvent(QPaintEvent *) override;
 };
+
+void tst_QStyle::init()
+{
+    QTest::failOnWarning(QRegularExpression("QPainter:.*"));
+}
 
 void tst_QStyle::cleanup()
 {

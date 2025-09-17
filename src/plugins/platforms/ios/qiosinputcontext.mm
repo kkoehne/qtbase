@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qiosinputcontext.h"
 
@@ -17,6 +18,8 @@
 
 #include <QGuiApplication>
 #include <QtGui/private/qwindow_p.h>
+
+#include <QtCore/qpointer.h>
 
 // -------------------------------------------------------------------------
 
@@ -119,7 +122,7 @@ static QUIView *focusView()
 {
     [self keyboardWillOrDidChange:notification];
 
-    UIResponder *firstResponder = [UIResponder currentFirstResponder];
+    UIResponder *firstResponder = [UIResponder qt_currentFirstResponder];
     if (![firstResponder isKindOfClass:[QIOSTextInputResponder class]])
         return;
 
@@ -232,7 +235,7 @@ static QUIView *focusView()
 
     if (self.state == UIGestureRecognizerStateBegan) {
         qImDebug("hide keyboard gesture was triggered");
-        UIResponder *firstResponder = [UIResponder currentFirstResponder];
+        UIResponder *firstResponder = [UIResponder qt_currentFirstResponder];
         Q_ASSERT([firstResponder isKindOfClass:[QIOSTextInputResponder class]]);
         [firstResponder resignFirstResponder];
     }
@@ -301,11 +304,7 @@ QIOSInputContext::QIOSInputContext()
     , m_keyboardHideGesture([[QIOSKeyboardListener alloc] initWithQIOSInputContext:this])
     , m_textResponder(0)
 {
-    if (isQtApplication()) {
-        QIOSScreen *iosScreen = static_cast<QIOSScreen*>(QGuiApplication::primaryScreen()->handle());
-        [iosScreen->uiWindow() addGestureRecognizer:m_keyboardHideGesture];
-    }
-
+    Q_ASSERT(!qGuiApp->focusWindow());
     connect(qGuiApp, &QGuiApplication::focusWindowChanged, this, &QIOSInputContext::focusWindowChanged);
 }
 
@@ -350,7 +349,7 @@ void QIOSInputContext::clearCurrentFocusObject()
 
 void QIOSInputContext::updateKeyboardState(NSNotification *notification)
 {
-#ifdef Q_OS_TVOS
+#if defined(Q_OS_TVOS) || defined(Q_OS_VISIONOS)
     Q_UNUSED(notification);
 #else
     static CGRect currentKeyboardRect = CGRectZero;
@@ -373,7 +372,8 @@ void QIOSInputContext::updateKeyboardState(NSNotification *notification)
         // with input-accessory-views. The reason for using frameEnd here (the future state),
         // instead of the current state reflected in frameBegin, is that QInputMethod::isVisible()
         // is documented to reflect the future state in the case of animated transitions.
-        m_keyboardState.keyboardVisible = CGRectIntersectsRect(frameEnd, [UIScreen mainScreen].bounds);
+        m_keyboardState.keyboardVisible = !CGRectIsEmpty(UIScreen.mainScreen.bounds) &&
+            !CGRectIsEmpty(frameEnd) && CGRectIntersectsRect(frameEnd, UIScreen.mainScreen.bounds);
 
         // Used for auto-scroller, and will be used for animation-signal in the future
         m_keyboardState.keyboardEndRect = frameEnd;
@@ -440,6 +440,7 @@ UIView *QIOSInputContext::scrollableRootView()
 
 void QIOSInputContext::scrollToCursor()
 {
+#if !defined(Q_OS_VISIONOS)
     if (!isQtApplication())
         return;
 
@@ -496,6 +497,7 @@ void QIOSInputContext::scrollToCursor()
     } else {
         scroll(0);
     }
+#endif
 }
 
 void QIOSInputContext::scroll(int y)
@@ -607,11 +609,14 @@ void QIOSInputContext::setFocusObject(QObject *focusObject)
 
 void QIOSInputContext::focusWindowChanged(QWindow *focusWindow)
 {
-    Q_UNUSED(focusWindow);
-
     qImDebug() << "new focus window =" << focusWindow;
 
     reset();
+
+    if (isQtApplication()) {
+        [m_keyboardHideGesture.view removeGestureRecognizer:m_keyboardHideGesture];
+        [focusView().window addGestureRecognizer:m_keyboardHideGesture];
+    }
 
     // The keyboard rectangle depend on the focus window, so
     // we need to re-evaluate the keyboard state.
@@ -636,8 +641,10 @@ void QIOSInputContext::update(Qt::InputMethodQueries updatedProperties)
     // focus object. We try to detect code paths that fail this assertion and smooth
     // over the situation by doing a manual update of the focus object.
     if (qApp->focusObject() != m_imeState.focusObject && updatedProperties != Qt::ImQueryAll) {
-        qWarning() << "stale focus object" << static_cast<void *>(m_imeState.focusObject)
-                   << ", doing manual update";
+        qCWarning(lcQpaInputMethods).verbosity(0) << "Updating input context" << updatedProperties
+            << "with last reported focus object" << m_imeState.focusObject
+            << "but qGuiApp reports" << qApp->focusObject()
+            << "which means someone failed to call QPlatformInputContext::setFocusObject()";
         setFocusObject(qApp->focusObject());
         return;
     }

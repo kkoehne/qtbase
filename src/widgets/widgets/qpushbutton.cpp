@@ -44,7 +44,7 @@ QT_BEGIN_NAMESPACE
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-pushbutton.png
+    \image fusion-pushbutton.png
 
     The push button, or command button, is perhaps the most commonly
     used widget in any graphical user interface. Push (click) a button
@@ -367,7 +367,7 @@ QSize QPushButton::sizeHint() const
     // calculate contents size...
 #if !defined(QT_NO_ICON) && QT_CONFIG(dialogbuttonbox)
     bool showButtonBoxIcons = qobject_cast<QDialogButtonBox*>(parentWidget())
-                          && style()->styleHint(QStyle::SH_DialogButtonBox_ButtonsHaveIcons);
+                          && style()->styleHint(QStyle::SH_DialogButtonBox_ButtonsHaveIcons, nullptr, this);
 
     if (!icon().isNull() || showButtonBoxIcons) {
         int ih = opt.iconSize.height();
@@ -582,7 +582,7 @@ void QPushButtonPrivate::popupPressed()
     //menu visibility to avoid flicker on button release
     menuOpen = true;
     QObject::connect(menu, &QMenu::aboutToHide,
-                     q, [q]{ q->setDown(false); }, Qt::SingleShotConnection);
+                     q, [q, this]{ menuOpen = false; q->setDown(false); }, Qt::SingleShotConnection);
     menu->popup(menuPos);
 }
 

@@ -77,7 +77,7 @@ public:
     {
         if (ValidatorsForm->objectName().isEmpty())
             ValidatorsForm->setObjectName("ValidatorsForm");
-        ValidatorsForm->resize(526, 668);
+        ValidatorsForm->resize(536, 668);
         vboxLayout = new QVBoxLayout(ValidatorsForm);
 #ifndef Q_OS_MAC
         vboxLayout->setSpacing(6);
@@ -99,7 +99,7 @@ public:
 
         hboxLayout->addWidget(localeSelector);
 
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
@@ -134,13 +134,13 @@ public:
         gridLayout->setObjectName("gridLayout");
         label = new QLabel(groupBox);
         label->setObjectName("label");
-        label->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        label->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
 
         gridLayout->addWidget(label, 0, 0, 1, 1);
 
         minVal = new QSpinBox(groupBox);
         minVal->setObjectName("minVal");
-        QSizePolicy sizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy.setHorizontalStretch(1);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(minVal->sizePolicy().hasHeightForWidth());
@@ -152,7 +152,7 @@ public:
 
         label_2 = new QLabel(groupBox);
         label_2->setObjectName("label_2");
-        label_2->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        label_2->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
 
         gridLayout->addWidget(label_2, 1, 0, 1, 1);
 
@@ -171,8 +171,8 @@ public:
 
         frame = new QFrame(groupBox);
         frame->setObjectName("frame");
-        frame->setFrameShape(QFrame::StyledPanel);
-        frame->setFrameShadow(QFrame::Sunken);
+        frame->setFrameShape(QFrame::Shape::StyledPanel);
+        frame->setFrameShadow(QFrame::Shadow::Sunken);
         vboxLayout2 = new QVBoxLayout(frame);
 #ifndef Q_OS_MAC
         vboxLayout2->setSpacing(6);
@@ -183,13 +183,13 @@ public:
         vboxLayout2->setObjectName("vboxLayout2");
         ledWidget = new LEDWidget(frame);
         ledWidget->setObjectName("ledWidget");
-        QSizePolicy sizePolicy1(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Fixed);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(ledWidget->sizePolicy().hasHeightForWidth());
         ledWidget->setSizePolicy(sizePolicy1);
         ledWidget->setPixmap(QPixmap(QString::fromUtf8(":/ledoff.png")));
-        ledWidget->setAlignment(Qt::AlignCenter);
+        ledWidget->setAlignment(Qt::AlignmentFlag::AlignCenter);
 
         vboxLayout2->addWidget(ledWidget);
 
@@ -204,7 +204,7 @@ public:
 
         vboxLayout1->addLayout(hboxLayout1);
 
-        spacerItem1 = new QSpacerItem(20, 20, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem1 = new QSpacerItem(20, 20, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         vboxLayout1->addItem(spacerItem1);
 
@@ -244,7 +244,7 @@ public:
         gridLayout1->setObjectName("gridLayout1");
         label_3 = new QLabel(groupBox_2);
         label_3->setObjectName("label_3");
-        label_3->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        label_3->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
 
         gridLayout1->addWidget(label_3, 0, 0, 1, 1);
 
@@ -260,7 +260,7 @@ public:
 
         label_5 = new QLabel(groupBox_2);
         label_5->setObjectName("label_5");
-        label_5->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        label_5->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
 
         gridLayout1->addWidget(label_5, 0, 2, 1, 1);
 
@@ -273,7 +273,7 @@ public:
 
         label_4 = new QLabel(groupBox_2);
         label_4->setObjectName("label_4");
-        label_4->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        label_4->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
 
         gridLayout1->addWidget(label_4, 1, 0, 1, 1);
 
@@ -289,7 +289,7 @@ public:
 
         label_6 = new QLabel(groupBox_2);
         label_6->setObjectName("label_6");
-        label_6->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+        label_6->setAlignment(Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter);
 
         gridLayout1->addWidget(label_6, 1, 2, 1, 1);
 
@@ -304,8 +304,8 @@ public:
 
         frame_2 = new QFrame(groupBox_2);
         frame_2->setObjectName("frame_2");
-        frame_2->setFrameShape(QFrame::StyledPanel);
-        frame_2->setFrameShadow(QFrame::Sunken);
+        frame_2->setFrameShape(QFrame::Shape::StyledPanel);
+        frame_2->setFrameShadow(QFrame::Shadow::Sunken);
         vboxLayout4 = new QVBoxLayout(frame_2);
 #ifndef Q_OS_MAC
         vboxLayout4->setSpacing(6);
@@ -317,7 +317,7 @@ public:
         doubleLedWidget = new LEDWidget(frame_2);
         doubleLedWidget->setObjectName("doubleLedWidget");
         doubleLedWidget->setPixmap(QPixmap(QString::fromUtf8(":/ledoff.png")));
-        doubleLedWidget->setAlignment(Qt::AlignCenter);
+        doubleLedWidget->setAlignment(Qt::AlignmentFlag::AlignCenter);
 
         vboxLayout4->addWidget(doubleLedWidget);
 
@@ -332,7 +332,7 @@ public:
 
         vboxLayout3->addLayout(hboxLayout2);
 
-        spacerItem2 = new QSpacerItem(20, 20, QSizePolicy::Minimum, QSizePolicy::Fixed);
+        spacerItem2 = new QSpacerItem(20, 20, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
 
         vboxLayout3->addItem(spacerItem2);
 
@@ -344,7 +344,7 @@ public:
 
         vboxLayout->addWidget(groupBox_2);
 
-        spacerItem3 = new QSpacerItem(20, 111, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem3 = new QSpacerItem(20, 111, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout->addItem(spacerItem3);
 
@@ -354,7 +354,7 @@ public:
 #endif
         hboxLayout3->setContentsMargins(0, 0, 0, 0);
         hboxLayout3->setObjectName("hboxLayout3");
-        spacerItem4 = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem4 = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout3->addItem(spacerItem4);
 

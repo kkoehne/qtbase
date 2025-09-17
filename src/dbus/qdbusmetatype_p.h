@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSMETATYPE_P_H
 #define QDBUSMETATYPE_P_H
@@ -37,7 +38,7 @@ QMetaType signature(); // QDBusSignature
 QMetaType error(); // QDBusError
 QMetaType unixfd(); // QDBusUnixFileDescriptor
 
-void init();
+Q_DBUS_EXPORT void init();
 }; // namespace QDBusMetaTypeId
 
 inline QMetaType QDBusMetaTypeId::message()

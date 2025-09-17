@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: BSD-3-Clause
 
 #define QGLOBAL_H
 #include "../../src/corelib/global/archdetect.cpp"
@@ -239,17 +239,20 @@ const char msg2[] = "==Qt=magic=Qt== Sub-architecture:"
 #endif
 
 // -- ARM --
-#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
 " neon"
 #endif
 #ifdef __IWMMXT__
 " iwmmxt"
 #endif
-#ifdef __ARM_FEATURE_CRC32
+#if defined(__ARM_FEATURE_CRC32) || (defined(_M_ARM64) && __ARM_ARCH >= 800)
 " crc32"
 #endif
-#ifdef __ARM_FEATURE_CRYPTO
+#if defined(__ARM_FEATURE_AES) || defined(__ARM_FEATURE_CRYPTO) || (defined(_M_ARM64) && __ARM_ARCH >= 800)
 " crypto"
+#endif
+#ifdef __ARM_FEATURE_SVE
+" sve"
 #endif
 
 // -- SPARC --

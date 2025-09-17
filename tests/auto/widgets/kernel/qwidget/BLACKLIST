@@ -1,9 +1,3 @@
-[raise]
-opensuse-leap
-[renderInvisible]
-macos
-[optimizedResizeMove]
-osx
 [optimizedResize_topLevel]
 osx
 [render_windowOpacity]
@@ -18,7 +12,7 @@ sles-15
 # QTBUG-87668
 [showMinimizedKeepsFocus]
 android
-macos-13 ci
+macos ci
 [normalGeometry]
 android
 [saveRestoreGeometry]
@@ -45,5 +39,8 @@ android
 android
 [optimizedResize_topLevel]
 android
-[render]
-wayland
+[hoverPosition]
+macos-14 x86
+# QTBUG-124291
+[setParentChangesFocus:make dialog parentless, after]
+android

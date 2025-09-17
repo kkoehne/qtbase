@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 #include <qchar.h>
@@ -72,7 +72,7 @@ static void verifyCharClassPattern(QString str, qulonglong pattern,
         };
         QVERIFY2(isSet == test,
                  qPrintable(QString("Character #%1: 0x%2, isSet: %3")
-                        .arg(i).arg(str[i].unicode(), 0, 16).arg(isSet)));
+                        .arg(i).arg(ushort{str[i].unicode()}, 0, 16).arg(isSet)));
     }
 }
 

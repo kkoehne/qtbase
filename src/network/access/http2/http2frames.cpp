@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "http2frames_p.h"
 
@@ -135,6 +136,7 @@ FrameStatus Frame::validateHeader() const
         // 6.6 PUSH_PROMISE
         if (framePayloadSize < 4)
             return FrameStatus::sizeError;
+        break;
     default:
         // DATA/HEADERS/CONTINUATION will be verified
         // when we have payload.
@@ -258,7 +260,7 @@ const uchar *Frame::hpackBlockBegin() const
     return begin;
 }
 
-FrameStatus FrameReader::read(QAbstractSocket &socket)
+FrameStatus FrameReader::read(QIODevice &socket)
 {
     if (offset < frameHeaderSize) {
         if (!readHeader(socket))
@@ -286,7 +288,7 @@ FrameStatus FrameReader::read(QAbstractSocket &socket)
     return frame.validatePayload();
 }
 
-bool FrameReader::readHeader(QAbstractSocket &socket)
+bool FrameReader::readHeader(QIODevice &socket)
 {
     Q_ASSERT(offset < frameHeaderSize);
 
@@ -302,7 +304,7 @@ bool FrameReader::readHeader(QAbstractSocket &socket)
     return offset == frameHeaderSize;
 }
 
-bool FrameReader::readPayload(QAbstractSocket &socket)
+bool FrameReader::readPayload(QIODevice &socket)
 {
     Q_ASSERT(offset < frame.buffer.size());
     Q_ASSERT(frame.buffer.size() > frameHeaderSize);
@@ -393,7 +395,7 @@ void FrameWriter::updatePayloadSize()
     setPayloadSize(size);
 }
 
-bool FrameWriter::write(QAbstractSocket &socket) const
+bool FrameWriter::write(QIODevice &socket) const
 {
     auto &buffer = frame.buffer;
     Q_ASSERT(buffer.size() >= frameHeaderSize);
@@ -407,7 +409,7 @@ bool FrameWriter::write(QAbstractSocket &socket) const
     return nWritten != -1 && size_type(nWritten) == buffer.size();
 }
 
-bool FrameWriter::writeHEADERS(QAbstractSocket &socket, quint32 sizeLimit)
+bool FrameWriter::writeHEADERS(QIODevice &socket, quint32 sizeLimit)
 {
     auto &buffer = frame.buffer;
     Q_ASSERT(buffer.size() >= frameHeaderSize);
@@ -457,7 +459,7 @@ bool FrameWriter::writeHEADERS(QAbstractSocket &socket, quint32 sizeLimit)
     return true;
 }
 
-bool FrameWriter::writeDATA(QAbstractSocket &socket, quint32 sizeLimit,
+bool FrameWriter::writeDATA(QIODevice &socket, quint32 sizeLimit,
                             const uchar *src, quint32 size)
 {
     // With DATA frame(s) we always have:

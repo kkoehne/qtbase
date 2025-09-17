@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QtCore>
 #include <QtWidgets/QTreeView>
 #include <qtest.h>
@@ -59,7 +59,13 @@ inline void allocator()
     // prepare OS (no other tasks, CPU and RAM reservations) to run this test, or use
     // instruction counting which seems to be less fragile.
 
-    const int count = 256 * 1024;
+#ifdef Q_OS_WIN
+    // Stack space available is 1MB, but each pointer is 8 bytes, so leave us
+    // 32KB space to work with:
+    constexpr int count = 124 * 1024;
+#else
+    constexpr int count = 256 * 1024;
+#endif
 
     QScopedPointer<T> objects[count];
     QBENCHMARK_ONCE {

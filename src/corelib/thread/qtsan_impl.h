@@ -1,6 +1,7 @@
 // Copyright (C) 2017 Intel Corporation.
 // Copyright (C) 2022 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Giuseppe D'Angelo <giuseppe.dangelo@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QTSAN_IMPL_H
 #define QTSAN_IMPL_H
@@ -33,6 +34,16 @@ inline void futexRelease(void *addr, void *addr2 = nullptr)
     ::__tsan_release(addr);
 }
 
+inline void latchWait(const void *addr)
+{
+    ::__tsan_acquire(const_cast<void *>(addr));
+}
+
+inline void latchCountDown(void *addr)
+{
+    ::__tsan_release(addr);
+}
+
 inline void mutexPreLock(void *addr, unsigned flags)
 {
     ::__tsan_mutex_pre_lock(addr, flags);
@@ -54,6 +65,7 @@ inline void mutexPostUnlock(void *addr, unsigned flags)
 }
 
 enum : unsigned {
+    ReadLock = ::__tsan_mutex_read_lock,
     MutexWriteReentrant = ::__tsan_mutex_write_reentrant,
     TryLock = ::__tsan_mutex_try_lock,
     TryLockFailed = ::__tsan_mutex_try_lock_failed,
@@ -61,8 +73,11 @@ enum : unsigned {
 #else
 inline void futexAcquire(void *, void * = nullptr) {}
 inline void futexRelease(void *, void * = nullptr) {}
+inline void latchCountDown(void *) {}
+inline void latchWait(const void *) {}
 
 enum : unsigned {
+    ReadLock,
     MutexWriteReentrant,
     TryLock,
     TryLockFailed,

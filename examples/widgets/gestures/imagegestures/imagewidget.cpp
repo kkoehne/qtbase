@@ -41,6 +41,12 @@ void ImageWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
 
+    if (files.isEmpty() && !path.isEmpty()) {
+        p.drawText(rect(), Qt::AlignCenter|Qt::TextWordWrap,
+                         tr("No supported image formats found"));
+        return;
+    }
+
     const qreal iw = currentImage.width();
     const qreal ih = currentImage.height();
     const qreal wh = height();
@@ -126,13 +132,16 @@ void ImageWidget::pinchTriggered(QPinchGesture *gesture)
 void ImageWidget::swipeTriggered(QSwipeGesture *gesture)
 {
     if (gesture->state() == Qt::GestureFinished) {
-        if (gesture->horizontalDirection() == QSwipeGesture::Left
-            || gesture->verticalDirection() == QSwipeGesture::Up) {
-            qCDebug(lcExample) << "swipeTriggered(): swipe to previous";
-            goPrevImage();
-        } else {
-            qCDebug(lcExample) << "swipeTriggered(): swipe to next";
+        if (gesture->swipeAngle() < 45 || gesture->swipeAngle() > 225) {
+            // swipe direction right or down
+            qCDebug(lcExample) << "swipeTriggered(): angle"
+                               << gesture->swipeAngle() << "; swipe to next";
             goNextImage();
+        } else {
+            // swipe direction left or up
+            qCDebug(lcExample) << "swipeTriggered(): angle"
+                               << gesture->swipeAngle() << "; swipe to previous";
+            goPrevImage();
         }
         update();
     }
@@ -144,11 +153,15 @@ void ImageWidget::resizeEvent(QResizeEvent*)
     update();
 }
 
-void ImageWidget::openDirectory(const QString &path)
+void ImageWidget::openDirectory(const QString &url)
 {
-    this->path = path;
+    path = url;
     QDir dir(path);
-    const QStringList nameFilters{"*.jpg", "*.png"};
+
+    QStringList nameFilters;
+    const QList<QByteArray> supportedFormats = QImageReader::supportedImageFormats();
+    for (const QByteArray &format : supportedFormats)
+        nameFilters.append(QLatin1String("*.") + QString::fromLatin1(format));
     files = dir.entryInfoList(nameFilters, QDir::Files|QDir::Readable, QDir::Name);
 
     position = 0;

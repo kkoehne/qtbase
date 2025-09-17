@@ -1,8 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#undef QT_NO_FOREACH // this file contains unported legacy Q_FOREACH uses
-
 #include <qmenubar.h>
 
 #include <qstyle.h>
@@ -16,9 +14,6 @@
 #include <qevent.h>
 #if QT_CONFIG(mainwindow)
 #include <qmainwindow.h>
-#endif
-#if QT_CONFIG(toolbar)
-#include <qtoolbar.h>
 #endif
 #if QT_CONFIG(toolbutton)
 #include <qtoolbutton.h>
@@ -283,17 +278,28 @@ void QMenuBarPrivate::popupAction(QAction *action, bool activateFirst)
     if (action->isEnabled() && action->menu()->isEnabled()) {
         closePopupMode = 0;
         activeMenu = action->menu();
-        activeMenu->d_func()->causedPopup.widget = q;
-        activeMenu->d_func()->causedPopup.action = action;
+        auto *activeMenuPriv = activeMenu->d_func();
+        activeMenuPriv->causedPopup.widget = q;
+        activeMenuPriv->causedPopup.action = action;
 
         QRect adjustedActionRect = actionRect(action);
-        QPoint pos(q->mapToGlobal(QPoint(adjustedActionRect.left(), adjustedActionRect.bottom() + 1)));
-        QSize popup_size = activeMenu->sizeHint();
+        QPoint popupPos = adjustedActionRect.bottomLeft() + QPoint(0, 1);
+
         //we put the popup menu on the screen containing the bottom-center of the action rect
         QScreen *menubarScreen = q->window()->windowHandle()->screen();
-        QScreen *popupScreen = menubarScreen->virtualSiblingAt(pos + QPoint(adjustedActionRect.width() / 2, 0));
+        QPoint screenTestPos = q->mapToGlobal(popupPos + QPoint(adjustedActionRect.width() / 2, 0));
+        QPointer<QScreen> popupScreen = menubarScreen->virtualSiblingAt(screenTestPos);
         if (!popupScreen)
             popupScreen = menubarScreen;
+        std::swap(popupScreen, activeMenuPriv->popupScreen);
+        const QSize popup_size = activeMenu->sizeHint();
+        std::swap(popupScreen, activeMenuPriv->popupScreen);
+
+        // Use screenTestPos.y() for the popup y position. This is the correct global y
+        // consistent with the selected screen in cases where the action rect spans
+        // multiple screens with different scale factors.
+        QPoint pos(q->mapToGlobal(popupPos).x(), screenTestPos.y());
+
         QRect screenRect = popupScreen->geometry();
         pos = QPoint(qMax(pos.x(), screenRect.x()), qMax(pos.y(), screenRect.y()));
         const bool fitUp = (pos.y() - popup_size.height() >= screenRect.top());
@@ -916,7 +922,7 @@ void QMenuBar::paintEvent(QPaintEvent *e)
         frame.rect = rect();
         frame.palette = palette();
         frame.state = QStyle::State_None;
-        frame.lineWidth = style()->pixelMetric(QStyle::PM_MenuBarPanelWidth, &frame);
+        frame.lineWidth = style()->pixelMetric(QStyle::PM_MenuBarPanelWidth, &frame, this);
         frame.midLineWidth = 0;
         style()->drawPrimitive(QStyle::PE_PanelMenuBar, &frame, &p, this);
     }
@@ -1289,7 +1295,12 @@ void QMenuBarPrivate::handleReparent()
     QList<QPointer<QWidget>> newParents;
     // Remove event filters on ex-parents, keep them on still-parents
     // The parents are always ordered in the vector
-    foreach (const QPointer<QWidget> &w, oldParents) {
+    //
+    // Take a copy because this method is called from changeEvent() and eventFilter(),
+    // which might cause recursion into the class due to event processing, which might
+    // modify oldParents.
+    const auto copy = oldParents;
+    for (const QPointer<QWidget> &w : copy) {
         if (w) {
             if (newParent == w) {
                 newParents.append(w);

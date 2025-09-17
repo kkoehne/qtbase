@@ -1,5 +1,6 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qlocale_p.h"
 
@@ -25,16 +26,18 @@ using namespace Qt::StringLiterals;
 ** Wrappers for Mac locale system functions
 */
 
-Q_LOGGING_CATEGORY(lcLocale, "qt.core.locale")
+Q_STATIC_LOGGING_CATEGORY(lcLocale, "qt.core.locale")
 
 static void printLocalizationInformation()
 {
     if (!lcLocale().isDebugEnabled())
         return;
 
+#if defined(Q_OS_MACOS)
     // Trigger initialization of standard user defaults, so that Foundation picks
     // up -AppleLanguages and -AppleLocale passed on the command line.
     Q_UNUSED(NSUserDefaults.standardUserDefaults);
+#endif
 
     auto singleLineDescription = [](NSArray *array) {
         NSString *str = [array description];
@@ -321,105 +324,135 @@ static QVariant macToQtFormat(QStringView sys_fmt)
         }
 
         QChar c = sys_fmt.at(i);
-        qsizetype repeat = qt_repeatCount(sys_fmt.mid(i));
+        qsizetype repeat = qt_repeatCount(sys_fmt.sliced(i));
 
         switch (c.unicode()) {
             // Qt does not support the following options
-            case 'G': // Era (1..5): 4 = long, 1..3 = short, 5 = narrow
-            case 'Y': // Year of Week (1..n): 1..n = padded number
-            case 'U': // Cyclic Year Name (1..5): 4 = long, 1..3 = short, 5 = narrow
-            case 'Q': // Quarter (1..4): 4 = long, 3 = short, 1..2 = padded number
-            case 'q': // Standalone Quarter (1..4): 4 = long, 3 = short, 1..2 = padded number
-            case 'w': // Week of Year (1..2): 1..2 = padded number
-            case 'W': // Week of Month (1): 1 = number
-            case 'D': // Day of Year (1..3): 1..3 = padded number
-            case 'F': // Day of Week in Month (1): 1 = number
-            case 'g': // Modified Julian Day (1..n): 1..n = padded number
-            case 'A': // Milliseconds in Day (1..n): 1..n = padded number
-                break;
+        case 'A': // Milliseconds in Day (1..n): 1..n = padded number
+        case 'C': // Input skeleton symbol.
+        case 'D': // Day of Year (1..3): 1..3 = padded number
+        case 'F': // Day of Week in Month (1): 1 = number
+        case 'g': // Modified Julian Day (1..n): 1..n = padded number
+        case 'G': // Era (1..5): 4 = long, 1..3 = short, 5 = narrow
+        case 'j': // Input skeleton symbol.
+        case 'J': // Input skeleton symbol.
+        case 'l': // Deprecated Chinese leap month indicator.
+        case 'q': // Standalone Quarter (1..4): 4 = long, 3 = short, 1,2 = padded number
+        case 'Q': // Quarter (1..4): 4 = long, 3 = short, 1,2 = padded number
+        case 'U': // Cyclic Year Name (1..5): 4 = long, 1..3 = short, 5 = narrow
+        case 'w': // Week of Year (1,2): 1,2 = padded number
+        case 'W': // Week of Month (1): 1 = number
+        case 'Y': // Year for Week-of-year calendars (1..n): 1..n = padded number
+            break;
 
-            case 'y': // Year (1..n): 2 = short year, 1 & 3..n = padded number
-            case 'u': // Extended Year (1..n): 2 = short year, 1 & 3..n = padded number
-                // Qt only supports long (4) or short (2) year, use long for all others
-                if (repeat == 2)
-                    result += "yy"_L1;
-                else
-                    result += "yyyy"_L1;
-                break;
-            case 'M': // Month (1..5): 4 = long, 3 = short, 1..2 = number, 5 = narrow
-            case 'L': // Standalone Month (1..5): 4 = long, 3 = short, 1..2 = number, 5 = narrow
-                // Qt only supports long, short and number, use short for narrow
-                if (repeat == 5)
-                    result += "MMM"_L1;
-                else
-                    result += QString(repeat, u'M');
-                break;
-            case 'd': // Day of Month (1..2): 1..2 padded number
+        case 'u': // Extended Year (1..n), padded number.
+            // Explicitly has no special case for 'uu' as only the last two digits.
+            result += "yyyy"_L1;
+            break;
+        case 'y': // Year (1..n): 2 = short year, 1 & 3..n = padded number
+            // Qt only supports long (4) or short (2) year, use long for all others
+            if (repeat == 2)
+                result += "yy"_L1;
+            else
+                result += "yyyy"_L1;
+            break;
+        case 'L': // Standalone Month (1..5): 4 = long, 3 = short, 1,2 = number, 5 = narrow
+        case 'M': // Month (1..5): 4 = long, 3 = short, 1,2 = number, 5 = narrow
+            // Qt only supports long, short and number, use short for narrow
+            if (repeat == 5)
+                result += "MMM"_L1;
+            else
+                result += QString(repeat, u'M');
+            break;
+        case 'd': // Day of Month (1,2): 1,2 padded number
+            result += QString(repeat, c);
+            break;
+        case 'c': // Standalone version of 'e'
+        case 'e': // Local Day of Week (1..6): 4 = long, 3 = short, 5,6 = narrow, 1,2 padded number
+            // "Local" only affects numeric form: depends on locale's start-day of the week.
+        case 'E': // Day of Week (1..6): 4 = long, 1..3 = short, 5,6 = narrow
+            // Qt only supports long, short: use short for narrow and padded number.
+            if (repeat == 4)
+                result += "dddd"_L1;
+            else
+                result += "ddd"_L1;
+            break;
+        case 'a': // AM/PM (1..n): Qt supports no distinctions
+        case 'b': // Like a, but also distinguishing noon, midnight (ignore difference).
+        case 'B': // Flexible day period (at night, &c.)
+            // Translate to Qt AM/PM, using locale-appropriate case:
+            result += "Ap"_L1;
+            break;
+        case 'h': // Hour [1..12] (1,2): 1,2 = padded number
+        case 'K': // Hour [0..11] (1,2): 1,2 = padded number
+            result += QString(repeat, 'h'_L1);
+            break;
+        case 'H': // Hour [0..23] (1,2): 1,2 = padded number
+        case 'k': // Hour [1..24] (1,2): 1,2 = padded number
+            // Qt H is 0..23 hour
+            result += QString(repeat, 'H'_L1);
+            break;
+        case 'm': // Minutes (1,2): 1,2 = padded number
+        case 's': // Seconds (1,2): 1,2 = padded number
+            result += QString(repeat, c);
+            break;
+        case 'S': // Fractional second (1..n): 1..n = truncates to decimal places
+            // Qt uses msecs either unpadded or padded to 3 places
+            if (repeat < 3)
+                result += u'z';
+            else
+                result += "zzz"_L1;
+            break;
+        case 'O': // Time Zone (1, 4)
+            result += u't';
+            break;
+        case 'v': // Time Zone (1, 4)
+        case 'V': // Time Zone (1..4)
+            result += "tttt"_L1;
+            break;
+        case 'x': // Time Zone (1..5)
+        case 'X': // Time Zone (1..5)
+            result += (repeat > 1 && (repeat & 1)) ? "ttt"_L1 : "tt"_L1;
+            break;
+        case 'z': // Time Zone (1..4)
+        case 'Z': // Time Zone (1..5)
+            result += repeat < 4 ? "tt"_L1 : repeat > 4 ? "ttt"_L1 : "t"_L1;
+            break;
+        default:
+            // a..z and A..Z are reserved for format codes, so any occurrence of these not
+            // already processed are not known and so unsupported formats to be ignored.
+            // All other chars are allowed as literals.
+            if (c < u'A' || c > u'z' || (c > u'Z' && c < u'a'))
                 result += QString(repeat, c);
-                break;
-            case 'E': // Day of Week (1..6): 4 = long, 1..3 = short, 5..6 = narrow
-                // Qt only supports long, short and padded number, use short for narrow
-                if (repeat == 4)
-                    result += "dddd"_L1;
-                else
-                    result += "ddd"_L1;
-                break;
-            case 'e': // Local Day of Week (1..6): 4 = long, 3 = short, 5..6 = narrow, 1..2 padded number
-            case 'c': // Standalone Local Day of Week (1..6): 4 = long, 3 = short, 5..6 = narrow, 1..2 padded number
-                // Qt only supports long, short and padded number, use short for narrow
-                if (repeat >= 5)
-                    result += "ddd"_L1;
-                else
-                    result += QString(repeat, 'd'_L1);
-                break;
-            case 'a': // AM/PM (1): 1 = short
-                // Translate to Qt uppercase AM/PM
-                result += "AP"_L1;
-                break;
-            case 'h': // Hour [1..12] (1..2): 1..2 = padded number
-            case 'K': // Hour [0..11] (1..2): 1..2 = padded number
-            case 'j': // Local Hour [12 or 24] (1..2): 1..2 = padded number
-                // Qt h is local hour
-                result += QString(repeat, 'h'_L1);
-                break;
-            case 'H': // Hour [0..23] (1..2): 1..2 = padded number
-            case 'k': // Hour [1..24] (1..2): 1..2 = padded number
-                // Qt H is 0..23 hour
-                result += QString(repeat, 'H'_L1);
-                break;
-            case 'm': // Minutes (1..2): 1..2 = padded number
-            case 's': // Seconds (1..2): 1..2 = padded number
-                result += QString(repeat, c);
-                break;
-            case 'S': // Fractional second (1..n): 1..n = truncates to decimal places
-                // Qt uses msecs either unpadded or padded to 3 places
-                if (repeat < 3)
-                    result += u'z';
-                else
-                    result += "zzz"_L1;
-                break;
-            case 'z': // Time Zone (1..4)
-            case 'Z': // Time Zone (1..5)
-            case 'O': // Time Zone (1, 4)
-            case 'v': // Time Zone (1, 4)
-            case 'V': // Time Zone (1..4)
-            case 'X': // Time Zone (1..5)
-            case 'x': // Time Zone (1..5)
-                result += u't';
-                break;
-            default:
-                // a..z and A..Z are reserved for format codes, so any occurrence of these not
-                // already processed are not known and so unsupported formats to be ignored.
-                // All other chars are allowed as literals.
-                if (c < u'A' || c > u'z' || (c > u'Z' && c < u'a'))
-                    result += QString(repeat, c);
-                break;
+            break;
         }
 
         i += repeat;
     }
 
     return !result.isEmpty() ? QVariant::fromValue(result) : QVariant();
+}
+
+static QVariant getGroupingSizes()
+{
+    // It does not seem like you can directly query the group sizes from CFLocale as there
+    // is no key that corresponds to it, see:
+    // https://developer.apple.com/documentation/corefoundation/cflocalekey
+    // We have to create a number formatter for the locale and query the data from there.
+    // see: https://developer.apple.com/documentation/corefoundation/1390801-cfnumberformattercopyproperty
+    QLocaleData::GroupSizes sizes;
+    QCFType<CFLocaleRef> locale = CFLocaleCopyCurrent();
+    QCFType<CFNumberFormatterRef> numberFormatter =
+            CFNumberFormatterCreate(NULL, locale, kCFNumberFormatterDecimalStyle);
+    CFTypeRef numTref =
+            CFNumberFormatterCopyProperty(numberFormatter, kCFNumberFormatterGroupingSize);
+    CFNumberRef num = static_cast<CFNumberRef>(numTref);
+    int value;
+    if (CFNumberGetValue(num, kCFNumberIntType, &value) && value > 0) {
+        sizes.least = value;
+        sizes.higher = value;
+    }
+    return QVariant::fromValue(sizes);
 }
 
 static QVariant getMacDateFormat(CFDateFormatterStyle style)
@@ -571,7 +604,7 @@ static QLocale::Language codeToLanguage(QStringView s)
     return QLocalePrivate::codeToLanguage(s);
 }
 
-QVariant QSystemLocale::query(QueryType type, QVariant in) const
+QVariant QSystemLocale::query(QueryType type, QVariant &&in) const
 {
     QMacAutoReleasePool pool;
 
@@ -584,6 +617,8 @@ QVariant QSystemLocale::query(QueryType type, QVariant in) const
         return getLocaleValue<QLocalePrivate::codeToScript>(kCFLocaleScriptCode);
     case DecimalPoint:
         return getCFLocaleValue(kCFLocaleDecimalSeparator);
+    case Grouping:
+        return getGroupingSizes();
     case GroupSeparator:
         return getCFLocaleValue(kCFLocaleGroupingSeparator);
     case DateFormatLong:
@@ -662,5 +697,41 @@ QVariant QSystemLocale::query(QueryType type, QVariant in) const
 }
 
 #endif // QT_NO_SYSTEMLOCALE
+
+#if !QT_CONFIG(icu)
+
+static QString localeConvertString(const QByteArray &localeID, const QString &str, bool *ok,
+                                   bool toLowerCase)
+{
+    QMacAutoReleasePool pool;
+    Q_ASSERT(ok);
+    NSString *localestring = [[NSString alloc] initWithData:localeID.toNSData()
+                                                   encoding:NSUTF8StringEncoding];
+    NSLocale *locale = [NSLocale localeWithLocaleIdentifier:localestring];
+    if (!locale) {
+        *ok = false;
+        return QString();
+    }
+    *ok = true;
+    NSString *nsstring = str.toNSString();
+    if (toLowerCase)
+        nsstring = [nsstring lowercaseStringWithLocale:locale];
+    else
+        nsstring = [nsstring uppercaseStringWithLocale:locale];
+
+    return QString::fromNSString(nsstring);
+}
+
+QString QLocalePrivate::toLower(const QString &str, bool *ok) const
+{
+    return localeConvertString(bcp47Name('-'), str, ok, true);
+}
+
+QString QLocalePrivate::toUpper(const QString &str, bool *ok) const
+{
+    return localeConvertString(bcp47Name('-'), str, ok, false);
+}
+
+#endif
 
 QT_END_NAMESPACE

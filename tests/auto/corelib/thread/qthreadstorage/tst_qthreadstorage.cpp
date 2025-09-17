@@ -1,5 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+#define Q_NO_THREAD_STORAGE_TRIVIAL_WARNING
 
 #include <QTest>
 #if QT_CONFIG(process)
@@ -276,7 +278,7 @@ void tst_QThreadStorage::crashOnExit()
     QSKIP("Can't start QProcess to run a custom user binary on Android");
 #endif
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
     QString errorMessage;
     QVERIFY2(runCrashOnExit("./crashOnExit_helper", &errorMessage),

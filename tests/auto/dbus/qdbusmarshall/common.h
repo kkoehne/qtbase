@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtGlobal>
 #include <QMap>
@@ -152,12 +152,22 @@ void commonInit()
     qDBusRegisterMetaType<QMap<QDBusObjectPath, QString> >();
     qDBusRegisterMetaType<QMap<qlonglong, QDateTime> >();
     qDBusRegisterMetaType<QMap<QDBusSignature, QString> >();
+    qDBusRegisterMetaType<QMap<QString, std::pair<int, int>>>();
 
+    qDBusRegisterMetaType<std::pair<int, int>>();
     qDBusRegisterMetaType<MyStruct>();
     qDBusRegisterMetaType<MyVariantMapStruct>();
     qDBusRegisterMetaType<QList<MyVariantMapStruct> >();
     qDBusRegisterMetaType<MyFileDescriptorStruct>();
     qDBusRegisterMetaType<QList<MyFileDescriptorStruct> >();
+
+    qDBusRegisterMetaType<std::tuple<int>>();
+    qDBusRegisterMetaType<std::tuple<QString>>();
+    qDBusRegisterMetaType<std::tuple<QVariantMap>>();
+    qDBusRegisterMetaType<std::tuple<QPoint>>();
+    qDBusRegisterMetaType<std::tuple<std::tuple<int>>>();
+    qDBusRegisterMetaType<std::tuple<QList<int>>>();
+    qDBusRegisterMetaType<std::tuple<int, QString, QVariantMap>>();
 }
 #ifdef USE_PRIVATE_CODE
 #include "private/qdbusintrospection_p.h"
@@ -471,6 +481,8 @@ bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
             return compare<QMap<qlonglong, QDateTime> >(arg, v2);
         else if (id == qMetaTypeId<QMap<QDBusSignature, QString> >())
             return compare<QMap<QDBusSignature, QString> >(arg, v2);
+        else if (id == qMetaTypeId<QMap<QString, std::pair<int, int>>>())
+            return compare<QMap<QString, std::pair<int, int>>>(arg, v2);
 
         else if (id == qMetaTypeId<QList<QByteArray> >())
             return compare<QList<QByteArray> >(arg, v2);
@@ -506,6 +518,21 @@ bool compareToArgument(const QDBusArgument &arg, const QVariant &v2)
             return compare<MyFileDescriptorStruct>(arg, v2);
         else if (id == qMetaTypeId<QList<MyFileDescriptorStruct> >())
             return compare<QList<MyFileDescriptorStruct> >(arg, v2);
+
+        else if (id == qMetaTypeId<std::tuple<int>>())
+            return compare<std::tuple<int>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QString>>())
+            return compare<std::tuple<QString>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QVariantMap>>())
+            return compare<std::tuple<QVariantMap>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QPoint>>())
+            return compare<std::tuple<QPoint>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<std::tuple<int>>>())
+            return compare<std::tuple<std::tuple<int>>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<QList<int>>>())
+            return compare<std::tuple<QList<int>>>(arg, v2);
+        else if (id == qMetaTypeId<std::tuple<int, QString, QVariantMap>>())
+            return compare<std::tuple<int, QString, QVariantMap>>(arg, v2);
     }
 
     qWarning() << "Unexpected QVariant type" << v2.userType()

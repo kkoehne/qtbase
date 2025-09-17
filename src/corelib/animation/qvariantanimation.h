@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QVARIANTANIMATION_H
 #define QVARIANTANIMATION_H
@@ -26,7 +27,7 @@ class Q_CORE_EXPORT QVariantAnimation : public QAbstractAnimation
                BINDABLE bindableEasingCurve)
 
 public:
-    typedef QPair<qreal, QVariant> KeyValue;
+    using KeyValue = std::pair<qreal, QVariant>;
     typedef QList<KeyValue> KeyValues;
 
     QVariantAnimation(QObject *parent = nullptr);

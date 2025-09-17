@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QPLATFORMTHEME_COCOA_H
 #define QPLATFORMTHEME_COCOA_H
@@ -35,14 +36,17 @@ public:
     const QFont *font(Font type = SystemFont) const override;
     QPixmap standardPixmap(StandardPixmap sp, const QSizeF &size) const override;
     QIcon fileIcon(const QFileInfo &fileInfo, QPlatformTheme::IconOptions options = {}) const override;
+    QIconEngine *createIconEngine(const QString &iconName) const override;
 
     QVariant themeHint(ThemeHint hint) const override;
     Qt::ColorScheme colorScheme() const override;
+    Qt::ContrastPreference contrastPreference() const override;
     QString standardButtonText(int button) const override;
     QKeySequence standardButtonShortcut(int button) const override;
 
     static const char *name;
 
+    void requestColorScheme(Qt::ColorScheme scheme) override;
     void handleSystemThemeChange();
 
 #ifndef QT_NO_SHORTCUT

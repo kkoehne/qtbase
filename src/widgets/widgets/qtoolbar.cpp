@@ -4,9 +4,6 @@
 #include "qtoolbar.h"
 
 #include <qapplication.h>
-#if QT_CONFIG(combobox)
-#include <qcombobox.h>
-#endif
 #if QT_CONFIG(draganddrop)
 #include <qdrag.h>
 #endif
@@ -14,18 +11,11 @@
 #include <qlayout.h>
 #include <qmainwindow.h>
 #include <qmenu.h>
-#if QT_CONFIG(menubar)
-#include <qmenubar.h>
-#endif
 #include <qmimedata.h>
-#if QT_CONFIG(rubberband)
-#include <qrubberband.h>
-#endif
 #include <qstylepainter.h>
 #include <qstyleoption.h>
 #include <qtoolbutton.h>
 #include <qwidgetaction.h>
-#include <qtimer.h>
 #include <private/qwidgetaction_p.h>
 #include <private/qmainwindowlayout_p.h>
 #include <private/qhighdpiscaling_p.h>
@@ -116,6 +106,8 @@ void QToolBarPrivate::updateWindowFlags(bool floating, bool unplug)
     // the platform window when it would be removed later
     if (unplug && !QMainWindowLayout::needsPlatformDrag())
         flags |= Qt::X11BypassWindowManagerHint;
+#else
+    Q_UNUSED(unplug);
 #endif
 
     q->setWindowFlags(flags);
@@ -185,7 +177,7 @@ void QToolBarPrivate::startDrag(bool moving)
 #endif
 
     if (!moving) {
-        state->widgetItem = layout->unplug(q);
+        state->widgetItem = layout->unplug(q, QDockWidgetPrivate::DragScope::Group);
         Q_ASSERT(state->widgetItem != nullptr);
     }
     state->dragging = !moving;
@@ -913,8 +905,13 @@ void QToolBar::changeEvent(QEvent *event)
         break;
     case QEvent::StyleChange:
         d->layout->invalidate();
-        if (!d->explicitIconSize)
-            setIconSize(QSize());
+        if (!d->explicitIconSize) {
+            QStyleOptionToolBar opt;
+            initStyleOption(&opt);
+            const int metric = style()->pixelMetric(QStyle::PM_ToolBarIconSize, &opt, this);
+            setIconSize({metric, metric});
+            d->explicitIconSize = false;
+        }
         d->layout->updateMarginAndSpacing();
         break;
     case QEvent::LayoutDirectionChange:
@@ -996,7 +993,8 @@ static void enableMacToolBar(QToolBar *toolbar, bool enable)
         return; // Not Cocoa platform plugin.
 
     typedef void (*SetContentBorderAreaEnabledFunction)(QWindow *window, void *identifier, bool enabled);
-    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(function))(toolbar->window()->windowHandle(), toolbar, enable);
+    (reinterpret_cast<SetContentBorderAreaEnabledFunction>(QFunctionPointer(function)))(
+        toolbar->window()->windowHandle(), toolbar, enable);
 }
 #endif
 
@@ -1084,6 +1082,7 @@ bool QToolBar::event(QEvent *event)
             d->layout->setExpanded(false);
             break;
         }
+        break;
     default:
         break;
     }

@@ -29,10 +29,12 @@ Q_DECLARE_LOGGING_CATEGORY(lcQpaAccessibility)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaUiAutomation)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaTrayIcon)
 Q_DECLARE_LOGGING_CATEGORY(lcQpaScreen)
+Q_DECLARE_LOGGING_CATEGORY(lcQpaTheme)
 
 class QWindow;
 class QPlatformScreen;
 class QPlatformWindow;
+class QPlatformKeyMapper;
 class QWindowsMenuBar;
 class QWindowsScreenManager;
 class QWindowsTabletSupport;
@@ -43,7 +45,6 @@ struct QWindowsContextPrivate;
 class QPoint;
 class QKeyEvent;
 class QPointingDevice;
-
 class QWindowsContext
 {
     Q_DISABLE_COPY_MOVE(QWindowsContext)
@@ -53,11 +54,10 @@ public:
     enum SystemInfoFlags
     {
         SI_RTL_Extensions = 0x1,
-        SI_SupportsTouch = 0x2,
-        SI_SupportsPointer = 0x4,
+        SI_SupportsTouch = 0x2
     };
 
-    // Verbose flag set by environment variable QT_QPA_VERBOSE
+    // Verbose flag set by the `verbose` platform plugin argument
     static int verbose;
 
     explicit QWindowsContext();
@@ -67,7 +67,6 @@ public:
     bool initTouch(unsigned integrationOptions); // For calls from QWindowsIntegration::QWindowsIntegration() only.
     void registerTouchWindows();
     bool initTablet();
-    bool initPointer(unsigned integrationOptions);
     bool disposeTablet();
 
     bool initPowerNotificationHandler();
@@ -120,15 +119,13 @@ public:
     static QtWindows::DpiAwareness processDpiAwareness();
     static QtWindows::DpiAwareness windowDpiAwareness(HWND hwnd);
 
-    static bool isDarkMode();
-
     void setDetectAltGrModifier(bool a);
 
     // Returns a combination of SystemInfoFlags
     unsigned systemInfo() const;
 
     bool useRTLExtensions() const;
-    QList<int> possibleKeys(const QKeyEvent *e) const;
+    QPlatformKeyMapper *keyMapper() const;
 
     HandleBaseWindowHash &windows();
 
@@ -171,7 +168,7 @@ private:
     static QWindowsContext *m_instance;
 };
 
-extern "C" LRESULT QT_WIN_CALLBACK qWindowsWndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT QT_WIN_CALLBACK qWindowsWndProc(HWND, UINT, WPARAM, LPARAM);
 
 QT_END_NAMESPACE
 

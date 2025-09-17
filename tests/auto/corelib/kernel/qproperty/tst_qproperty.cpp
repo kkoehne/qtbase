@@ -1,5 +1,5 @@
 // Copyright (C) 2020 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QObject>
 #include <QSignalSpy>
@@ -7,6 +7,7 @@
 #include <qproperty.h>
 #include <private/qproperty_p.h>
 #include <private/qobject_p.h>
+#include <private/qcomparisontesthelper_p.h>
 
 #if __has_include(<source_location>) && __cplusplus >= 202002L && !defined(Q_QDOC)
 #include <source_location>
@@ -29,10 +30,12 @@ class tst_QProperty : public QObject
 {
     Q_OBJECT
 private slots:
+    void inheritQUntypedPropertyData();
     void functorBinding();
     void basicDependencies();
     void multipleDependencies();
     void bindingWithDeletedDependency();
+    void bindingWithInvalidatedPropertyObserver();
     void dependencyChangeDuringDestruction();
     void recursiveDependency();
     void bindingAfterUse();
@@ -69,6 +72,7 @@ private slots:
     void qobjectBindableManualNotify();
     void qobjectBindableReallocatedBindingStorage();
     void qobjectBindableSignalTakingNewValue();
+    void bindableStateAfterThreadRestart();
 
     void testNewStuff();
     void qobjectObservers();
@@ -79,6 +83,9 @@ private slots:
     void noDoubleCapture();
     void compatPropertyNoDobuleNotification();
     void compatPropertySignals();
+
+    void compareAgainstValueType();
+    void compareAgainstDifferentType();
 
     void noFakeDependencies();
 #if QT_CONFIG(thread)
@@ -106,7 +113,63 @@ private slots:
     void notifyAfterAllDepsGone();
 
     void propertyAdaptorBinding();
+    void propertyUpdateViaSignaledProperty();
+
+    void derefFromObserver();
 };
+
+namespace {
+template <class T>
+constexpr auto isDerivedFromQUntypedPropertyData = std::is_base_of_v<QUntypedPropertyData, T>;
+
+template <typename Property>
+constexpr auto isDerivedFromQUntypedPropertyDataFunc(const Property &property)
+{
+    Q_UNUSED(property);
+    return isDerivedFromQUntypedPropertyData<Property>;
+}
+
+template <typename Property>
+constexpr auto isDerivedFromQUntypedPropertyDataFunc(Property *property)
+{
+    Q_UNUSED(property);
+    return isDerivedFromQUntypedPropertyData<Property>;
+}
+} // namespace
+
+void tst_QProperty::inheritQUntypedPropertyData()
+{
+    class propertyPublic : public QUntypedPropertyData
+    {
+    };
+    class propertyPrivate : private QUntypedPropertyData
+    {
+    };
+
+    // Compile time test
+    static_assert(isDerivedFromQUntypedPropertyData<propertyPublic>);
+    static_assert(isDerivedFromQUntypedPropertyData<propertyPrivate>);
+    static_assert(isDerivedFromQUntypedPropertyData<QPropertyData<int>>);
+    static_assert(isDerivedFromQUntypedPropertyData<QProperty<int>>);
+
+    // Run time test
+    propertyPublic _propertyPublic;
+    propertyPrivate _propertyPrivate;
+    QPropertyData<int> qpropertyData;
+    QProperty<int> qproperty;
+    std::unique_ptr<propertyPublic> _propertyPublicPtr{ new propertyPublic };
+    std::unique_ptr<propertyPrivate> _propertyPrivatePtr{ new propertyPrivate };
+    std::unique_ptr<QPropertyData<int>> qpropertyDataPtr{ new QPropertyData<int> };
+    std::unique_ptr<QProperty<int>> qpropertyPtr{ new QProperty<int> };
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPublic));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPrivate));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qpropertyData));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qproperty));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPublicPtr.get()));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(_propertyPrivatePtr.get()));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qpropertyDataPtr.get()));
+    QVERIFY(isDerivedFromQUntypedPropertyDataFunc(qpropertyPtr.get()));
+}
 
 void tst_QProperty::functorBinding()
 {
@@ -195,6 +258,28 @@ void tst_QProperty::bindingWithDeletedDependency()
     QCOMPARE(propertySelector.value(), staticProperty.value());
 }
 
+void tst_QProperty::bindingWithInvalidatedPropertyObserver()
+{
+    QProperty<bool> dynamicProperty1(false);
+    QProperty<bool> dynamicProperty2(false);
+    QProperty<bool> dynamicProperty3(false);
+    QProperty<bool> dynamicProperty4(false);
+    QProperty<bool> dynamicProperty5(false);
+    QProperty<bool> dynamicProperty6(false);
+    QProperty<bool> propertySelector([&]{
+        return (dynamicProperty1.value() && dynamicProperty2.value() && dynamicProperty3.value() &&
+                dynamicProperty4.value() && dynamicProperty5.value() && dynamicProperty6.value());
+    });
+    dynamicProperty1 = true;
+    dynamicProperty2 = true;
+    dynamicProperty3 = true;
+    dynamicProperty4 = true;
+    dynamicProperty5 = true;
+    QCOMPARE(propertySelector.value(), false);
+    dynamicProperty6 = true;
+    QCOMPARE(propertySelector.value(), true);
+}
+
 class ChangeDuringDtorTester : public QObject
 {
     Q_OBJECT
@@ -260,6 +345,7 @@ void tst_QProperty::bindingAfterUse()
 
 void tst_QProperty::bindingFunctionDtorCalled()
 {
+    DtorCounter::counter = 0;
     DtorCounter dc;
     {
         QProperty<int> prop;
@@ -1200,11 +1286,55 @@ struct ReallocObject : QObject {
     Q_OBJECT_BINDABLE_PROPERTY(ReallocObject, int, z)
 };
 
+struct ReallocCompatObject : QObject {
+    void setV(int val) {
+        v.removeBindingUnlessInWrapper();
+        v.setValueBypassingBindings(val);
+        v.notify();
+    }
+    ReallocCompatObject()
+    { x.setBinding([this] {
+            if (shouldRealloc) {
+                dummy1.value(),
+                dummy2.value(),
+                dummy3.value(),
+                dummy4.value(),
+                dummy5.value(),
+                dummy6.value(),
+                dummy7.value(),
+                dummy8.value();
+            }
+            return v.value() + y.value() + z.value();
+        }); }
+    Q_OBJECT_COMPAT_PROPERTY(ReallocCompatObject, int, v, &ReallocCompatObject::setV)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, x)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, y)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, z)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy1)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy2)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy3)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy4)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy5)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy6)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy7)
+    Q_OBJECT_BINDABLE_PROPERTY(ReallocCompatObject, int, dummy8)
+    bool shouldRealloc = false;
+};
+
 void tst_QProperty::qobjectBindableReallocatedBindingStorage()
 {
-    ReallocObject object;
-    object.x = 1;
-    QCOMPARE(object.v.value(), 1);
+    {
+        ReallocObject object;
+        object.x = 1;
+        QCOMPARE(object.v.value(), 1);
+    }
+
+    {
+        ReallocCompatObject object;
+        object.shouldRealloc = true;
+        object.setV(1);
+        QCOMPARE(object.x.value(), 1);
+    }
 }
 
 void tst_QProperty::qobjectBindableSignalTakingNewValue()
@@ -1227,6 +1357,56 @@ void tst_QProperty::qobjectBindableSignalTakingNewValue()
     // and when the binding gets reevaluated to a new value
     i = 3;
     QCOMPARE(newValue, 3);
+}
+
+class TestWorker : public QObject
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE int work() {
+        // calling value will access the bindingStatus to see if we are in a binding
+        int old = testProp.value();
+        testProp.setValue(old+1);
+        return old;
+    }
+
+private:
+    Q_OBJECT_BINDABLE_PROPERTY_WITH_ARGS(TestWorker, int, testProp, 0);
+};
+
+void tst_QProperty::bindableStateAfterThreadRestart()
+{
+    auto workerThread = new QThread(this);
+    auto worker = std::unique_ptr<TestWorker, QScopedPointerDeleteLater>(new TestWorker);
+    worker->moveToThread(workerThread);
+    workerThread->start();
+    int returnValue = -1;
+    QMetaObject::invokeMethod(worker.get(), &TestWorker::work, Qt::BlockingQueuedConnection,
+                              qReturnArg(returnValue));
+    QCOMPARE(returnValue, 0);
+    workerThread->quit();
+    workerThread->wait(); // the native thread is gone now
+
+    // accessing a property should work even if there is no actively running native thread for its QThread
+    returnValue = worker->work();
+    QCOMPARE(returnValue, 1);
+
+    // it should also work if we restart the thread
+    workerThread->start();
+    QVERIFY(workerThread->isRunning());
+    QMetaObject::invokeMethod(worker.get(), &TestWorker::work, Qt::BlockingQueuedConnection,
+                              qReturnArg(returnValue));
+    QCOMPARE(returnValue, 2);
+
+    // accessing a property should work even if the thread is gone completely
+    workerThread->quit();
+    workerThread->wait();
+    delete workerThread;
+    returnValue = worker->work();
+    QCOMPARE(returnValue, 3);
+
+    // deleteLater no longer works, because the thread+eventloop are gone
+    delete worker.release();
 }
 
 void tst_QProperty::testNewStuff()
@@ -1652,6 +1832,51 @@ void tst_QProperty::compatPropertySignals()
     QCOMPARE(arguments.size(), 1);
     QCOMPARE(arguments.at(0).metaType().id(), QMetaType::Int);
     QCOMPARE(arguments.at(0).toInt(), 42);
+}
+
+struct CompareTestObject : QObject{
+    Q_OBJECT
+public:
+    CompareTestObject(const QVariantList &l) { varList = l; }
+    Q_OBJECT_BINDABLE_PROPERTY(CompareTestObject, QVariantList, varList)
+};
+
+
+void tst_QProperty::compareAgainstValueType()
+{
+    {
+        // compile time checks
+        QTestPrivate::testEqualityOperatorsCompile<QProperty<QVariantList>>();
+        QTestPrivate::testEqualityOperatorsCompile<QProperty<QVariantList>, QVariantList>();
+
+        using ObjectBindableProperty = decltype(std::declval<CompareTestObject>().varList);
+
+        QTestPrivate::testEqualityOperatorsCompile<ObjectBindableProperty>();
+        QTestPrivate::testEqualityOperatorsCompile<ObjectBindableProperty, QVariantList>();
+    }
+
+    QVariantList vl {1, QString(), QByteArray {}};
+    QProperty<QVariantList> vlProp { vl };
+    CompareTestObject o { vl };
+
+    QCOMPARE_EQ(vl, vlProp);
+    QCOMPARE_EQ(vl, o.varList);
+
+    vl.pop_back();
+    QCOMPARE_NE(vl, vlProp);
+    QCOMPARE_NE(vl, o.varList);
+}
+
+void tst_QProperty::compareAgainstDifferentType()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QProperty<qsizetype>, int>();
+    QTestPrivate::testEqualityOperatorsCompile<QProperty<qsizetype>, double>();
+
+    QProperty<qsizetype> p1{1};
+    QCOMPARE_EQ(p1, 1);
+    QCOMPARE_EQ(1, p1);
+    QCOMPARE_NE(p1, 2.0);
+    QCOMPARE_NE(2.0, p1);
 }
 
 class FakeDependencyCreator : public QObject
@@ -2370,6 +2595,151 @@ void tst_QProperty::notifyAfterAllDepsGone()
     jprop = 43;
     QCOMPARE(iprop.value(), 13);
     QCOMPARE(changeCounter, 2);
+}
+
+class TestObject : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int signaled READ signaled WRITE setSignaled NOTIFY signaledChanged FINAL)
+    Q_PROPERTY(int bindable1 READ bindable1 WRITE setBindable1 BINDABLE bindable1Bindable NOTIFY bindable1Changed FINAL)
+    Q_PROPERTY(int bindable2 READ bindable2 WRITE setBindable2 BINDABLE bindable2Bindable NOTIFY bindable2Changed FINAL)
+
+public:
+    int signaled() const
+    {
+        return m_signaled;
+    }
+
+    void setSignaled(int newSignaled)
+    {
+        if (m_signaled == newSignaled)
+            return;
+        m_signaled = newSignaled;
+        emit signaledChanged();
+    }
+
+    int bindable1() const
+    {
+        return m_bindable1;
+    }
+
+    void setBindable1(int newBindable1)
+    {
+        if (m_bindable1 == newBindable1)
+            return;
+        m_bindable1 = newBindable1;
+        emit bindable1Changed();
+    }
+
+    QBindable<int> bindable1Bindable()
+    {
+        return QBindable<int>(&m_bindable1);
+    }
+
+    int bindable2() const
+    {
+        return m_bindable2;
+    }
+
+    void setBindable2(int newBindable2)
+    {
+        if (m_bindable2 == newBindable2)
+            return;
+        m_bindable2 = newBindable2;
+        emit bindable2Changed();
+    }
+
+    QBindable<int> bindable2Bindable()
+    {
+        return QBindable<int>(&m_bindable2);
+    }
+
+signals:
+    void signaledChanged();
+    void bindable1Changed();
+    void bindable2Changed();
+
+private:
+    int m_signaled = 0;
+    Q_OBJECT_COMPAT_PROPERTY(TestObject, int, m_bindable1, &TestObject::setBindable1, &TestObject::bindable1Changed);
+    Q_OBJECT_COMPAT_PROPERTY(TestObject, int, m_bindable2, &TestObject::setBindable2, &TestObject::bindable2Changed);
+};
+
+void tst_QProperty::propertyUpdateViaSignaledProperty()
+{
+    TestObject o;
+    QProperty<int> rootTrigger;
+    QProperty<int> signalTrigger;
+
+    o.bindable1Bindable().setBinding([&]() {
+        return rootTrigger.value();
+    });
+
+    QObject::connect(&o, &TestObject::bindable1Changed, &o, [&]() {
+        // Signaled changes only once, doesn't actually depend on bindable1.
+        // In reality, there could be some complicated calculation behind this that changes
+        // on certain checkpoints, but not on every iteration.
+        o.setSignaled(40);
+    });
+
+    o.bindable2Bindable().setBinding([&]() {
+        return signalTrigger.value() - o.bindable1();
+    });
+
+    QObject::connect(&o, &TestObject::signaledChanged, &o, [&]() {
+        signalTrigger.setValue(o.signaled());
+    });
+
+    rootTrigger.setValue(2);
+    QCOMPARE(o.bindable1(), 2);
+    QCOMPARE(o.bindable2(), 38);
+    rootTrigger.setValue(3);
+    QCOMPARE(o.bindable1(), 3);
+    QCOMPARE(o.bindable2(), 37);
+    rootTrigger.setValue(4);
+    QCOMPARE(o.bindable1(), 4);
+    QCOMPARE(o.bindable2(), 36);
+}
+
+void tst_QProperty::derefFromObserver()
+{
+    int triggered = 0;
+    QProperty<int> source(11);
+
+    DtorCounter::counter = 0;
+    DtorCounter dc;
+
+    QProperty<int> target([&triggered, &source, dc]() mutable {
+        dc.shouldIncrement = true;
+        return ++triggered + source.value();
+    });
+    QCOMPARE(triggered, 1);
+
+    {
+        auto propObserver = std::make_unique<QPropertyObserver>();
+        QPropertyObserverPointer propObserverPtr { propObserver.get() };
+        propObserverPtr.setBindingToNotify(QPropertyBindingPrivate::get(target.binding()));
+
+        QBindingObserverPtr bindingPtr(propObserver.get());
+
+        QCOMPARE(triggered, 1);
+        source = 25;
+        QCOMPARE(triggered, 2);
+        QCOMPARE(target, 27);
+
+        target.setBinding([]() { return 8; });
+        QCOMPARE(target, 8);
+
+        // The QBindingObserverPtr still holds on to the binding.
+        QCOMPARE(dc.counter, 0);
+    }
+
+    // The binding is actually gone now.
+    QCOMPARE(dc.counter, 1);
+
+    source = 26;
+    QCOMPARE(triggered, 2);
+    QCOMPARE(target, 8);
 }
 
 QTEST_MAIN(tst_QProperty);

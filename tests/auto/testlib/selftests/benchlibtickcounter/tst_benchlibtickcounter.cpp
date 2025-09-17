@@ -1,11 +1,11 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtCore/QCoreApplication>
 #include <QTest>
 
-#include <private/cycle_p.h>
+#include <private/cycle_include_p.h>
 
 class tst_BenchlibTickCounter: public QObject
 {

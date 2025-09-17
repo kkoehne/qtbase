@@ -1782,7 +1782,7 @@ void QX11PaintEnginePrivate::fillPolygon_dev(const QPointF *polygonPoints, int p
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(fill);
                 if (gcMode == BrushGC)
-                    painter.setBrushOrigin(q->painter()->brushOrigin());
+                    painter.setBrushOrigin(q->painter()->brushOriginF());
                 painter.drawPolygon(poly);
                 painter.end();
 
@@ -2134,7 +2134,7 @@ void QX11PaintEngine::drawPixmap(const QRectF &r, const QPixmap &px, const QRect
         XFillRectangle(d->dpy, d->hd, d->gc, x, y, sw, sh);
         restore_clip = true;
     } else if (mono_dst && !mono_src) {
-        QBitmap bitmap(pixmap);
+        QBitmap bitmap = QBitmap::fromPixmap(pixmap);
         XCopyArea(d->dpy, qt_x11PixmapHandle(bitmap), d->hd, d->gc, sx, sy, sw, sh, x, y);
     } else {
         XCopyArea(d->dpy, qt_x11PixmapHandle(pixmap), d->hd, d->gc, sx, sy, sw, sh, x, y);
@@ -2587,7 +2587,7 @@ bool QXRenderGlyphCache::addGlyphs(const QTextItemInt &ti,
             }
         }
 
-        glyph = ft->loadGlyphFor(glyphs[i], spp, glyphFormat(), transform());
+        glyph = ft->loadGlyphFor(glyphs[i], spp, glyphFormat(), transform(), QColor());
 
         if (glyph == 0 || glyph->format != glyphFormat())
             return false;

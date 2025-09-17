@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qdbusmetatype.h"
 #include "qdbusmetatype_p.h"
@@ -129,7 +130,7 @@ Q_GLOBAL_STATIC(QDBusCustomTypes, customTypes)
 */
 
 /*!
-    \fn int qDBusRegisterMetaType()
+    \fn template<typename T> QMetaType qDBusRegisterMetaType()
     \relates QDBusArgument
     \threadsafe
     \since 4.2

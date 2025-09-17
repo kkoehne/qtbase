@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QtCore/QCoreApplication>
@@ -21,16 +21,6 @@ private slots:
 
 void tst_Crashes::crash()
 {
-#if defined(Q_OS_WIN)
-   //we avoid the error dialogbox to appear on windows
-   SetErrorMode( SEM_NOGPFAULTERRORBOX | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
-#elif defined(RLIMIT_CORE)
-    // Unix: set our core dump limit to zero to request no dialogs.
-    if (struct rlimit rlim; getrlimit(RLIMIT_CORE, &rlim) == 0) {
-        rlim.rlim_cur = 0;
-        setrlimit(RLIMIT_CORE, &rlim);
-    }
-#endif
     /*
         We deliberately dereference an invalid but non-zero address;
         it should be non-zero because a few platforms may have special crash behavior

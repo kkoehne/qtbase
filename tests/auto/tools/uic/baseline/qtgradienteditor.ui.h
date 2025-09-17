@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -127,13 +127,13 @@ public:
         frame = new QFrame(QtGradientEditor);
         frame->setObjectName("frame");
         frame->setGeometry(QRect(10, 69, 193, 150));
-        QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Expanding);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(frame->sizePolicy().hasHeightForWidth());
         frame->setSizePolicy(sizePolicy);
-        frame->setFrameShape(QFrame::StyledPanel);
-        frame->setFrameShadow(QFrame::Raised);
+        frame->setFrameShape(QFrame::Shape::StyledPanel);
+        frame->setFrameShadow(QFrame::Shadow::Raised);
         vboxLayout = new QVBoxLayout(frame);
         vboxLayout->setSpacing(6);
         vboxLayout->setObjectName("vboxLayout");
@@ -204,7 +204,7 @@ public:
         zoomAllButton = new QToolButton(QtGradientEditor);
         zoomAllButton->setObjectName("zoomAllButton");
         zoomAllButton->setGeometry(QRect(279, 260, 72, 26));
-        QSizePolicy sizePolicy1(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Fixed);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(zoomAllButton->sizePolicy().hasHeightForWidth());
@@ -220,19 +220,19 @@ public:
         frame_2 = new QFrame(QtGradientEditor);
         frame_2->setObjectName("frame_2");
         frame_2->setGeometry(QRect(48, 333, 155, 23));
-        QSizePolicy sizePolicy2(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy2(QSizePolicy::Policy::Ignored, QSizePolicy::Policy::Preferred);
         sizePolicy2.setHorizontalStretch(0);
         sizePolicy2.setVerticalStretch(0);
         sizePolicy2.setHeightForWidth(frame_2->sizePolicy().hasHeightForWidth());
         frame_2->setSizePolicy(sizePolicy2);
-        frame_2->setFrameShape(QFrame::StyledPanel);
-        frame_2->setFrameShadow(QFrame::Raised);
+        frame_2->setFrameShape(QFrame::Shape::StyledPanel);
+        frame_2->setFrameShadow(QFrame::Shadow::Raised);
         hboxLayout = new QHBoxLayout(frame_2);
         hboxLayout->setObjectName("hboxLayout");
         hboxLayout->setContentsMargins(0, 0, 0, 0);
         hueColorLine = new QtColorLine(frame_2);
         hueColorLine->setObjectName("hueColorLine");
-        QSizePolicy sizePolicy3(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy3(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Preferred);
         sizePolicy3.setHorizontalStretch(0);
         sizePolicy3.setVerticalStretch(0);
         sizePolicy3.setHeightForWidth(hueColorLine->sizePolicy().hasHeightForWidth());
@@ -255,8 +255,8 @@ public:
         frame_5->setGeometry(QRect(48, 362, 155, 23));
         sizePolicy2.setHeightForWidth(frame_5->sizePolicy().hasHeightForWidth());
         frame_5->setSizePolicy(sizePolicy2);
-        frame_5->setFrameShape(QFrame::StyledPanel);
-        frame_5->setFrameShadow(QFrame::Raised);
+        frame_5->setFrameShape(QFrame::Shape::StyledPanel);
+        frame_5->setFrameShadow(QFrame::Shadow::Raised);
         hboxLayout1 = new QHBoxLayout(frame_5);
         hboxLayout1->setObjectName("hboxLayout1");
         hboxLayout1->setContentsMargins(0, 0, 0, 0);
@@ -282,8 +282,8 @@ public:
         frame_3->setGeometry(QRect(48, 391, 155, 23));
         sizePolicy2.setHeightForWidth(frame_3->sizePolicy().hasHeightForWidth());
         frame_3->setSizePolicy(sizePolicy2);
-        frame_3->setFrameShape(QFrame::StyledPanel);
-        frame_3->setFrameShadow(QFrame::Raised);
+        frame_3->setFrameShape(QFrame::Shape::StyledPanel);
+        frame_3->setFrameShadow(QFrame::Shadow::Raised);
         hboxLayout2 = new QHBoxLayout(frame_3);
         hboxLayout2->setObjectName("hboxLayout2");
         hboxLayout2->setContentsMargins(0, 0, 0, 0);
@@ -309,8 +309,8 @@ public:
         frame_4->setGeometry(QRect(48, 420, 155, 23));
         sizePolicy2.setHeightForWidth(frame_4->sizePolicy().hasHeightForWidth());
         frame_4->setSizePolicy(sizePolicy2);
-        frame_4->setFrameShape(QFrame::StyledPanel);
-        frame_4->setFrameShadow(QFrame::Raised);
+        frame_4->setFrameShape(QFrame::Shape::StyledPanel);
+        frame_4->setFrameShadow(QFrame::Shadow::Raised);
         hboxLayout3 = new QHBoxLayout(frame_4);
         hboxLayout3->setObjectName("hboxLayout3");
         hboxLayout3->setContentsMargins(0, 0, 0, 0);
@@ -335,7 +335,7 @@ public:
         colorLabel = new QLabel(QtGradientEditor);
         colorLabel->setObjectName("colorLabel");
         colorLabel->setGeometry(QRect(10, 298, 32, 29));
-        QSizePolicy sizePolicy4(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy4(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Preferred);
         sizePolicy4.setHorizontalStretch(0);
         sizePolicy4.setVerticalStretch(0);
         sizePolicy4.setHeightForWidth(colorLabel->sizePolicy().hasHeightForWidth());
@@ -346,7 +346,7 @@ public:
         hsvRadioButton = new QRadioButton(QtGradientEditor);
         hsvRadioButton->setObjectName("hsvRadioButton");
         hsvRadioButton->setGeometry(QRect(80, 301, 49, 23));
-        QSizePolicy sizePolicy5(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy5(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Fixed);
         sizePolicy5.setHorizontalStretch(0);
         sizePolicy5.setVerticalStretch(0);
         sizePolicy5.setHeightForWidth(hsvRadioButton->sizePolicy().hasHeightForWidth());
@@ -450,8 +450,8 @@ public:
         vboxLayout7->setContentsMargins(0, 0, 0, 0);
         line1 = new QFrame(line1Widget);
         line1->setObjectName("line1");
-        line1->setFrameShape(QFrame::HLine);
-        line1->setFrameShadow(QFrame::Sunken);
+        line1->setFrameShape(QFrame::Shape::HLine);
+        line1->setFrameShadow(QFrame::Shadow::Sunken);
 
         vboxLayout7->addWidget(line1);
 
@@ -463,15 +463,15 @@ public:
         vboxLayout8->setContentsMargins(0, 0, 0, 0);
         line2 = new QFrame(line2Widget);
         line2->setObjectName("line2");
-        line2->setFrameShape(QFrame::HLine);
-        line2->setFrameShadow(QFrame::Sunken);
+        line2->setFrameShape(QFrame::Shape::HLine);
+        line2->setFrameShadow(QFrame::Shadow::Sunken);
 
         vboxLayout8->addWidget(line2);
 
         zoomButtonsWidget = new QWidget(QtGradientEditor);
         zoomButtonsWidget->setObjectName("zoomButtonsWidget");
         zoomButtonsWidget->setGeometry(QRect(209, 260, 64, 26));
-        QSizePolicy sizePolicy6(QSizePolicy::Maximum, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy6(QSizePolicy::Policy::Maximum, QSizePolicy::Policy::Preferred);
         sizePolicy6.setHorizontalStretch(0);
         sizePolicy6.setVerticalStretch(0);
         sizePolicy6.setHeightForWidth(zoomButtonsWidget->sizePolicy().hasHeightForWidth());
@@ -489,14 +489,14 @@ public:
 
         hboxLayout4->addWidget(zoomOutButton);
 
-        spacerItem = new QSpacerItem(0, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(0, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout4->addItem(spacerItem);
 
         detailsButton = new QToolButton(QtGradientEditor);
         detailsButton->setObjectName("detailsButton");
         detailsButton->setGeometry(QRect(176, 40, 25, 22));
-        QSizePolicy sizePolicy7(QSizePolicy::Fixed, QSizePolicy::Ignored);
+        QSizePolicy sizePolicy7(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Ignored);
         sizePolicy7.setHorizontalStretch(0);
         sizePolicy7.setVerticalStretch(0);
         sizePolicy7.setHeightForWidth(detailsButton->sizePolicy().hasHeightForWidth());

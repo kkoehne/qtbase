@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "qhttpnetworkreply_p.h"
 #include "qhttpnetworkconnection_p.h"
@@ -67,7 +68,7 @@ void QHttpNetworkReply::setContentLength(qint64 length)
     d->setContentLength(length);
 }
 
-QList<QPair<QByteArray, QByteArray> > QHttpNetworkReply::header() const
+QHttpHeaders QHttpNetworkReply::header() const
 {
     return d_func()->parser.headers();
 }
@@ -89,7 +90,7 @@ void QHttpNetworkReply::appendHeaderField(const QByteArray &name, const QByteArr
     d->appendHeaderField(name, data);
 }
 
-void QHttpNetworkReply::parseHeader(const QByteArray &header)
+void QHttpNetworkReply::parseHeader(QByteArrayView header)
 {
     Q_D(QHttpNetworkReply);
     d->parseHeader(header);
@@ -368,7 +369,7 @@ void QHttpNetworkReplyPrivate::removeAutoDecompressHeader()
 {
     // The header "Content-Encoding  = gzip" is retained.
     // Content-Length is removed since the actual one sent by the server is for compressed data
-    QByteArray name("content-length");
+    constexpr auto name = QByteArrayView("content-length");
     QByteArray contentLength = parser.firstHeaderField(name);
     bool parseOk = false;
     qint64 value = contentLength.toLongLong(&parseOk);
@@ -378,23 +379,7 @@ void QHttpNetworkReplyPrivate::removeAutoDecompressHeader()
     }
 }
 
-bool QHttpNetworkReplyPrivate::findChallenge(bool forProxy, QByteArray &challenge) const
-{
-    challenge.clear();
-    // find out the type of authentication protocol requested.
-    QByteArray header = forProxy ? "proxy-authenticate" : "www-authenticate";
-    // pick the best protocol (has to match parsing in QAuthenticatorPrivate)
-    QList<QByteArray> challenges = headerFieldValues(header);
-    for (int i = 0; i<challenges.size(); i++) {
-        QByteArray line = challenges.at(i);
-        // todo use qstrincmp
-        if (!line.toLower().startsWith("negotiate"))
-            challenge = line;
-    }
-    return !challenge.isEmpty();
-}
-
-qint64 QHttpNetworkReplyPrivate::readStatus(QAbstractSocket *socket)
+qint64 QHttpNetworkReplyPrivate::readStatus(QIODevice *socket)
 {
     if (fragment.isEmpty()) {
         // reserve bytes for the status line. This is better than always append() which reallocs the byte array
@@ -443,12 +428,12 @@ qint64 QHttpNetworkReplyPrivate::readStatus(QAbstractSocket *socket)
     return bytes;
 }
 
-bool QHttpNetworkReplyPrivate::parseStatus(const QByteArray &status)
+bool QHttpNetworkReplyPrivate::parseStatus(QByteArrayView status)
 {
     return parser.parseStatus(status);
 }
 
-qint64 QHttpNetworkReplyPrivate::readHeader(QAbstractSocket *socket)
+qint64 QHttpNetworkReplyPrivate::readHeader(QIODevice *socket)
 {
     if (fragment.isEmpty()) {
         // according to http://dev.opera.com/articles/view/mama-http-headers/ the average size of the header
@@ -510,7 +495,7 @@ qint64 QHttpNetworkReplyPrivate::readHeader(QAbstractSocket *socket)
     return bytes;
 }
 
-void QHttpNetworkReplyPrivate::parseHeader(const QByteArray &header)
+void QHttpNetworkReplyPrivate::parseHeader(QByteArrayView header)
 {
     parser.parseHeaders(header);
 }
@@ -532,7 +517,7 @@ bool QHttpNetworkReplyPrivate::isConnectionCloseEnabled()
 
 // note this function can only be used for non-chunked, non-compressed with
 // known content length
-qint64 QHttpNetworkReplyPrivate::readBodyVeryFast(QAbstractSocket *socket, char *b)
+qint64 QHttpNetworkReplyPrivate::readBodyVeryFast(QIODevice *socket, char *b)
 {
     // This first read is to flush the buffer inside the socket
     qint64 haveRead = 0;
@@ -551,7 +536,7 @@ qint64 QHttpNetworkReplyPrivate::readBodyVeryFast(QAbstractSocket *socket, char 
 
 // note this function can only be used for non-chunked, non-compressed with
 // known content length
-qint64 QHttpNetworkReplyPrivate::readBodyFast(QAbstractSocket *socket, QByteDataBuffer *rb)
+qint64 QHttpNetworkReplyPrivate::readBodyFast(QIODevice *socket, QByteDataBuffer *rb)
 {
 
     qint64 toBeRead = qMin(socket->bytesAvailable(), bodyLength - contentRead);
@@ -581,7 +566,7 @@ qint64 QHttpNetworkReplyPrivate::readBodyFast(QAbstractSocket *socket, QByteData
 }
 
 
-qint64 QHttpNetworkReplyPrivate::readBody(QAbstractSocket *socket, QByteDataBuffer *out)
+qint64 QHttpNetworkReplyPrivate::readBody(QIODevice *socket, QByteDataBuffer *out)
 {
     qint64 bytes = 0;
 
@@ -601,7 +586,7 @@ qint64 QHttpNetworkReplyPrivate::readBody(QAbstractSocket *socket, QByteDataBuff
     return bytes;
 }
 
-qint64 QHttpNetworkReplyPrivate::readReplyBodyRaw(QAbstractSocket *socket, QByteDataBuffer *out, qint64 size)
+qint64 QHttpNetworkReplyPrivate::readReplyBodyRaw(QIODevice *socket, QByteDataBuffer *out, qint64 size)
 {
     // FIXME get rid of this function and just use readBodyFast and give it socket->bytesAvailable()
     qint64 bytes = 0;
@@ -634,7 +619,7 @@ qint64 QHttpNetworkReplyPrivate::readReplyBodyRaw(QAbstractSocket *socket, QByte
 
 }
 
-qint64 QHttpNetworkReplyPrivate::readReplyBodyChunked(QAbstractSocket *socket, QByteDataBuffer *out)
+qint64 QHttpNetworkReplyPrivate::readReplyBodyChunked(QIODevice *socket, QByteDataBuffer *out)
 {
     qint64 bytes = 0;
     while (socket->bytesAvailable()) {
@@ -696,7 +681,7 @@ qint64 QHttpNetworkReplyPrivate::readReplyBodyChunked(QAbstractSocket *socket, Q
     return bytes;
 }
 
-qint64 QHttpNetworkReplyPrivate::getChunkSize(QAbstractSocket *socket, qint64 *chunkSize)
+qint64 QHttpNetworkReplyPrivate::getChunkSize(QIODevice *socket, qint64 *chunkSize)
 {
     qint64 bytes = 0;
     char crlf[2];
@@ -717,8 +702,8 @@ qint64 QHttpNetworkReplyPrivate::getChunkSize(QAbstractSocket *socket, qint64 *c
                 bytes += socket->read(crlf, 1); // read the \n
             bool ok = false;
             // ignore the chunk-extension
-            fragment = fragment.mid(0, fragment.indexOf(';')).trimmed();
-            *chunkSize = fragment.toLong(&ok, 16);
+            const auto fragmentView = QByteArrayView(fragment).mid(0, fragment.indexOf(';')).trimmed();
+            *chunkSize = fragmentView.toLong(&ok, 16);
             fragment.clear();
             break; // size done
         } else {

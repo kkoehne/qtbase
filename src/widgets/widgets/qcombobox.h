@@ -40,6 +40,7 @@ class Q_WIDGETS_EXPORT QComboBox : public QWidget
     Q_PROPERTY(bool duplicatesEnabled READ duplicatesEnabled WRITE setDuplicatesEnabled)
     Q_PROPERTY(bool frame READ hasFrame WRITE setFrame)
     Q_PROPERTY(int modelColumn READ modelColumn WRITE setModelColumn)
+    Q_PROPERTY(LabelDrawingMode labelDrawingMode READ labelDrawingMode WRITE setLabelDrawingMode)
 
 public:
     explicit QComboBox(QWidget *parent = nullptr);
@@ -85,6 +86,12 @@ public:
     };
     Q_ENUM(SizeAdjustPolicy)
 
+    enum class LabelDrawingMode {
+        UseStyle,
+        UseDelegate,
+    };
+    Q_ENUM(LabelDrawingMode)
+
     SizeAdjustPolicy sizeAdjustPolicy() const;
     void setSizeAdjustPolicy(SizeAdjustPolicy policy);
     int minimumContentsLength() const;
@@ -120,6 +127,9 @@ public:
 
     int modelColumn() const;
     void setModelColumn(int visibleColumn);
+
+    LabelDrawingMode labelDrawingMode() const;
+    void setLabelDrawingMode(LabelDrawingMode labelDrawing);
 
     int currentIndex() const;
     QString currentText() const;
@@ -204,21 +214,6 @@ protected:
 private:
     Q_DECLARE_PRIVATE(QComboBox)
     Q_DISABLE_COPY(QComboBox)
-    Q_PRIVATE_SLOT(d_func(), void _q_itemSelected(const QModelIndex &item))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitHighlighted(const QModelIndex &))
-    Q_PRIVATE_SLOT(d_func(), void _q_emitCurrentIndexChanged(const QModelIndex &index))
-    Q_PRIVATE_SLOT(d_func(), void _q_editingFinished())
-    Q_PRIVATE_SLOT(d_func(), void _q_returnPressed())
-    Q_PRIVATE_SLOT(d_func(), void _q_resetButton())
-    Q_PRIVATE_SLOT(d_func(), void _q_dataChanged(const QModelIndex &, const QModelIndex &))
-    Q_PRIVATE_SLOT(d_func(), void _q_updateIndexBeforeChange())
-    Q_PRIVATE_SLOT(d_func(), void _q_rowsInserted(const QModelIndex & parent, int start, int end))
-    Q_PRIVATE_SLOT(d_func(), void _q_rowsRemoved(const QModelIndex & parent, int start, int end))
-    Q_PRIVATE_SLOT(d_func(), void _q_modelDestroyed())
-    Q_PRIVATE_SLOT(d_func(), void _q_modelReset())
-#if QT_CONFIG(completer)
-    Q_PRIVATE_SLOT(d_func(), void _q_completerActivated(const QModelIndex &index))
-#endif
 };
 
 inline void QComboBox::addItem(const QString &atext, const QVariant &auserData)

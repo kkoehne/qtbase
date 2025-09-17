@@ -1,5 +1,6 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qaccessible.h"
 
@@ -26,7 +27,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
+Q_STATIC_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
 
 /*!
     \class QAccessible
@@ -173,6 +174,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value ActionChanged                    An action has been changed.
     \value ActiveDescendantChanged
     \value Alert                            A system alert (e.g., a message from a QMessageBox)
+    \value [since 6.8] Announcement         The announcement of a message is requested.
     \value AttributeChanged
     \value ContextHelpEnd                   Context help (QWhatsThis) for an object is finished.
     \value ContextHelpStart                 Context help (QWhatsThis) for an object is initiated.
@@ -205,6 +207,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
                                             clicked or via a key press.
     \value HypertextLinkSelected            A hypertext link has been selected.
     \value HypertextNLinksChanged
+    \value [since 6.8] IdentifierChanged    The identifier of an object has changed.
     \value LocationChanged                  An object's location on the screen has changed.
     \value MenuCommand                      A menu item is triggered.
     \value MenuEnd                          A menu has been closed (Qt uses PopupMenuEnd for all
@@ -227,6 +230,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value ParentChanged                    An object's parent object changed.
     \value PopupMenuEnd                     A pop-up menu has closed.
     \value PopupMenuStart                   A pop-up menu has opened.
+    \value [since 6.11] RoleChanged         The role of an object has changed.
     \value ScrollingEnd                     A scrollbar scroll operation has ended (the mouse has
                                             released the slider handle).
     \value ScrollingStart                   A scrollbar scroll operation is about to start; this may
@@ -276,6 +280,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value Animation        An object that displays an animation.
     \value Application      The application's main window.
     \value Assistant        An object that provides interactive help.
+    \value [since 6.9] BlockQuote       A section of content that is quoted from another source.
     \value Border           An object that represents a border.
     \value ButtonDropDown   A button that drops down a list of items.
     \value ButtonDropGrid   A button that drops down a grid.
@@ -359,7 +364,7 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     interfaces of the calling object, together with the relations
     for each object.
 
-    Each entry in the list is a QPair where the \c second member stores
+    Each entry in the list is a std::pair where the \c second member stores
     the relation type(s) between the \c returned object represented by the
     \c first member and the \c origin (the caller) interface/object.
 
@@ -388,14 +393,15 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     This enum specifies string information that an accessible object
     returns.
 
-    \value Name         The name of the object. This can be used both
-                        as an identifier or a short description by
-                        accessible clients.
-    \value Description  A short text describing the object.
-    \value Value        The value of the object.
-    \value Help         A longer text giving information about how to use the object.
-    \value Accelerator  The keyboard shortcut that executes the object's default action.
-    \value UserText     The first value to be used for user defined text.
+    \value Name                    The name of the object. This can be used both
+                                   as an identifier or a short description by
+                                   accessible clients.
+    \value Description             A short text describing the object.
+    \value Value                   The value of the object.
+    \value Help                    A longer text giving information about how to use the object.
+    \value Accelerator             The keyboard shortcut that executes the object's default action.
+    \value UserText                The first value to be used for user defined text.
+    \value [since 6.8] Identifier  An identifier for the object for e.g. UI tests.
     \omitvalue DebugDescription
 */
 
@@ -410,6 +416,73 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value NoBoundary           No boundary (use the whole text).
 
     \sa QAccessibleTextInterface
+*/
+
+/*! \enum QAccessible::Attribute
+    This enum describes different types of attributes used by the
+    \l QAccessibleAttributesInterface.
+    \since 6.8
+
+    These attributes are comparable to the concept of properties/(object)
+    attributes found in ARIA, AT-SPI2, IAccessible, UIA and NSAccessibility
+    and are mapped to their platform counterpart where applicable.
+
+    Each attribute is handled as a key-value pair, with the values of this
+    enumeration being used as keys.
+
+    Attribute values are represented in a \l QVariant. The type of the value
+    stored in the \l QVariant is fixed and specified below for each of the
+    attribute types.
+
+    \value Custom               value type: \a QHash<QString, QString>
+                                The \a Custom attribute is special in that
+                                it can effectively represent multiple attributes at
+                                once, since it itself is a \l QHash used to represent
+                                key-value pairs.
+                                For platforms supporting custom key-value pairs for
+                                attributes, those set in the \a Custom attribute
+                                are bridged to the platform layer without applying any
+                                translation to platform-specific attributes. In general,
+                                the other, more strongly typed attributes should be used.
+                                This attribute can e.g. be used for prototyping
+                                before officially adding an official new enumeration value
+                                for a specific feature.
+    \value Level                value type: \a int
+                                Defines the hierarchical level of an element within a structure,
+                                e.g. the heading level of a heading. This attribute conceptually
+                                matches the "aria-level" property in ARIA.
+    \value [since 6.10] Locale  value type: \a QLocale
+                                Locale of the element.
+                                This can be used to specify that an element has a locale that
+                                differs from the application's default locale, e.g. for documents
+                                or paragraphs within a document that use a language that differs
+                                from the application's user interface language.
+
+    \sa QAccessibleAttributesInterface
+*/
+
+/*! \enum QAccessible::AnnouncementPoliteness
+    This enum describes the priority for announcements used by the
+    \l QAccessibleAnnouncementEvent.
+    \since 6.8
+
+    With \a QAccessible::AnouncementPoliteness::Polite, assistive technologies
+    should announce the message at the next graceful opportunity such as at the
+    end of speaking the current sentence or when the user pauses typing.
+
+    When specifying \a QAccessible::AnouncementPoliteness::Assertive, assistive
+    technologies should notify the user immediately.
+
+    Because an interruption might disorient users or cause them to not complete
+    their current task, \a QAccessible::AnouncementPoliteness::Assertive should
+    not be used unless the interruption is imperative.
+
+    \value Polite      The announcement has normal priority.
+    \value Assertive   The announcement has high priority and should notify
+                       the user immediately, even if that means interrupting the user's
+                       current task.
+
+    \sa QAccessibleAnnouncementEvent
 */
 
 
@@ -431,8 +504,9 @@ Q_LOGGING_CATEGORY(lcAccessibilityCore, "qt.accessibility.core");
     \value TableCellInterface       For cells in a TableInterface object.
     \value HyperlinkInterface       For hyperlink nodes (usually embedded as children of text nodes)
     \value [since 6.5] SelectionInterface For non-text objects that support selection of child objects.
+    \value [since 6.8] AttributesInterface For objects that support object-specific attributes.
 
-    \sa QAccessibleInterface::interface_cast(), QAccessibleTextInterface, QAccessibleValueInterface, QAccessibleActionInterface, QAccessibleTableInterface, QAccessibleTableCellInterface, QAccessibleSelectionInterface
+    \sa QAccessibleInterface::interface_cast(), QAccessibleTextInterface, QAccessibleValueInterface, QAccessibleActionInterface, QAccessibleTableInterface, QAccessibleTableCellInterface, QAccessibleSelectionInterface, QAccessibleAttributesInterface
 */
 
 #if QT_CONFIG(accessibility)
@@ -621,6 +695,11 @@ void QAccessible::installActivationObserver(QAccessible::ActivationObserver *obs
     if (qAccessibleActivationObservers()->contains(observer))
         return;
     qAccessibleActivationObservers()->append(observer);
+
+    // Make sure the newly added observer gets a callback on the next
+    // QPlatformAccessibility::setActive() callback
+    if (QPlatformAccessibility *pfAccessibility = platformAccessibility())
+        pfAccessibility->clearActiveNotificationState();
 }
 
 /*!
@@ -632,6 +711,17 @@ void QAccessible::installActivationObserver(QAccessible::ActivationObserver *obs
 void QAccessible::removeActivationObserver(ActivationObserver *observer)
 {
     qAccessibleActivationObservers()->removeAll(observer);
+}
+
+/*!
+    \internal
+
+    Sends accessibility activation notifications to all registered observers.
+*/
+void qAccessibleNotifyActivationObservers(bool active)
+{
+    for (int i = 0; i < qAccessibleActivationObservers()->size(); ++i)
+        qAccessibleActivationObservers()->at(i)->accessibilityActiveChanged(active);
 }
 
 /*!
@@ -803,10 +893,9 @@ bool QAccessible::isActive()
 */
 void QAccessible::setActive(bool active)
 {
-    for (int i = 0; i < qAccessibleActivationObservers()->size() ;++i)
-        qAccessibleActivationObservers()->at(i)->accessibilityActiveChanged(active);
+    if (QPlatformAccessibility *pfAccessibility = platformAccessibility())
+        pfAccessibility->setActive(active);
 }
-
 
 /*!
   Sets the root object of the accessible objects of this application
@@ -860,14 +949,15 @@ void QAccessible::updateAccessibility(QAccessibleEvent *event)
     // during construction of widgets. If you see cases where the
     // cache seems wrong, this call is "to blame", but the code that
     // caches dynamic data should be updated to handle change events.
-    QAccessibleInterface *iface = event->accessibleInterface();
-    if (isActive() && iface) {
-        if (event->type() == QAccessible::TableModelChanged) {
-            if (iface->tableInterface())
-                iface->tableInterface()->modelChange(static_cast<QAccessibleTableModelChangeEvent*>(event));
+    if (isActive()) {
+        QAccessibleInterface *iface = event->accessibleInterface();
+        if (iface) {
+            if (event->type() == QAccessible::TableModelChanged) {
+                if (iface->tableInterface())
+                    iface->tableInterface()->modelChange(static_cast<QAccessibleTableModelChangeEvent*>(event));
+            }
         }
     }
-
     if (updateHandler) {
         updateHandler(event);
         return;
@@ -884,7 +974,7 @@ void QAccessible::updateAccessibility(QAccessibleEvent *event)
     \param boundaryType the type of boundary to find
     \return the boundaries as pair
 */
-QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &offsetCursor, TextBoundaryType boundaryType)
+std::pair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &offsetCursor, TextBoundaryType boundaryType)
 {
     Q_ASSERT(!offsetCursor.isNull());
 
@@ -892,7 +982,7 @@ QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &
     endCursor.movePosition(QTextCursor::End);
     int characterCount = endCursor.position();
 
-    QPair<int, int> result;
+    std::pair<int, int> result;
     QTextCursor cursor = offsetCursor;
     switch (boundaryType) {
     case CharBoundary:
@@ -1092,7 +1182,7 @@ QPair< int, int > QAccessible::qAccessibleTextBoundaryHelper(const QTextCursor &
 
     \sa parent(), child()
 */
-QList<QPair<QAccessibleInterface*, QAccessible::Relation>>
+QList<std::pair<QAccessibleInterface*, QAccessible::Relation>>
 QAccessibleInterface::relations(QAccessible::Relation match) const
 {
     Q_UNUSED(match);
@@ -1185,6 +1275,13 @@ QAccessibleInterface *QAccessibleInterface::focusChild() const
     and a modifier key like Alt, Ctrl or Shift. Command controls like
     tool buttons also have shortcut keys and usually display them in
     their tooltip.
+
+    The \l QAccessible::Identifier can be explicitly set to provide an
+    ID to assistive technologies. This can be especially useful for UI tests.
+    If no identifier has been explicitly set, the identifier is set by the
+    respective interface to an ID based on \l QObject::objectName or its
+    class name and \l QObject::objectName or class name of the parents
+    in its parents chain.
 
     All objects provide a string for \l QAccessible::Name.
 
@@ -1374,6 +1471,14 @@ QAccessible::Id QAccessibleEvent::uniqueId() const
     return QAccessible::uniqueId(iface);
 }
 
+void QAccessibleEvent::setChild(int chld)
+{
+    if (m_type == QAccessible::ObjectDestroyed)
+        qCWarning(lcAccessibilityCore) << "Calling QAccessibleEvent::setChild on ObjectDestroyed event " <<
+            "is not supported";
+    m_child = chld;
+}
+
 /*!
     \class QAccessibleValueChangeEvent
     \ingroup accessibility
@@ -1406,6 +1511,7 @@ QAccessible::Id QAccessibleEvent::uniqueId() const
 
     Returns the new value of the accessible object of this event.
 */
+
 /*!
     \internal
 */
@@ -1655,8 +1761,8 @@ QAccessibleTextRemoveEvent::~QAccessibleTextRemoveEvent()
 /*!
      \fn QAccessibleTextInsertEvent::QAccessibleTextInsertEvent(QAccessibleInterface *iface, int position, const QString &text)
 
-     Constructs a new QAccessibleTextInsertEvent event for \a iface. The text has been inserted at
-     \a position.
+     Constructs a new QAccessibleTextInsertEvent event for \a iface. The \a text has been inserted
+     at \a position.
 */
 
 /*!
@@ -1740,7 +1846,58 @@ QAccessibleTextSelectionEvent::~QAccessibleTextSelectionEvent()
 {
 }
 
+/*!
+    \since 6.8
+    \class QAccessibleAnnouncementEvent
+    \ingroup accessibility
+    \inmodule QtGui
 
+    \brief The QAccessibleAnnouncementEvent is used to request the announcement
+    of a given message by assistive technologies.
+
+    This class is used with \l QAccessible::updateAccessibility().
+*/
+
+/*! \fn QAccessibleAnnouncementEvent::QAccessibleAnnouncementEvent(QObject *object, const QString &message)
+
+    Constructs a new QAccessibleAnnouncementEvent event for \a object
+    to request the announcement of \a message with politeness
+    \l QAccessible::AnnouncementPoliteness::Polite.
+
+    \l QAccessibleAnnouncementEvent::setPoliteness can be used to adjust the politeness.
+*/
+
+/*! \fn QAccessibleAnnouncementEvent::QAccessibleAnnouncementEvent(QAccessibleInterface *iface, const QString &message)
+
+    Constructs a new QAccessibleAnnouncementEvent event for \a iface
+    to request the announcement of \a message with politeness
+    \l QAccessible::AnnouncementPoliteness::Polite.
+
+    \l QAccessibleAnnouncementEvent::setPoliteness can be used to adjust the politeness.
+*/
+
+/*! \fn QString QAccessibleAnnouncementEvent::message() const
+
+    Returns the message.
+*/
+
+/*! \fn QAccessible::AnnouncementPoliteness QAccessibleAnnouncementEvent::politeness() const
+
+    Returns the politeness.
+*/
+
+/*! \fn void QAccessibleAnnouncementEvent::setPoliteness(QAccessible::AnnouncementPoliteness politeness)
+
+    Sets the politeness with which the announcement will be requested to \a politeness.
+*/
+
+
+/*!
+    \internal
+*/
+QAccessibleAnnouncementEvent::~QAccessibleAnnouncementEvent()
+{
+}
 
 /*!
     Returns the QAccessibleInterface associated with the event.
@@ -1759,7 +1916,7 @@ QAccessibleInterface *QAccessibleEvent::accessibleInterface() const
         if (child) {
             iface = child;
         } else {
-            qCWarning(lcAccessibilityCore) << "Cannot create accessible child interface for object: " << m_object << " index: " << m_child;
+            qCWarning(lcAccessibilityCore) << "Cannot create accessible child interface for object: " << m_object << " index: " << m_child << "type: " << m_type;
         }
     }
     return iface;
@@ -1832,10 +1989,9 @@ const char *qAccessibleEventString(QAccessible::Event event)
 Q_GUI_EXPORT QDebug operator<<(QDebug d, const QAccessibleInterface *iface)
 {
     QDebugStateSaver saver(d);
-    if (!iface) {
-        d << "QAccessibleInterface(null)";
-        return d;
-    }
+    if (!iface)
+        return d << "QAccessibleInterface(0x0)";
+
     d.nospace();
     d << "QAccessibleInterface(" << Qt::hex << (const void *) iface << Qt::dec;
     if (iface->isValid()) {
@@ -3068,6 +3224,57 @@ bool QAccessibleSelectionInterface::isSelected(QAccessibleInterface *childItem) 
     i.e. whether the selection is empty after this method has been called.
 */
 
+
+/*!
+    \since 6.8
+    \class QAccessibleAttributesInterface
+    \inmodule QtGui
+    \ingroup accessibility
+
+ \brief The QAccessibleAttributesInterface class implements support for
+ reporting attributes for an accessible object.
+
+ Attributes are key-value pairs. Values are stored in \l QVariant.
+
+ The \l QAccessible::Attribute enumeration describes the available keys and
+ documents which type to use for the value of each key.
+
+ While the text-specific attributes handled by \l QAccessibleTextInterface::attributes
+ are specific to objects implementing text and are specific to a specific text
+ position/offset, the attributes handled by the \l QAccessibleAttributesInterface
+ can be used for objects of any role and apply for the whole object.
+
+ Classes already implementing \l QAccessibleTextInterface for text-specific attrtibutes
+ may want to implement \l QAccessibleAttributesInterface in addition for object-specific
+ attributes.
+*/
+
+/*!
+
+ Destroys the QAccessibleAttributesInterface.
+*/
+QAccessibleAttributesInterface::~QAccessibleAttributesInterface()
+{
+}
+
+/*!
+    \fn QList<QAccessible::Attribute> QAccessibleAttributesInterface::attributeKeys() const
+
+ Returns the keys of all attributes the object supports. The \l QAccessible::Attribute
+ enumeration describes available keys.
+*/
+
+/*!
+    \fn QVariant QAccessibleAttributesInterface::attributeValue(QAccessible::Attribute key) const
+
+ Returns the value of the attribute \a key of this object.
+
+ If the attribute is set for this object, a value of the type documented for the
+ given key in the documentation of the \l QAccessible::Attribute enumeration is
+ returned in the \l QVariant.
+
+ Otherwise, an invalid \l QVariant is returned.
+*/
 
 /*! \internal */
 QString qAccessibleLocalizedActionDescription(const QString &actionName)

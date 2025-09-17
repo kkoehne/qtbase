@@ -19,7 +19,7 @@ endif()
 
 if(QT_FEATURE_androiddeployqt)
     add_subdirectory(androiddeployqt)
-    if(QT_FEATURE_gui AND QT_FEATURE_systemsemaphore)
+    if(QT_FEATURE_gui AND QT_FEATURE_process AND QT_FEATURE_systemsemaphore)
         add_subdirectory(androidtestrunner)
     endif()
 endif()
@@ -28,6 +28,14 @@ if(QT_FEATURE_macdeployqt)
     add_subdirectory(macdeployqt)
 endif()
 
+if(QT_FEATURE_wasmdeployqt)
+    add_subdirectory(wasmdeployqt)
+endif()
+
 if(QT_FEATURE_windeployqt)
     add_subdirectory(windeployqt)
+endif()
+
+if(QT_FEATURE_qtwaylandscanner)
+    add_subdirectory(qtwaylandscanner)
 endif()

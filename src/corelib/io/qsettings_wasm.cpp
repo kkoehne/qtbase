@@ -1,5 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:trusted-data-only
 
 #include "qsettings.h"
 #ifndef QT_NO_SETTINGS
@@ -11,6 +12,7 @@
 #endif // QT_NO_QOBJECT
 #include <QDebug>
 #include <QtCore/private/qstdweb_p.h>
+#include <QtCore/private/qwasmglobal_p.h>
 
 #include <QFileInfo>
 #include <QDir>
@@ -109,7 +111,7 @@ void QWasmLocalStorageSettingsPrivate::remove(const QString &key)
 {
     const std::string removed = QString(m_keyPrefixes.first() + key).toStdString();
 
-    qstdweb::runTaskOnMainThread<void>([this, &removed, &key]() {
+    qwasmglobal::runTaskOnMainThread<void>([this, &removed, &key]() {
         std::vector<std::string> children = { removed };
         const int length = val::global("window")["localStorage"]["length"].as<int>();
         for (int i = 0; i < length; ++i) {
@@ -131,7 +133,7 @@ void QWasmLocalStorageSettingsPrivate::remove(const QString &key)
 
 void QWasmLocalStorageSettingsPrivate::set(const QString &key, const QVariant &value)
 {
-    qstdweb::runTaskOnMainThread<void>([this, &key, &value]() {
+    qwasmglobal::runTaskOnMainThread<void>([this, &key, &value]() {
         const std::string keyString = QString(m_keyPrefixes.first() + key).toStdString();
         const std::string valueString = QSettingsPrivate::variantToString(value).toStdString();
         val::global("window")["localStorage"].call<void>("setItem", keyString, valueString);
@@ -140,7 +142,7 @@ void QWasmLocalStorageSettingsPrivate::set(const QString &key, const QVariant &v
 
 std::optional<QVariant> QWasmLocalStorageSettingsPrivate::get(const QString &key) const
 {
-    return qstdweb::runTaskOnMainThread<std::optional<QVariant>>(
+    return qwasmglobal::runTaskOnMainThread<std::optional<QVariant>>(
             [this, &key]() -> std::optional<QVariant> {
                 for (const auto &prefix : m_keyPrefixes) {
                     const std::string keyString = QString(prefix + key).toStdString();
@@ -160,7 +162,7 @@ std::optional<QVariant> QWasmLocalStorageSettingsPrivate::get(const QString &key
 
 QStringList QWasmLocalStorageSettingsPrivate::children(const QString &prefix, ChildSpec spec) const
 {
-    return qstdweb::runTaskOnMainThread<QStringList>([this, &prefix, &spec]() -> QStringList {
+    return qwasmglobal::runTaskOnMainThread<QStringList>([this, &prefix, &spec]() -> QStringList {
         QSet<QString> nodes;
         // Loop through all keys on window.localStorage, return Qt keys belonging to
         // this application, with the correct prefix, and according to ChildSpec.
@@ -192,7 +194,7 @@ QStringList QWasmLocalStorageSettingsPrivate::children(const QString &prefix, Ch
 
 void QWasmLocalStorageSettingsPrivate::clear()
 {
-    qstdweb::runTaskOnMainThread<void>([this]() {
+    qwasmglobal::runTaskOnMainThread<void>([this]() {
         // Get all Qt keys from window.localStorage
         const int length = val::global("window")["localStorage"]["length"].as<int>();
         QStringList keys;
@@ -236,25 +238,17 @@ public:
                             const QString &application);
     ~QWasmIDBSettingsPrivate();
 
-    std::optional<QVariant> get(const QString &key) const override;
-    QStringList children(const QString &prefix, ChildSpec spec) const override;
     void clear() override;
     void sync() override;
-    void flush() override;
-    bool isWritable() const override;
-    void initAccess() override;
-
-    void loadLocal();
-    void setReady();
 
 private:
-    bool writeSettingsToTemporaryFile(void *dataPtr, int size);
+    bool writeSettingsToTemporaryFile(const QString &fileName, void *dataPtr, int size);
+    void loadIndexedDBFiles();
+
 
     QString databaseName;
     QString id;
 };
-
-static bool isReadReady = false;
 
 constexpr char DbName[] = "/home/web_user";
 
@@ -270,50 +264,21 @@ QWasmIDBSettingsPrivate::QWasmIDBSettingsPrivate(QSettings::Scope scope,
         return;
     }
 
-    setStatus(QSettings::AccessError); // access error until sandbox gets loaded
     databaseName = organization;
     id = application;
 
-    int exists = 0;
-    int error = 0;
-    emscripten_idb_exists(DbName, fileName().toLocal8Bit(), &exists, &error);
-    if (error) {
-        setStatus(QSettings::AccessError);
-        return;
-    }
-    if (exists) {
-        void *contents;
-        int size;
-        emscripten_idb_load(DbName, fileName().toLocal8Bit(), &contents, &size, &error);
-        if (error || !writeSettingsToTemporaryFile(contents, size)) {
-            setStatus(QSettings::AccessError);
-            return;
-        }
-    }
+    loadIndexedDBFiles();
 
-    setReady();
+    QConfFileSettingsPrivate::initAccess();
 }
 
 QWasmIDBSettingsPrivate::~QWasmIDBSettingsPrivate() = default;
 
-void QWasmIDBSettingsPrivate::initAccess()
+bool QWasmIDBSettingsPrivate::writeSettingsToTemporaryFile(const QString &fileName, void *dataPtr,
+                                                           int size)
 {
-     if (isReadReady)
-         QConfFileSettingsPrivate::initAccess();
-}
-
-std::optional<QVariant> QWasmIDBSettingsPrivate::get(const QString &key) const
-{
-    if (isReadReady)
-        return QConfFileSettingsPrivate::get(key);
-
-    return std::nullopt;
-}
-
-bool QWasmIDBSettingsPrivate::writeSettingsToTemporaryFile(void *dataPtr, int size)
-{
-    QFile file(fileName());
-    QFileInfo fileInfo(fileName());
+    QFile file(fileName);
+    QFileInfo fileInfo(fileName);
     QDir dir(fileInfo.path());
     if (!dir.exists())
         dir.mkpath(fileInfo.path());
@@ -322,11 +287,6 @@ bool QWasmIDBSettingsPrivate::writeSettingsToTemporaryFile(void *dataPtr, int si
         return false;
 
     return size == file.write(reinterpret_cast<char *>(dataPtr), size);
-}
-
-QStringList QWasmIDBSettingsPrivate::children(const QString &prefix, ChildSpec spec) const
-{
-    return QConfFileSettingsPrivate::children(prefix, spec);
 }
 
 void QWasmIDBSettingsPrivate::clear()
@@ -340,6 +300,10 @@ void QWasmIDBSettingsPrivate::clear()
 
 void QWasmIDBSettingsPrivate::sync()
 {
+    // Reload the files, in case there were any changes in IndexedDB, and flush them to disk.
+    // Thanks to this, QConfFileSettingsPrivate::sync will handle key merging correctly.
+    loadIndexedDBFiles();
+
     QConfFileSettingsPrivate::sync();
 
     QFile file(fileName());
@@ -354,21 +318,26 @@ void QWasmIDBSettingsPrivate::sync()
     }
 }
 
-void QWasmIDBSettingsPrivate::flush()
+void QWasmIDBSettingsPrivate::loadIndexedDBFiles()
 {
-    sync();
-}
-
-bool QWasmIDBSettingsPrivate::isWritable() const
-{
-    return isReadReady && QConfFileSettingsPrivate::isWritable();
-}
-
-void QWasmIDBSettingsPrivate::setReady()
-{
-    isReadReady = true;
-    setStatus(QSettings::NoError);
-    QConfFileSettingsPrivate::initAccess();
+    for (const auto *confFile : getConfFiles()) {
+        int exists = 0;
+        int error = 0;
+        emscripten_idb_exists(DbName, confFile->name.toLocal8Bit(), &exists, &error);
+        if (error) {
+            setStatus(QSettings::AccessError);
+            return;
+        }
+        if (exists) {
+            void *contents;
+            int size;
+            emscripten_idb_load(DbName, confFile->name.toLocal8Bit(), &contents, &size, &error);
+            if (error || !writeSettingsToTemporaryFile(confFile->name, contents, size)) {
+                setStatus(QSettings::AccessError);
+                return;
+            }
+        }
+    }
 }
 
 QSettingsPrivate *QSettingsPrivate::create(QSettings::Format format, QSettings::Scope scope,
@@ -380,7 +349,7 @@ QSettingsPrivate *QSettingsPrivate::create(QSettings::Format format, QSettings::
 
     // Check if cookies are enabled (required for using persistent storage)
 
-    const bool cookiesEnabled = qstdweb::runTaskOnMainThread<bool>(
+    const bool cookiesEnabled = qwasmglobal::runTaskOnMainThread<bool>(
             []() { return val::global("navigator")["cookieEnabled"].as<bool>(); });
 
     constexpr QLatin1StringView cookiesWarningMessage(

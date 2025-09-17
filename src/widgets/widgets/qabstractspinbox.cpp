@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include <qplatformdefs.h>
+#ifdef Q_OS_WASM
+# include <private/qstdweb_p.h>
+#endif
 #include <private/qabstractspinbox_p.h>
 #include <private/qapplication_p.h>
 #if QT_CONFIG(datetimeparser)
@@ -26,6 +29,7 @@
 # include <qaccessible.h>
 #endif
 
+#include <QtCore/qpointer.h>
 
 //#define QABSTRACTSPINBOX_QSBDEBUG
 #ifdef QABSTRACTSPINBOX_QSBDEBUG
@@ -37,6 +41,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 /*!
     \class QAbstractSpinBox
@@ -105,6 +110,13 @@ using namespace Qt::StringLiterals;
 
   This signal is emitted editing is finished. This happens when the
   spinbox loses focus and when enter is pressed.
+*/
+
+/*!
+  \fn void QAbstractSpinBox::returnPressed()
+  \since 6.10
+
+  This signal is emitted when the Return or Enter key is used.
 */
 
 /*!
@@ -691,14 +703,14 @@ void QAbstractSpinBox::setLineEdit(QLineEdit *lineEdit)
     d->edit->setAcceptDrops(false);
 
     if (d->type != QMetaType::UnknownType) {
-        connect(d->edit, SIGNAL(textChanged(QString)),
-                this, SLOT(_q_editorTextChanged(QString)));
-        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
-                this, SLOT(_q_editorCursorPositionChanged(int,int)));
-        connect(d->edit, SIGNAL(cursorPositionChanged(int,int)),
-                this, SLOT(updateMicroFocus()));
-        connect(d->edit->d_func()->control, SIGNAL(updateMicroFocus()),
-                this, SLOT(updateMicroFocus()));
+        QObjectPrivate::connect(d->edit, &QLineEdit::textChanged,
+                                d, &QAbstractSpinBoxPrivate::editorTextChanged);
+        QObjectPrivate::connect(d->edit, &QLineEdit::cursorPositionChanged,
+                                d, &QAbstractSpinBoxPrivate::editorCursorPositionChanged);
+        connect(d->edit, &QLineEdit::cursorPositionChanged,
+                this, [this]() { updateMicroFocus(); });
+        connect(d->edit->d_func()->control, &QWidgetLineControl::updateMicroFocus,
+                this, [this]() { updateMicroFocus(); });
     }
     d->updateEditFieldGeometry();
     d->edit->setContextMenuPolicy(Qt::NoContextMenu);
@@ -1013,10 +1025,10 @@ void QAbstractSpinBox::keyPressEvent(QKeyEvent *event)
         if (style()->styleHint(QStyle::SH_SpinBox_AnimateButton, nullptr, this)) {
             d->buttonState = (Keyboard | (up ? Up : Down));
         }
-        if (d->spinClickTimerId == -1)
+        if (!d->spinClickTimer.isActive())
             stepBy(steps);
         if (event->isAutoRepeat() && !isPgUpOrDown) {
-            if (d->spinClickThresholdTimerId == -1 && d->spinClickTimerId == -1) {
+            if (!d->spinClickThresholdTimer.isActive() && !d->spinClickTimer.isActive()) {
                 d->updateState(up, true);
             }
         }
@@ -1048,6 +1060,7 @@ void QAbstractSpinBox::keyPressEvent(QKeyEvent *event)
         selectAll();
         event->ignore();
         emit editingFinished();
+        emit returnPressed();
         emit d->edit->returnPressed();
         return;
 
@@ -1232,21 +1245,19 @@ void QAbstractSpinBox::timerEvent(QTimerEvent *event)
     Q_D(QAbstractSpinBox);
 
     bool doStep = false;
-    if (event->timerId() == d->spinClickThresholdTimerId) {
-        killTimer(d->spinClickThresholdTimerId);
-        d->spinClickThresholdTimerId = -1;
+    if (event->id() == d->spinClickThresholdTimer.id()) {
+        d->spinClickThresholdTimer.stop();
         d->effectiveSpinRepeatRate = d->buttonState & Keyboard
                                      ? QGuiApplication::styleHints()->keyboardAutoRepeatRateF()
                                      : d->spinClickTimerInterval;
-        d->spinClickTimerId = startTimer(d->effectiveSpinRepeatRate);
+        d->spinClickTimer.start(d->effectiveSpinRepeatRate, this);
         doStep = true;
-    } else if (event->timerId() == d->spinClickTimerId) {
+    } else if (event->id() == d->spinClickTimer.id()) {
         if (d->accelerate) {
             d->acceleration = d->acceleration + (int)(d->effectiveSpinRepeatRate * 0.05);
-            if (d->effectiveSpinRepeatRate - d->acceleration >= 10) {
-                killTimer(d->spinClickTimerId);
-                d->spinClickTimerId = startTimer(d->effectiveSpinRepeatRate - d->acceleration);
-            }
+            auto interval = int(d->effectiveSpinRepeatRate - d->acceleration) * 1ms;
+            if (interval >= 10ms)
+                d->spinClickTimer.start(interval, this);
         }
         doStep = true;
     }
@@ -1280,6 +1291,12 @@ void QAbstractSpinBox::timerEvent(QTimerEvent *event)
 #if QT_CONFIG(contextmenu)
 void QAbstractSpinBox::contextMenuEvent(QContextMenuEvent *event)
 {
+#ifdef Q_OS_WASM
+    if (!qstdweb::haveAsyncify()) {
+        qDebug() << " Skipping context menu for spinbox since asyncify is off";
+        return;
+    }
+#endif
     Q_D(QAbstractSpinBox);
 
     QPointer<QMenu> menu = d->edit->createStandardContextMenu();
@@ -1333,7 +1350,7 @@ void QAbstractSpinBox::mouseMoveEvent(QMouseEvent *event)
     d->updateHoverControl(event->position().toPoint());
 
     // If we have a timer ID, update the state
-    if (d->spinClickTimerId != -1 && d->buttonSymbols != NoButtons) {
+    if (d->spinClickTimer.isActive() && d->buttonSymbols != NoButtons) {
         const StepEnabled se = stepEnabled();
         if ((se & StepUpEnabled) && d->hoverControl == QStyle::SC_SpinBoxUp)
             d->updateState(true);
@@ -1355,6 +1372,7 @@ void QAbstractSpinBox::mousePressEvent(QMouseEvent *event)
 
     d->keyboardModifiers = event->modifiers();
     if (event->button() != Qt::LeftButton || d->buttonState != None) {
+        event->ignore();
         return;
     }
 
@@ -1510,7 +1528,7 @@ void QAbstractSpinBoxPrivate::emitSignals(EmitPolicy, const QVariant &)
     signal.
 */
 
-void QAbstractSpinBoxPrivate::_q_editorTextChanged(const QString &t)
+void QAbstractSpinBoxPrivate::editorTextChanged(const QString &t)
 {
     Q_Q(QAbstractSpinBox);
 
@@ -1540,7 +1558,7 @@ void QAbstractSpinBoxPrivate::_q_editorTextChanged(const QString &t)
     the different sections etc.
 */
 
-void QAbstractSpinBoxPrivate::_q_editorCursorPositionChanged(int oldpos, int newpos)
+void QAbstractSpinBoxPrivate::editorCursorPositionChanged(int oldpos, int newpos)
 {
     if (!edit->hasSelectedText() && !ignoreCursorPositionChanged && !specialValue()) {
         ignoreCursorPositionChanged = true;
@@ -1621,11 +1639,8 @@ void QAbstractSpinBoxPrivate::reset()
 
     buttonState = None;
     if (q) {
-        if (spinClickTimerId != -1)
-            q->killTimer(spinClickTimerId);
-        if (spinClickThresholdTimerId != -1)
-            q->killTimer(spinClickThresholdTimerId);
-        spinClickTimerId = spinClickThresholdTimerId = -1;
+        spinClickTimer.stop();
+        spinClickThresholdTimer.stop();
         acceleration = 0;
         q->update();
     }
@@ -1650,7 +1665,7 @@ void QAbstractSpinBoxPrivate::updateState(bool up, bool fromKeyboard /* = false 
         if (keyboardModifiers & stepModifier)
             steps *= 10;
         q->stepBy(steps);
-        spinClickThresholdTimerId = q->startTimer(spinClickThresholdTimerInterval);
+        spinClickThresholdTimer.start(spinClickThresholdTimerInterval * 1ms, q);
 #if QT_CONFIG(accessibility)
         QAccessibleValueChangeEvent event(q, value);
         QAccessible::updateAccessibility(&event);
@@ -2042,6 +2057,7 @@ QVariant operator-(const QVariant &arg1, const QVariant &arg2)
                 dt.setTime(dt.time().addMSecs(msecs));
             ret = QVariant(dt);
         }
+        break;
     }
     default: break;
     }

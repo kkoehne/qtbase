@@ -1,6 +1,8 @@
 // Copyright (C) 2020 The Qt Company Ltd.
 // Copyright (C) 2021 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:execute-external-code
+
 #include "qlibrary.h"
 #include "qlibrary_p.h"
 
@@ -11,7 +13,6 @@
 #include <qfile.h>
 #include <qfileinfo.h>
 #include <qjsondocument.h>
-#include <qmap.h>
 #include <qmutex.h>
 #include <qoperatingsystemversion.h>
 #include <qstringlist.h>
@@ -29,6 +30,8 @@
 #include "qmachparser_p.h"
 
 #include <qtcore_tracepoints_p.h>
+
+#include <QtCore/q20map.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -54,7 +57,7 @@ static constexpr bool QtBuildIsDebug = true;
 #endif
 
 Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(qt_lcDebugPlugins, "QT_DEBUG_PLUGINS", "qt.core.plugin.loader")
-static Q_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(lcDebugLibrary, "QT_DEBUG_PLUGINS", "qt.core.library")
+Q_STATIC_LOGGING_CATEGORY_WITH_ENV_OVERRIDE(lcDebugLibrary, "QT_DEBUG_PLUGINS", "qt.core.library")
 
 /*!
     \class QLibrary
@@ -176,7 +179,7 @@ static QLibraryScanResult qt_find_pattern(const char *s, qsizetype s_len, QStrin
     return QElfParser::parse({s, s_len}, errMsg);
 #elif defined(Q_OF_MACH_O)
     return QMachOParser::parse(s, s_len, errMsg);
-#elif defined(Q_OS_WIN)
+#elif defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
     return QCoffPeParser::parse({s, s_len}, errMsg);
 #else
 #   warning "Qt does not know how to efficiently parse your platform's binary format; using slow fall-back."
@@ -321,7 +324,7 @@ private:
     static inline QLibraryStore *instance();
 
     // all members and instance() are protected by qt_library_mutex
-    typedef QMap<QString, QLibraryPrivate *> LibraryMap;
+    typedef std::map<QString, QLibraryPrivate *> LibraryMap;
     LibraryMap libraryMap;
 };
 
@@ -341,9 +344,7 @@ inline void QLibraryStore::cleanup()
         return;
 
     // find any libraries that are still loaded but have a no one attached to them
-    LibraryMap::Iterator it = data->libraryMap.begin();
-    for (; it != data->libraryMap.end(); ++it) {
-        QLibraryPrivate *lib = it.value();
+    for (auto &[_, lib] : data->libraryMap) {
         if (lib->libraryRefCount.loadRelaxed() == 1) {
             if (lib->libraryUnloadCount.loadRelaxed() > 0) {
                 Q_ASSERT(lib->pHnd.loadRelaxed());
@@ -357,16 +358,15 @@ inline void QLibraryStore::cleanup()
                 lib->unload();
 #endif
             }
-            delete lib;
-            it.value() = nullptr;
+            delete std::exchange(lib, nullptr);
         }
     }
 
     // dump all objects that remain
     if (lcDebugLibrary().isDebugEnabled()) {
-        for (QLibraryPrivate *lib : std::as_const(data->libraryMap)) {
+        for (auto &[_, lib] : data->libraryMap) {
             if (lib)
-                qDebug(lcDebugLibrary)
+                qCDebug(lcDebugLibrary)
                         << "On QtCore unload," << lib->fileName << "was leaked, with"
                         << lib->libraryRefCount.loadRelaxed() << "users";
         }
@@ -395,26 +395,34 @@ QLibraryStore *QLibraryStore::instance()
 inline QLibraryPrivate *QLibraryStore::findOrCreate(const QString &fileName, const QString &version,
                                                     QLibrary::LoadHints loadHints)
 {
+    auto lazyNewLib = [&] {
+        auto result = new QLibraryPrivate(fileName, version, loadHints);
+        result->libraryRefCount.ref();
+        return result;
+    };
+
+    if (fileName.isEmpty())   // request for empty d-pointer in QLibrary::setLoadHints();
+        return lazyNewLib();  // must return an independent (new) object
+
     QMutexLocker locker(&qt_library_mutex);
     QLibraryStore *data = instance();
 
+    if (Q_UNLIKELY(!data)) {
+        locker.unlock();
+        return lazyNewLib();
+    }
+
     QString mapName = version.isEmpty() ? fileName : fileName + u'\0' + version;
 
-    // check if this library is already loaded
-    QLibraryPrivate *lib = nullptr;
-    if (Q_LIKELY(data)) {
-        lib = data->libraryMap.value(mapName);
-        if (lib)
-            lib->mergeLoadHints(loadHints);
+    QLibraryPrivate *&lib = data->libraryMap[std::move(mapName)];
+    if (lib) {
+        // already loaded
+        lib->libraryRefCount.ref();
+        lib->mergeLoadHints(loadHints);
+    } else {
+        lib = lazyNewLib();
     }
-    if (!lib)
-        lib = new QLibraryPrivate(fileName, version, loadHints);
 
-    // track this library
-    if (Q_LIKELY(data) && !fileName.isEmpty())
-        data->libraryMap.insert(mapName, lib);
-
-    lib->libraryRefCount.ref();
     return lib;
 }
 
@@ -432,8 +440,9 @@ inline void QLibraryStore::releaseLibrary(QLibraryPrivate *lib)
     Q_ASSERT(lib->libraryUnloadCount.loadRelaxed() == 0);
 
     if (Q_LIKELY(data) && !lib->fileName.isEmpty()) {
-        qsizetype n = erase_if(data->libraryMap, [lib](LibraryMap::iterator it) {
-            return it.value() == lib;
+        using q20::erase_if;
+        const auto n = erase_if(data->libraryMap, [lib](const auto &e) {
+            return e.second == lib;
         });
         Q_ASSERT_X(n, "~QLibrary", "Did not find this library in the library map");
         Q_UNUSED(n);
@@ -582,7 +591,9 @@ QtPluginInstanceFunction QLibraryPrivate::loadPlugin()
     if (load()) {
         auto ptr = reinterpret_cast<QtPluginInstanceFunction>(resolve("qt_plugin_instance"));
         instanceFactory.storeRelease(ptr); // two threads may store the same value
-        return ptr;
+        if (Q_LIKELY(ptr))
+            return ptr;
+        errorString = QLibrary::tr("Could not resolve 'qt_plugin_instance' function");
     }
     qCDebug(qt_lcDebugPlugins) << "QLibraryPrivate::loadPlugin failed on" << fileName << ":" << errorString;
     pluginState = IsNotAPlugin;
@@ -606,7 +617,7 @@ QtPluginInstanceFunction QLibraryPrivate::loadPlugin()
  */
 bool QLibrary::isLibrary(const QString &fileName)
 {
-#if defined(Q_OS_WIN)
+#if defined(Q_OS_WIN) || defined(Q_OS_CYGWIN)
     return fileName.endsWith(".dll"_L1, Qt::CaseInsensitive);
 #else // Generic Unix
 # if defined(Q_OS_DARWIN)

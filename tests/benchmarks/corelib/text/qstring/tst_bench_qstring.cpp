@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 #include <QStringList>
 #include <QByteArray>
 #include <QLatin1StringView>
@@ -158,6 +158,12 @@ void tst_QString::toUpper_data()
     QTest::newRow("300A+150<10428>") << (upperLatin1 + lowerDeseret);
 
     QTest::newRow("600<FB03> (ligature)") << lowerLigature;
+
+    QString fullRange;
+    for (char32_t i = 0; i <= QChar::LastValidCodePoint; ++i)
+        fullRange.append(QChar::fromUcs4(i));
+
+    QTest::newRow("full-range") << fullRange;
 }
 
 void tst_QString::toUpper()

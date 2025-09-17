@@ -16,12 +16,16 @@
 //
 
 #include <QtWidgets/private/qtwidgetsglobal_p.h>
+#include "qtreeview.h"
 #include "private/qabstractitemview_p.h"
 #include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qlist.h>
 #if QT_CONFIG(animation)
 #include <QtCore/qvariantanimation.h>
 #endif
+
+#include <array>
 
 QT_REQUIRE_CONFIG(treeview);
 
@@ -56,12 +60,13 @@ public:
           itemsExpandable(true), sortingEnabled(false),
           expandsOnDoubleClick(true),
           allColumnsShowFocus(false), customIndent(false), current(0), spanning(false),
-          animationsEnabled(false), columnResizeTimerID(0),
+          animationsEnabled(false),
           autoExpandDelay(-1), hoverBranch(-1), geometryRecursionBlock(false), hasRemovedItems(false),
           treePosition(0) {}
 
     ~QTreeViewPrivate() {}
     void initialize();
+    void clearConnections();
     int logicalIndexForTree() const;
     inline bool isTreePosition(int logicalIndex) const
     {
@@ -88,17 +93,17 @@ public:
     void beginAnimatedOperation();
     void drawAnimatedOperation(QPainter *painter) const;
     QPixmap renderTreeToPixmapForAnimation(const QRect &rect) const;
-    void _q_endAnimatedOperation();
+    void endAnimatedOperation();
 #endif // animation
 
     void expand(int item, bool emitSignal);
     void collapse(int item, bool emitSignal);
 
-    void _q_columnsAboutToBeRemoved(const QModelIndex &, int, int) override;
-    void _q_columnsRemoved(const QModelIndex &, int, int) override;
-    void _q_modelAboutToBeReset();
-    void _q_sortIndicatorChanged(int column, Qt::SortOrder order);
-    void _q_modelDestroyed() override;
+    void columnsAboutToBeRemoved(const QModelIndex &, int, int) override;
+    void columnsRemoved(const QModelIndex &, int, int) override;
+    void modelAboutToBeReset();
+    void sortIndicatorChanged(int column, Qt::SortOrder order);
+    void modelDestroyed() override;
     QRect intersectedRect(const QRect rect, const QModelIndex &topLeft, const QModelIndex &bottomRight) const override;
 
     void layout(int item, bool recusiveExpanding = false, bool afterIsUninitialized = false);
@@ -134,11 +139,11 @@ public:
     int itemDecorationAt(const QPoint &pos) const;
     QRect itemDecorationRect(const QModelIndex &index) const;
 
-    QList<QPair<int, int>> columnRanges(const QModelIndex &topIndex,
+    QList<std::pair<int, int>> columnRanges(const QModelIndex &topIndex,
                                         const QModelIndex &bottomIndex) const;
     void select(const QModelIndex &start, const QModelIndex &stop, QItemSelectionModel::SelectionFlags command);
 
-    QPair<int,int> startAndEndColumns(const QRect &rect) const;
+    std::pair<int,int> startAndEndColumns(const QRect &rect) const;
 
     void updateChildCount(const int parentItem, const int delta);
 
@@ -180,7 +185,7 @@ public:
     bool customIndent;
 
     // used for drawing
-    mutable QPair<int,int> leftAndRight;
+    mutable std::pair<int,int> leftAndRight;
     mutable int current;
     mutable bool spanning;
 
@@ -236,7 +241,7 @@ public:
     QSet<QPersistentModelIndex> spanningIndexes;
 
     // used for updating resized columns
-    int columnResizeTimerID;
+    QBasicTimer columnResizeTimer;
     QList<int> columnsToUpdate;
 
     // used for the automatic opening of nodes during DND
@@ -254,6 +259,18 @@ public:
 
     // tree position
     int treePosition;
+
+    // pending accessibility update
+#if QT_CONFIG(accessibility)
+    bool pendingAccessibilityUpdate = false;
+#endif
+    void updateAccessibility();
+
+    QMetaObject::Connection animationConnection;
+    QMetaObject::Connection selectionmodelConnection;
+    std::array<QMetaObject::Connection, 2> modelConnections;
+    std::array<QMetaObject::Connection, 5> headerConnections;
+    QMetaObject::Connection sortHeaderConnection;
 };
 
 QT_END_NAMESPACE

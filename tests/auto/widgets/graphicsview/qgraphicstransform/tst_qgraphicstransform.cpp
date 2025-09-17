@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -181,9 +181,12 @@ void tst_QGraphicsTransform::rotation3d_data()
     QTest::addColumn<qreal>("angle");
 
     for (int angle = 0; angle <= 360; angle++) {
-        QTest::newRow("test rotation on X") << Qt::XAxis << qreal(angle);
-        QTest::newRow("test rotation on Y") << Qt::YAxis << qreal(angle);
-        QTest::newRow("test rotation on Z") << Qt::ZAxis << qreal(angle);
+        QTest::newRow(QString("test rotation on X at angle %1").arg(angle).toLatin1())
+            << Qt::XAxis << qreal(angle);
+        QTest::newRow(QString("test rotation on Y at angle %1").arg(angle).toLatin1())
+            << Qt::YAxis << qreal(angle);
+        QTest::newRow(QString("test rotation on Z at angle %1").arg(angle).toLatin1())
+            << Qt::ZAxis << qreal(angle);
     }
 }
 

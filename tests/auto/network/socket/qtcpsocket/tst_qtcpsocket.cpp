@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2017 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qglobal.h>
 
@@ -1394,7 +1394,8 @@ void tst_QTcpSocket::disconnectWhileConnectingNoEventLoop()
     if (setProxy)
         return; //proxy not useful for localhost test case
 
-    QScopedPointer<ReceiverThread, ReceiverThread> thread (new ReceiverThread);
+    using Ptr = std::unique_ptr<ReceiverThread, decltype(&ReceiverThread::cleanup)>;
+    auto thread = Ptr(new ReceiverThread, ReceiverThread::cleanup);
     QVERIFY(thread->listen());
     thread->start();
 
@@ -2583,7 +2584,7 @@ void tst_QTcpSocket::moveToThread0()
 
     {
         // Case 1: Moved after connecting, before waiting for connection.
-        QTcpSocket *socket = newSocket();;
+        QTcpSocket *socket = newSocket();
         socket->connectToHost(QtNetworkSettings::imapServerName(), 143);
         socket->moveToThread(0);
         QVERIFY(socket->waitForConnected(5000));

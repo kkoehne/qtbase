@@ -50,8 +50,7 @@
 
 #include <QtCore/qoperatingsystemversion.h>
 #include <QtCore/private/qfunctions_win_p.h>
-
-#include <wrl.h>
+#include <QtCore/private/qcomptr_p.h>
 
 #include <limits.h>
 
@@ -80,31 +79,6 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-/*!
-    \class QWindowsIntegration
-    \brief QPlatformIntegration implementation for Windows.
-    \internal
-
-    \section1 Programming Considerations
-
-    The platform plugin should run on Desktop Windows from Windows XP onwards
-    and Windows Embedded.
-
-    It should compile with:
-    \list
-    \li Microsoft Visual Studio 2013 or later (using the Microsoft Windows SDK,
-        (\c Q_CC_MSVC).
-    \li Stock \l{http://mingw.org/}{MinGW} (\c Q_CC_MINGW).
-        This version ships with headers that are missing a lot of WinAPI.
-    \li MinGW distributions using GCC 4.7 or higher and a recent MinGW-w64 runtime API,
-        such as \l{http://tdm-gcc.tdragon.net/}{TDM-GCC}, or
-        \l{http://mingwbuilds.sourceforge.net/}{MinGW-builds}
-        (\c Q_CC_MINGW and \c __MINGW64_VERSION_MAJOR indicating the version).
-        MinGW-w64 provides more complete headers (compared to stock MinGW from mingw.org),
-        including a considerable part of the Windows SDK.
-    \endlist
-*/
-
 struct QWindowsIntegrationPrivate
 {
     Q_DISABLE_COPY_MOVE(QWindowsIntegrationPrivate)
@@ -130,7 +104,7 @@ struct QWindowsIntegrationPrivate
 #if QT_CONFIG(accessibility)
    QWindowsUiaAccessibility m_accessibility;
 #endif
-    QWindowsServices m_services;
+    mutable QScopedPointer<QWindowsServices> m_services;
 };
 
 template <typename IntType>
@@ -167,8 +141,8 @@ static inline unsigned parseOptions(const QStringList &paramList,
     unsigned options = 0;
     for (const QString &param : paramList) {
         if (param.startsWith(u"fontengine=")) {
-            if (param.endsWith(u"directwrite")) {
-                options |= QWindowsIntegration::FontDatabaseDirectWrite;
+            if (param.endsWith(u"gdi")) {
+                options |= QWindowsIntegration::FontDatabaseGDI;
             } else if (param.endsWith(u"freetype")) {
                 options |= QWindowsIntegration::FontDatabaseFreeType;
             } else if (param.endsWith(u"native")) {
@@ -198,8 +172,6 @@ static inline unsigned parseOptions(const QStringList &paramList,
             options |= QWindowsIntegration::AlwaysUseNativeMenus;
         } else if (param == u"menus=none") {
             options |= QWindowsIntegration::NoNativeMenus;
-        } else if (param == u"nowmpointer") {
-            options |= QWindowsIntegration::DontUseWMPointer;
         } else if (param == u"reverse") {
             options |= QWindowsIntegration::RtlEnabled;
         } else if (param == u"darkmode=0") {
@@ -234,10 +206,7 @@ void QWindowsIntegrationPrivate::parseOptions(QWindowsIntegration *q, const QStr
     if (tabletAbsoluteRange >= 0)
         QWindowsContext::setTabletAbsoluteRange(tabletAbsoluteRange);
 
-    if (m_context.initPointer(m_options))
-        QCoreApplication::setAttribute(Qt::AA_CompressHighFrequencyEvents);
-    else
-        m_context.initTablet();
+    QCoreApplication::setAttribute(Qt::AA_CompressHighFrequencyEvents);
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
 
     if (!dpiAwarenessSet) { // Set only once in case of repeated instantiations of QGuiApplication.
@@ -281,9 +250,9 @@ QWindowsIntegration::~QWindowsIntegration()
 
 void QWindowsIntegration::initialize()
 {
-    QString icStr = QPlatformInputContextFactory::requested();
-    icStr.isNull() ? d->m_inputContext.reset(new QWindowsInputContext)
-                   : d->m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
+    auto icStrs = QPlatformInputContextFactory::requested();
+    icStrs.isEmpty() ? d->m_inputContext.reset(new QWindowsInputContext)
+                     : d->m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
 }
 
 bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) const
@@ -293,6 +262,11 @@ bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) co
         return true;
 #ifndef QT_NO_OPENGL
     case OpenGL:
+#if !QT_CONFIG(run_opengl_tests)
+        // Workaround for build configs on WoA that don't have OpenGL installed
+        // FIXME: Detect at runtime
+        return false;
+#endif
         return true;
     case ThreadedOpenGL:
         if (const QWindowsStaticOpenGLContext *glContext = QWindowsIntegration::staticOpenGLContext())
@@ -305,12 +279,12 @@ bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) co
         return true;
     case ForeignWindows:
         return true;
-    case RasterGLSurface:
-        return true;
     case AllGLFunctionsQueryable:
         return true;
     case SwitchableWidgetComposition:
         return false; // QTBUG-68329 QTBUG-53515 QTBUG-54734
+    case BackingStoreStaticContents:
+        return true;
     default:
         return QPlatformIntegration::hasCapability(cap);
     }
@@ -507,17 +481,17 @@ QWindowsStaticOpenGLContext *QWindowsIntegration::staticOpenGLContext()
 QPlatformFontDatabase *QWindowsIntegration::fontDatabase() const
 {
     if (!d->m_fontDatabase) {
-#if QT_CONFIG(directwrite3)
-        if (d->m_options & QWindowsIntegration::FontDatabaseDirectWrite)
-            d->m_fontDatabase = new QWindowsDirectWriteFontDatabase;
-        else
-#endif
 #ifndef QT_NO_FREETYPE
         if (d->m_options & QWindowsIntegration::FontDatabaseFreeType)
             d->m_fontDatabase = new QWindowsFontDatabaseFT;
         else
 #endif // QT_NO_FREETYPE
-        d->m_fontDatabase = new QWindowsFontDatabase();
+#if QT_CONFIG(directwrite3)
+        if (!(d->m_options & (QWindowsIntegration::FontDatabaseGDI | QWindowsIntegration::DontUseDirectWriteFonts)))
+            d->m_fontDatabase = new QWindowsDirectWriteFontDatabase;
+        else
+#endif
+            d->m_fontDatabase = new QWindowsFontDatabase;
     }
     return d->m_fontDatabase;
 }
@@ -565,14 +539,9 @@ QVariant QWindowsIntegration::styleHint(QPlatformIntegration::StyleHint hint) co
     return QPlatformIntegration::styleHint(hint);
 }
 
-Qt::KeyboardModifiers QWindowsIntegration::queryKeyboardModifiers() const
+QPlatformKeyMapper *QWindowsIntegration::keyMapper() const
 {
-    return QWindowsKeyMapper::queryKeyboardModifiers();
-}
-
-QList<int> QWindowsIntegration::possibleKeys(const QKeyEvent *e) const
-{
-    return d->m_context.possibleKeys(e);
+    return d->m_context.keyMapper();
 }
 
 #if QT_CONFIG(clipboard)
@@ -631,7 +600,10 @@ QPlatformTheme *QWindowsIntegration::createPlatformTheme(const QString &name) co
 
 QPlatformServices *QWindowsIntegration::services() const
 {
-    return &d->m_services;
+    if (d->m_services.isNull())
+        d->m_services.reset(new QWindowsServices);
+
+    return d->m_services.data();
 }
 
 void QWindowsIntegration::beep() const
@@ -653,12 +625,16 @@ void QWindowsIntegration::setApplicationBadge(qint64 number)
     // We prefer the native BadgeUpdater API, that allows us to set a number directly,
     // but it requires that the application has a package identity, and also doesn't
     // seem to work in all cases on < Windows 11.
-    if (isWindows11 && qt_win_hasPackageIdentity()) {
-        using namespace winrt::Windows::UI::Notifications;
-        auto badgeXml = BadgeUpdateManager::GetTemplateContent(BadgeTemplateType::BadgeNumber);
-        badgeXml.SelectSingleNode(L"//badge/@value").NodeValue(winrt::box_value(winrt::to_hstring(number)));
-        BadgeUpdateManager::CreateBadgeUpdaterForApplication().Update(BadgeNotification(badgeXml));
-        return;
+    QT_TRY {
+        if (isWindows11 && qt_win_hasPackageIdentity()) {
+            using namespace winrt::Windows::UI::Notifications;
+            auto badgeXml = BadgeUpdateManager::GetTemplateContent(BadgeTemplateType::BadgeNumber);
+            badgeXml.SelectSingleNode(L"//badge/@value").NodeValue(winrt::box_value(winrt::to_hstring(number)));
+            BadgeUpdateManager::CreateBadgeUpdaterForApplication().Update(BadgeNotification(badgeXml));
+            return;
+        }
+    } QT_CATCH(...) {
+        // fall back to win32 implementation
     }
 #endif
 
@@ -670,7 +646,8 @@ void QWindowsIntegration::setApplicationBadge(qint64 number)
         return;
     }
 
-    const bool isDarkMode = QWindowsContext::isDarkMode();
+    const bool isDarkMode = QWindowsTheme::instance()->colorScheme()
+                         == Qt::ColorScheme::Dark;
 
     QColor badgeColor;
     QColor textColor;
@@ -746,8 +723,6 @@ void QWindowsIntegration::setApplicationBadge(const QImage &image)
 {
     QComHelper comHelper;
 
-    using Microsoft::WRL::ComPtr;
-
     ComPtr<ITaskbarList3> taskbarList;
     CoCreateInstance(CLSID_TaskbarList, nullptr,
         CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&taskbarList));
@@ -785,7 +760,8 @@ void QWindowsIntegration::updateApplicationBadge()
     // to a task bar button being created for the fist time or after
     // Explorer had crashed and re-started. In any case, re-apply the
     // badge so that everything is up to date.
-    setApplicationBadge(m_applicationBadgeNumber);
+    if (m_applicationBadgeNumber)
+        setApplicationBadge(m_applicationBadgeNumber);
 }
 
 #if QT_CONFIG(vulkan)

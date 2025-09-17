@@ -15,9 +15,6 @@
 #include <QtCore/qscopedpointer.h>
 #endif
 #include <QtCore/qnativeinterface.h>
-#ifndef QT_NO_DEBUGSTREAM
-#include <QtCore/qdebug.h>
-#endif
 
 #ifndef QT_NO_QOBJECT
 #if defined(Q_OS_WIN) && !defined(tagMSG)
@@ -27,20 +24,19 @@ typedef struct tagMSG MSG;
 
 QT_BEGIN_NAMESPACE
 
-
-class QCoreApplicationPrivate;
-class QTranslator;
-class QPostEventList;
 class QAbstractEventDispatcher;
 class QAbstractNativeEventFilter;
+class QDebug;
 class QEventLoopLocker;
-
-#if QT_CONFIG(permissions) || defined(Q_QDOC)
 class QPermission;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+class QPostEventList;
 #endif
+class QTranslator;
 
 #define qApp QCoreApplication::instance()
 
+class QCoreApplicationPrivate;
 class Q_CORE_EXPORT QCoreApplication
 #ifndef QT_NO_QOBJECT
     : public QObject
@@ -94,7 +90,13 @@ public:
     static void setSetuidAllowed(bool allow);
     static bool isSetuidAllowed();
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    static QCoreApplication *instance() noexcept { return self.loadRelaxed(); }
+    static bool instanceExists() noexcept { return instance() != nullptr; }
+#else
     static QCoreApplication *instance() noexcept { return self; }
+    static bool instanceExists() noexcept;
+#endif
 
 #ifndef QT_NO_QOBJECT
     static int exec();
@@ -136,29 +138,34 @@ public:
                            const typename QtPrivate::ContextTypeForFunctor<Functor>::ContextType *receiver,
                            Functor &&func)
     {
-        requestPermission(permission,
+        requestPermissionImpl(permission,
                           QtPrivate::makeCallableObject<RequestPermissionPrototype>(std::forward<Functor>(func)),
                           receiver);
     }
 # endif // Q_QDOC
 
 #ifndef QT_NO_CONTEXTLESS_CONNECT
+    #ifdef Q_QDOC
+    template <typename Functor>
+    #else
     // requestPermission to a functor or function pointer (without context)
     template <typename Functor,
               std::enable_if_t<
                     QtPrivate::AreFunctionsCompatible<RequestPermissionPrototype, Functor>::value,
                     bool> = true>
+    #endif
     void requestPermission(const QPermission &permission, Functor &&func)
     {
         requestPermission(permission, nullptr, std::forward<Functor>(func));
     }
 #endif // QT_NO_CONTEXTLESS_CONNECT
 
+#if QT_CORE_REMOVED_SINCE(6, 10)
 private:
-    // ### Qt 7: rename to requestPermissionImpl to avoid ambiguity
     void requestPermission(const QPermission &permission,
         QtPrivate::QSlotObjectBase *slotObj, const QObject *context);
 public:
+#endif
 
 #endif // QT_CONFIG(permission)
 
@@ -203,14 +210,17 @@ Q_SIGNALS:
 protected:
     bool event(QEvent *) override;
 
+#  if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+    QT_DEPRECATED_VERSION_X_6_10("This feature will be removed in Qt 7")
     virtual bool compressEvent(QEvent *, QObject *receiver, QPostEventList *);
+#  endif
 #endif // QT_NO_QOBJECT
 
 protected:
     QCoreApplication(QCoreApplicationPrivate &p);
 
 #ifdef QT_NO_QOBJECT
-    QScopedPointer<QCoreApplicationPrivate> d_ptr;
+    std::unique_ptr<QCoreApplicationPrivate> d_ptr;
 #endif
 
 private:
@@ -218,12 +228,16 @@ private:
     static bool sendSpontaneousEvent(QObject *receiver, QEvent *event);
     static bool notifyInternal2(QObject *receiver, QEvent *);
     static bool forwardEvent(QObject *receiver, QEvent *event, QEvent *originatingEvent = nullptr);
-#endif
-#if QT_CONFIG(library)
-    static QStringList libraryPathsLocked();
+
+    void requestPermissionImpl(const QPermission &permission, QtPrivate::QSlotObjectBase *slotObj,
+                               const QObject *context);
 #endif
 
+#if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
+    static QBasicAtomicPointer<QCoreApplication> self;
+#else
     static QCoreApplication *self;
+#endif
 
     Q_DISABLE_COPY(QCoreApplication)
 
@@ -234,6 +248,7 @@ private:
     friend class QWidget;
     friend class QWidgetWindow;
     friend class QWidgetPrivate;
+    friend class QWindowPrivate;
 #ifndef QT_NO_QOBJECT
     friend class QEventDispatcherUNIXPrivate;
     friend class QCocoaEventDispatcherPrivate;

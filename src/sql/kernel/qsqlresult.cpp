@@ -946,8 +946,6 @@ void QSqlResult::virtual_hook(int, void *)
 }
 
 /*! \internal
-    \since 4.2
-
     Executes a prepared query in batch mode if the driver supports it,
     otherwise emulates a batch execution using bindValue() and exec().
     QSqlDriver::hasFeature() can be used to find out whether a driver
@@ -1016,7 +1014,7 @@ QSql::NumericalPrecisionPolicy QSqlResult::numericalPrecisionPolicy() const
 
 /*! \internal
  */
-void QSqlResult::enablePositionalBinding(bool enable)
+void QSqlResult::setPositionalBindingEnabled(bool enable)
 {
     Q_D(QSqlResult);
     d->positionalBindingEnabled = enable;
@@ -1024,7 +1022,7 @@ void QSqlResult::enablePositionalBinding(bool enable)
 
 /*! \internal
  */
-bool QSqlResult::positionalBindingEnabled() const
+bool QSqlResult::isPositionalBindingEnabled() const
 {
     Q_D(const QSqlResult);
     return d->positionalBindingEnabled;

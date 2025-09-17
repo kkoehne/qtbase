@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "quiaccessibilityelement.h"
 
@@ -8,6 +9,9 @@
 #include "private/qaccessiblecache_p.h"
 #include "private/qcore_mac_p.h"
 #include "uistrings_p.h"
+#include "qioswindow.h"
+
+#include <QtGui/private/qaccessiblebridgeutils_p.h>
 
 QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 
@@ -23,7 +27,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
     return self;
 }
 
-+ (instancetype)elementWithId:(QAccessible::Id)anId withAccessibilityContainer:(id)view
++ (instancetype)elementWithId:(QAccessible::Id)anId
 {
     Q_ASSERT(anId);
     if (!anId)
@@ -33,16 +37,30 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 
     QMacAccessibilityElement *element = cache->elementForId(anId);
     if (!element) {
-        Q_ASSERT(QAccessible::accessibleInterface(anId));
-        element = [[self alloc] initWithId:anId withAccessibilityContainer:view];
-        cache->insertElement(anId, element);
+        QWindow *window = nullptr;
+        auto *iface = QAccessible::accessibleInterface(anId);
+        while (iface) {
+            if ((window = iface->window()))
+                break;
+            iface = iface->parent();
+        }
+
+        if (window && window->handle()) {
+            auto *platformWindow = static_cast<QIOSWindow*>(window->handle());
+            element = [[self alloc] initWithId:anId withAccessibilityContainer:platformWindow->view()];
+            if (cache->insertElement(anId, element))
+                [element release];
+        } else {
+            qWarning() << "Could not create a11y element for" << iface
+                << "with window" << window
+                << "and platform window" << (window ? window->handle() : nullptr);
+        }
     }
     return element;
 }
 
 - (void)invalidate
 {
-    [self release];
 }
 
 - (BOOL)isAccessibilityElement
@@ -53,7 +71,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (NSString*)accessibilityLabel
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
-    if (!iface) {
+    if (!iface || !iface->isValid()) {
         qWarning() << "invalid accessible interface for: " << self.axid;
         return @"";
     }
@@ -61,10 +79,21 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
     return iface->text(QAccessible::Name).toNSString();
 }
 
+
+- (NSString*)accessibilityIdentifier
+{
+    QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
+    if (!iface || !iface->isValid()) {
+        qWarning() << "invalid accessible interface for: " << self.axid;
+        return @"";
+    }
+    return QAccessibleBridgeUtils::accessibleId(iface).toNSString();
+}
+
 - (NSString*)accessibilityHint
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
-    if (!iface) {
+    if (!iface || !iface->isValid()) {
         qWarning() << "invalid accessible interface for: " << self.axid;
         return @"";
     }
@@ -74,23 +103,29 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (NSString*)accessibilityValue
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
-    if (!iface) {
+    if (!iface || !iface->isValid()) {
         qWarning() << "invalid accessible interface for: " << self.axid;
         return @"";
     }
 
     QAccessible::State state = iface->state();
 
-    if (state.checkable)
+    if (state.checkable) {
+        if (iface->role() == QAccessible::CheckBox
+            || iface->role() == QAccessible::RadioButton)
+            return @"";
+
         return state.checked
                 ? QCoreApplication::translate(ACCESSIBILITY_ELEMENT, AE_CHECKED).toNSString()
                 : QCoreApplication::translate(ACCESSIBILITY_ELEMENT, AE_UNCHECKED).toNSString();
+    }
 
     QAccessibleValueInterface *val = iface->valueInterface();
     if (val) {
         return val->currentValue().toString().toNSString();
-    } else if (QAccessibleTextInterface *text = iface->textInterface()) {
-        return text->text(0, text->characterCount()).toNSString();
+    } else if (iface->editableTextInterface()) {
+        if (QAccessibleTextInterface *text = iface->textInterface())
+            return text->text(0, text->characterCount()).toNSString();
     }
 
     return [super accessibilityHint];
@@ -99,7 +134,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (CGRect)accessibilityFrame
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
-    if (!iface) {
+    if (!iface || !iface->isValid()) {
         qWarning() << "invalid accessible interface for: " << self.axid;
         return CGRect();
     }
@@ -113,7 +148,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
     UIAccessibilityTraits traits = UIAccessibilityTraitNone;
 
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
-    if (!iface) {
+    if (!iface || !iface->isValid()) {
         qWarning() << "invalid accessible interface for: " << self.axid;
         return traits;
     }
@@ -130,6 +165,10 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
     const auto accessibleRole = iface->role();
     if (accessibleRole == QAccessible::Button) {
         traits |= UIAccessibilityTraitButton;
+    } else if (accessibleRole == QAccessible::CheckBox
+               || accessibleRole == QAccessible::RadioButton) {
+        if (state.checked)
+            traits |= UIAccessibilityTraitSelected;
     } else if (accessibleRole == QAccessible::EditableText) {
         static auto defaultTextFieldTraits = []{
             auto *textField = [[[UITextField alloc] initWithFrame:CGRectZero] autorelease];
@@ -146,7 +185,7 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
         traits |= UIAccessibilityTraitStaticText;
     }
 
-    if (iface->valueInterface())
+    if (iface->valueInterface() && iface->role() != QAccessible::ProgressBar)
         traits |= UIAccessibilityTraitAdjustable;
 
     return traits;
@@ -155,6 +194,11 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (BOOL)accessibilityActivate
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
+    if (!iface || !iface->isValid()) {
+        qWarning() << "invalid accessible interface for: " << self.axid;
+        return NO;
+    }
+
     if (QAccessibleActionInterface *action = iface->actionInterface()) {
         if (action->actionNames().contains(QAccessibleActionInterface::pressAction())) {
             action->doAction(QAccessibleActionInterface::pressAction());
@@ -170,6 +214,11 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (void)accessibilityIncrement
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
+    if (!iface || !iface->isValid()) {
+        qWarning() << "invalid accessible interface for: " << self.axid;
+        return;
+    }
+
     if (QAccessibleActionInterface *action = iface->actionInterface())
         action->doAction(QAccessibleActionInterface::increaseAction());
 }
@@ -177,6 +226,11 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (void)accessibilityDecrement
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
+    if (!iface || !iface->isValid()) {
+        qWarning() << "invalid accessible interface for: " << self.axid;
+        return;
+    }
+
     if (QAccessibleActionInterface *action = iface->actionInterface())
         action->doAction(QAccessibleActionInterface::decreaseAction());
 }
@@ -184,6 +238,11 @@ QT_NAMESPACE_ALIAS_OBJC_CLASS(QMacAccessibilityElement);
 - (BOOL)accessibilityScroll:(UIAccessibilityScrollDirection)direction
 {
     QAccessibleInterface *iface = QAccessible::accessibleInterface(self.axid);
+    if (!iface || !iface->isValid()) {
+        qWarning() << "invalid accessible interface for: " << self.axid;
+        return NO;
+    }
+
     QAccessibleActionInterface *action = iface->actionInterface();
     if (!action)
         return NO;

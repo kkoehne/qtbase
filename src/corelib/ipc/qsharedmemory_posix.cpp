@@ -2,6 +2,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Tobias Koenig <tobias.koenig@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qsharedmemory.h"
 #include "qsharedmemory_p.h"
@@ -67,7 +68,7 @@ bool QSharedMemoryPosix::create(QSharedMemoryPrivate *self, qsizetype size)
     const QByteArray shmName = QFile::encodeName(self->nativeKey.nativeKey());
 
     int fd;
-    EINTR_LOOP(fd, ::shm_open(shmName.constData(), O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600));
+    QT_EINTR_LOOP(fd, ::shm_open(shmName.constData(), O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600));
     if (fd == -1) {
         const int errorNumber = errno;
         const auto function = "QSharedMemory::attach (shm_open)"_L1;
@@ -84,7 +85,7 @@ bool QSharedMemoryPosix::create(QSharedMemoryPrivate *self, qsizetype size)
 
     // the size may only be set once
     int ret;
-    EINTR_LOOP(ret, QT_FTRUNCATE(fd, size));
+    QT_EINTR_LOOP(ret, QT_FTRUNCATE(fd, size));
     if (ret == -1) {
         self->setUnixErrorString("QSharedMemory::create (ftruncate)"_L1);
         qt_safe_close(fd);
@@ -103,7 +104,7 @@ bool QSharedMemoryPosix::attach(QSharedMemoryPrivate *self, QSharedMemory::Acces
     const int oflag = (mode == QSharedMemory::ReadOnly ? O_RDONLY : O_RDWR);
     const mode_t omode = (mode == QSharedMemory::ReadOnly ? 0400 : 0600);
 
-    EINTR_LOOP(hand, ::shm_open(shmName.constData(), oflag | O_CLOEXEC, omode));
+    QT_EINTR_LOOP(hand, ::shm_open(shmName.constData(), oflag | O_CLOEXEC, omode));
     if (hand == -1) {
         const int errorNumber = errno;
         const auto function = "QSharedMemory::attach (shm_open)"_L1;

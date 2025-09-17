@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <AppKit/AppKit.h>
 
@@ -150,11 +151,18 @@ void QCocoaInputContext::updateLocale()
 
     QString language = QString::fromNSString(languages.firstObject);
     QLocale locale(language);
-    if (m_locale != locale) {
+
+    bool localeUpdated = m_locale != locale;
+    static bool firstUpdate = true;
+
+    m_locale = locale;
+
+    if (localeUpdated && !firstUpdate) {
         qCDebug(lcQpaInputMethods) << "Reporting new locale" << locale;
-        m_locale = locale;
         emitLocaleChanged();
     }
+
+    firstUpdate = false;
 }
 
 QT_END_NAMESPACE

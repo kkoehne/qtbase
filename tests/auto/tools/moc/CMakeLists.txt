@@ -30,6 +30,7 @@ set(JSON_HEADERS
         moc_include.h
         namespace.h
         namespaced-flags.h
+        namespaced-base-class.h
         no-keywords.h
         non-gadget-parent-class.h
         oldstyle-casts.h
@@ -37,7 +38,9 @@ set(JSON_HEADERS
         plugin_metadata.h
         pointery_to_incomplete.h
         pure-virtual-signals.h
+        qflags64object.h
         qinvokable.h
+        qmlmacro.h
         qprivateslots.h
         qtbug-35657-gadget.h
         related-metaobjects-in-gadget.h
@@ -45,12 +48,12 @@ set(JSON_HEADERS
         related-metaobjects-name-conflict.h
         signal-with-default-arg.h
         single-quote-digit-separator-n3781.h
-        single_function_keyword.h
         slots-with-void-template.h
         task192552.h
         task234909.h
         task240368.h
         task87883.h
+        tech-preview.h
         trigraphs.h
         using-namespaces.h
 )
@@ -63,6 +66,8 @@ qt_wrap_cpp(comparison_relevant_moc_list ${JSON_HEADERS}
         "-DDEFINE_CMDLINE_EMPTY="
         "-DDEFINE_CMDLINE_SIGNAL=void cmdlineSignal(const QMap<int, int> &i)"
         "--output-json"
+    DEPENDS
+        ${QT_CMAKE_EXPORT_NAMESPACE}::moc
 )
 
 list(TRANSFORM comparison_relevant_moc_list  APPEND ".json" OUTPUT_VARIABLE moc_json_files)
@@ -70,6 +75,8 @@ list(TRANSFORM comparison_relevant_moc_list  APPEND ".json" OUTPUT_VARIABLE moc_
 qt_internal_add_test(tst_moc
     SOURCES
         cxx-attributes.h
+        single_function_keyword.h
+        name_collision.h
         tst_moc.cpp
         ${comparison_relevant_moc_list}
     INCLUDE_DIRECTORIES
@@ -90,6 +97,20 @@ qt_internal_extend_target(tst_moc CONDITION CMAKE_CROSSCOMPILING
     DEFINES
         MOC_CROSS_COMPILED
 )
+
+if (${PROJECT_VERSION_MAJOR} LESS 7)
+    # This file intentional produces a warning, so we use qt_wrap_cpp so we can
+    # suppress it.
+    qt_wrap_cpp(flags_property_moc flags-property-integer-access.h)
+    qt_internal_extend_target(tst_moc SOURCES ${flags_property_moc})
+    if (CLANG OR GCC)
+        set(Wno_deprecated "-Wno-deprecated-declarations")
+    elseif (MSVC)
+        # warning isn't triggering
+        set(Wno_deprecated "-wd4996")
+    endif()
+    set_source_files_properties(${flags_property_moc} COMPILE_FLAGS "${Wno_deprecated}")
+endif()
 
 if (UNIX AND (CLANG OR GCC OR QCC))
     qt_wrap_cpp(os9_moc os9-newlines.h)

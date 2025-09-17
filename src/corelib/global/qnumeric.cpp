@@ -1,9 +1,12 @@
 // Copyright (C) 2019 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qnumeric.h"
 #include "qnumeric_p.h"
 #include <string.h>
+
+#include <q20bit.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -458,39 +461,20 @@ Q_CORE_EXPORT quint64 qFloatDistance(double a, double b)
     Returns true if the absolute value of \a f is within 0.00001f of 0.0.
 */
 
-namespace QtNumericTests {
+namespace q20 {
+static_assert(rotl(1U, 1) == 2);
+static_assert(rotl(0x8000'0000U, 1) == 1);
+static_assert(rotl(0x8000'0001U, 1) == 3);
+static_assert(rotl(1U, -1) == 0x8000'0000U);
+static_assert(rotl(0x8000'0000U, -1) == 0x4000'0000U);
+static_assert(rotl(0x8000'0001U, -1) == 0xc000'0000U);
 
-template <typename T> static constexpr T max = std::numeric_limits<T>::max();
-template <typename T> static constexpr T min = std::numeric_limits<T>::min();
-
-static_assert(qt_saturate<short>(max<unsigned>) == max<short>);
-static_assert(qt_saturate<int>(max<unsigned>) == max<int>);
-static_assert(qt_saturate<qint64>(max<unsigned>) == qint64(max<unsigned>));
-
-static_assert(qt_saturate<short>(max<int>) == max<short>);
-static_assert(qt_saturate<unsigned>(max<int>) == unsigned(max<int>));
-static_assert(qt_saturate<qint64>(max<int>) == qint64(max<int>));
-
-static_assert(qt_saturate<short>(max<qint64>) == max<short>);
-static_assert(qt_saturate<int>(max<qint64>) == max<int>);
-static_assert(qt_saturate<unsigned>(max<qint64>) == max<unsigned>);
-static_assert(qt_saturate<quint64>(max<qint64>) == quint64(max<qint64>));
-
-static_assert(qt_saturate<short>(max<quint64>) == max<short>);
-static_assert(qt_saturate<int>(max<quint64>) == max<int>);
-static_assert(qt_saturate<unsigned>(max<quint64>) == max<unsigned>);
-static_assert(qt_saturate<qint64>(max<quint64>) == max<qint64>);
-
-static_assert(qt_saturate<short>(min<int>) == min<short>);
-static_assert(qt_saturate<qint64>(min<int>) == qint64(min<int>));
-static_assert(qt_saturate<unsigned>(min<int>) == 0);
-static_assert(qt_saturate<quint64>(min<int>) == 0);
-
-static_assert(qt_saturate<short>(min<qint64>) == min<short>);
-static_assert(qt_saturate<int>(min<qint64>) == min<int>);
-static_assert(qt_saturate<unsigned>(min<qint64>) == 0);
-static_assert(qt_saturate<quint64>(min<qint64>) == 0);
-
-} // namespace QtNumericTests
+static_assert(rotr(1U, 1) == 0x8000'0000U);
+static_assert(rotr(0x8000'0000U, 1) == 0x4000'0000U);
+static_assert(rotr(0x8000'0001U, 1) == 0xc000'0000U);
+static_assert(rotr(1U, -1) == 2);
+static_assert(rotr(0x8000'0000U, -1) == 1);
+static_assert(rotr(0x8000'0001U, -1) == 3);
+}
 
 QT_END_NAMESPACE

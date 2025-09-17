@@ -58,6 +58,8 @@ int QDialPrivate::bound(int val) const
     if (wrapping) {
         if ((val >= minimum) && (val <= maximum))
             return val;
+        if (minimum == maximum)
+            return minimum;
         val = minimum + ((val - minimum) % (maximum - minimum));
         if (val < minimum)
             val += maximum - minimum;
@@ -141,7 +143,7 @@ int QDialPrivate::valueFromPoint(const QPoint &p) const
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-dial.png
+    \image fusion-dial.png
 
     QDial is used when the user needs to control a value within a
     program-definable range, and the range either wraps around

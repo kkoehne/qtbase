@@ -18,7 +18,6 @@
 QT_BEGIN_NAMESPACE
 
 /*!
-    \since 4.3
     \class QColumnView
     \brief The QColumnView class provides a model/view implementation of a column view.
     \ingroup model-view
@@ -68,7 +67,9 @@ void QColumnViewPrivate::initialize()
     Q_Q(QColumnView);
     q->setTextElideMode(Qt::ElideMiddle);
 #if QT_CONFIG(animation)
-    QObject::connect(&currentAnimation, SIGNAL(finished()), q, SLOT(_q_changeCurrentColumn()));
+    animationConnection =
+        QObjectPrivate::connect(&currentAnimation, &QPropertyAnimation::finished,
+                                this, &QColumnViewPrivate::changeCurrentColumn);
     currentAnimation.setTargetObject(hbar);
     currentAnimation.setPropertyName("value");
     currentAnimation.setEasingCurve(QEasingCurve::InOutQuad);
@@ -77,11 +78,26 @@ void QColumnViewPrivate::initialize()
     q->setItemDelegate(new QColumnViewDelegate(q));
 }
 
+void QColumnViewPrivate::clearConnections()
+{
+#if QT_CONFIG(animation)
+    QObject::disconnect(animationConnection);
+#endif
+    for (const QMetaObject::Connection &connection : gripConnections)
+        QObject::disconnect(connection);
+    const auto copy = viewConnections;  // disconnectView modifies this container
+    for (auto it = copy.keyBegin(); it != copy.keyEnd(); ++it)
+        disconnectView(*it);
+}
+
+
 /*!
     Destroys the column view.
 */
 QColumnView::~QColumnView()
 {
+    Q_D(QColumnView);
+    d->clearConnections();
 }
 
 /*!
@@ -98,12 +114,15 @@ void QColumnView::setResizeGripsVisible(bool visible)
     if (d->showResizeGrips == visible)
         return;
     d->showResizeGrips = visible;
-    for (int i = 0; i < d->columns.size(); ++i) {
-        QAbstractItemView *view = d->columns[i];
+    d->gripConnections.clear();
+    for (QAbstractItemView *view : std::as_const(d->columns)) {
         if (visible) {
             QColumnViewGrip *grip = new QColumnViewGrip(view);
             view->setCornerWidget(grip);
-            connect(grip, SIGNAL(gripMoved(int)), this, SLOT(_q_gripMoved(int)));
+            d->gripConnections.push_back(
+                QObjectPrivate::connect(grip, &QColumnViewGrip::gripMoved,
+                                        d, &QColumnViewPrivate::gripMoved)
+            );
         } else {
             QWidget *widget = view->cornerWidget();
             view->setCornerWidget(nullptr);
@@ -116,6 +135,29 @@ bool QColumnView::resizeGripsVisible() const
 {
     Q_D(const QColumnView);
     return d->showResizeGrips;
+}
+
+/*!
+    \property QColumnView::previewColumnVisible
+    \brief whether the preview column is visible
+    \since 6.11
+
+    By default, \c visible is set to true
+*/
+void QColumnView::setPreviewColumnVisible(bool visible)
+{
+    Q_D(QColumnView);
+    if (d->showPreviewColumn == visible)
+        return;
+    d->showPreviewColumn = visible;
+    if (d->columns.constLast() == d->previewColumn)
+        d->columns.constLast()->setVisible(d->showPreviewColumn);
+}
+
+bool QColumnView::previewColumnVisible() const
+{
+    Q_D(const QColumnView);
+    return d->showPreviewColumn;
 }
 
 /*!
@@ -267,7 +309,7 @@ void QColumnView::scrollTo(const QModelIndex &index, ScrollHint hint)
     if (leftEdge > -horizontalOffset()
         && rightEdge <= ( -horizontalOffset() + viewport()->size().width())) {
             d->columns.at(indexColumn)->scrollTo(index);
-            d->_q_changeCurrentColumn();
+            d->changeCurrentColumn();
             return;
     }
 
@@ -486,7 +528,7 @@ QSize QColumnView::sizeHint() const
     \internal
     Move all widgets from the corner grip and to the right
   */
-void QColumnViewPrivate::_q_gripMoved(int offset)
+void QColumnViewPrivate::gripMoved(int offset)
 {
     Q_Q(QColumnView);
 
@@ -578,8 +620,10 @@ void QColumnViewPrivate::closeColumns(const QModelIndex &parent, bool build)
         QAbstractItemView* notShownAnymore = columns.at(i);
         columns.removeAt(i);
         notShownAnymore->setVisible(false);
-        if (notShownAnymore != previewColumn)
+        if (notShownAnymore != previewColumn) {
             notShownAnymore->deleteLater();
+            disconnectView(notShownAnymore);
+        }
     }
 
     if (columns.isEmpty()) {
@@ -598,7 +642,17 @@ void QColumnViewPrivate::closeColumns(const QModelIndex &parent, bool build)
         createColumn(parent, false);
 }
 
-void QColumnViewPrivate::_q_clicked(const QModelIndex &index)
+void QColumnViewPrivate::disconnectView(QAbstractItemView *view)
+{
+    const auto it = viewConnections.find(view);
+    if (it == viewConnections.end())
+        return;
+    for (const QMetaObject::Connection &connection : it.value())
+        QObject::disconnect(connection);
+    viewConnections.erase(it);
+}
+
+void QColumnViewPrivate::clicked(const QModelIndex &index)
 {
     Q_Q(QColumnView);
     QModelIndex parent = index.parent();
@@ -631,27 +685,27 @@ QAbstractItemView *QColumnViewPrivate::createColumn(const QModelIndex &index, bo
 {
     Q_Q(QColumnView);
     QAbstractItemView *view = nullptr;
+    QMetaObject::Connection clickedConnection;
     if (model->hasChildren(index)) {
         view = q->createColumn(index);
-        q->connect(view, SIGNAL(clicked(QModelIndex)),
-                   q, SLOT(_q_clicked(QModelIndex)));
+        clickedConnection = QObjectPrivate::connect(view, &QAbstractItemView::clicked,
+                                                    this, &QColumnViewPrivate::clicked);
     } else {
         if (!previewColumn)
-            setPreviewWidget(new QWidget(q));
+            previewColumn = createPreviewColumn();
         view = previewColumn;
-        view->setMinimumWidth(qMax(view->minimumWidth(), previewWidget->minimumWidth()));
+        if (previewWidget)
+            view->setMinimumWidth(qMax(view->minimumWidth(), previewWidget->minimumWidth()));
     }
 
-    q->connect(view, SIGNAL(activated(QModelIndex)),
-            q, SIGNAL(activated(QModelIndex)));
-    q->connect(view, SIGNAL(clicked(QModelIndex)),
-            q, SIGNAL(clicked(QModelIndex)));
-    q->connect(view, SIGNAL(doubleClicked(QModelIndex)),
-            q, SIGNAL(doubleClicked(QModelIndex)));
-    q->connect(view, SIGNAL(entered(QModelIndex)),
-            q, SIGNAL(entered(QModelIndex)));
-    q->connect(view, SIGNAL(pressed(QModelIndex)),
-            q, SIGNAL(pressed(QModelIndex)));
+    viewConnections[view] = {
+        QObject::connect(view, &QAbstractItemView::activated, q, &QColumnView::activated),
+        QObject::connect(view, &QAbstractItemView::clicked, q, &QColumnView::clicked),
+        QObject::connect(view, &QAbstractItemView::doubleClicked, q, &QColumnView::doubleClicked),
+        QObject::connect(view, &QAbstractItemView::entered, q, &QColumnView::entered),
+        QObject::connect(view, &QAbstractItemView::pressed, q, &QColumnView::pressed),
+        clickedConnection
+    };
 
     view->setFocusPolicy(Qt::NoFocus);
     view->setParent(viewport);
@@ -661,7 +715,10 @@ QAbstractItemView *QColumnViewPrivate::createColumn(const QModelIndex &index, bo
     if (showResizeGrips) {
         QColumnViewGrip *grip = new QColumnViewGrip(view);
         view->setCornerWidget(grip);
-        q->connect(grip, SIGNAL(gripMoved(int)), q, SLOT(_q_gripMoved(int)));
+        gripConnections.push_back(
+            QObjectPrivate::connect(grip, &QColumnViewGrip::gripMoved,
+                                    this, &QColumnViewPrivate::gripMoved)
+        );
     }
 
     if (columnSizes.size() > columns.size()) {
@@ -681,8 +738,10 @@ QAbstractItemView *QColumnViewPrivate::createColumn(const QModelIndex &index, bo
     columns.append(view);
     doLayout();
     updateScrollbars();
-    if (show && view->isHidden())
+    if (show && view->isHidden() && view != previewColumn)
         view->setVisible(true);
+    if (view == previewColumn)
+        view->setVisible(showPreviewColumn);
     return view;
 }
 
@@ -723,7 +782,6 @@ QAbstractItemView *QColumnView::createColumn(const QModelIndex &index)
     alternatingRowColors(). This can be useful when reimplementing
     createColumn().
 
-    \since 4.4
     \sa createColumn()
  */
 void QColumnView::initializeColumn(QAbstractItemView *column) const
@@ -795,6 +853,19 @@ void QColumnView::setPreviewWidget(QWidget *widget)
 */
 void QColumnViewPrivate::setPreviewWidget(QWidget *widget)
 {
+    QColumnViewPreviewColumn *column = createPreviewColumn();
+    previewColumn = column;
+    column->setPreviewWidget(widget);
+    previewWidget = widget;
+    if (previewWidget)
+        previewWidget->setParent(column->viewport());
+}
+
+/*!
+    \internal
+*/
+QColumnViewPreviewColumn *QColumnViewPrivate::createPreviewColumn()
+{
     Q_Q(QColumnView);
     if (previewColumn) {
         if (!columns.isEmpty() && columns.constLast() == previewColumn)
@@ -802,16 +873,14 @@ void QColumnViewPrivate::setPreviewWidget(QWidget *widget)
         previewColumn->deleteLater();
     }
     QColumnViewPreviewColumn *column = new QColumnViewPreviewColumn(q);
-    column->setPreviewWidget(widget);
-    previewColumn = column;
-    previewColumn->hide();
-    previewColumn->setFrameShape(QFrame::NoFrame);
-    previewColumn->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-    previewColumn->setSelectionMode(QAbstractItemView::NoSelection);
-    previewColumn->setMinimumWidth(qMax(previewColumn->verticalScrollBar()->width(),
-                previewColumn->minimumWidth()));
-    previewWidget = widget;
-    previewWidget->setParent(previewColumn->viewport());
+    column->hide();
+    column->setFrameShape(QFrame::NoFrame);
+    column->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    column->setSelectionMode(QAbstractItemView::NoSelection);
+    column->setMinimumWidth(qMax(column->verticalScrollBar()->width(),
+                                 column->minimumWidth()));
+    column->setPreviewWidget(nullptr);
+    return column;
 }
 
 /*!
@@ -915,7 +984,7 @@ void QColumnView::currentChanged(const QModelIndex &current, const QModelIndex &
     We have change the current column and need to update focus and selection models
     on the new current column.
 */
-void QColumnViewPrivate::_q_changeCurrentColumn()
+void QColumnViewPrivate::changeCurrentColumn()
 {
     Q_Q(QColumnView);
     if (columns.isEmpty())
@@ -966,7 +1035,10 @@ void QColumnViewPrivate::_q_changeCurrentColumn()
     }
 
     if (columns.constLast()->isHidden()) {
-        columns.constLast()->setVisible(true);
+        if (columns.constLast() != previewColumn)
+            columns.constLast()->setVisible(true);
+        else
+            columns.constLast()->setVisible(showPreviewColumn);
     }
     if (columns.constLast()->selectionModel())
         columns.constLast()->selectionModel()->clear();
@@ -1008,6 +1080,7 @@ void QColumnView::selectAll()
 QColumnViewPrivate::QColumnViewPrivate()
 :  QAbstractItemViewPrivate()
 ,showResizeGrips(true)
+,showPreviewColumn(true)
 ,offset(0)
 ,previewWidget(nullptr)
 ,previewColumn(nullptr)
@@ -1022,9 +1095,9 @@ QColumnViewPrivate::~QColumnViewPrivate()
     \internal
 
   */
-void QColumnViewPrivate::_q_columnsInserted(const QModelIndex &parent, int start, int end)
+void QColumnViewPrivate::columnsInserted(const QModelIndex &parent, int start, int end)
 {
-    QAbstractItemViewPrivate::_q_columnsInserted(parent, start, end);
+    QAbstractItemViewPrivate::columnsInserted(parent, start, end);
     checkColumnCreation(parent);
 }
 

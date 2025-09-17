@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
 
@@ -1497,7 +1497,16 @@ template <typename ByteArray> void tst_QByteArrayApiSymmetry::toFloat() const
     QCOMPARE(ByteArray().toFloat(&ok), 0.0f);
     QVERIFY(!ok);
 
+    ok = true;
     QCOMPARE(ByteArray("").toFloat(&ok), 0.0f);
+    QVERIFY(!ok);
+
+    ok = true;
+    QCOMPARE(ByteArray(" ").toFloat(&ok), 0.0f);
+    QVERIFY(!ok);
+
+    ok = true;
+    QCOMPARE(ByteArray("  ").toFloat(&ok), 0.0f);
     QVERIFY(!ok);
 
     // NB: floats < 1e-6 are zero as far as QCOMPARE() is concerned !
@@ -1523,6 +1532,8 @@ void tst_QByteArrayApiSymmetry::toDouble_data() const
 
     QTest::newRow("null") << QByteArray() << 0.0 << false;
     QTest::newRow("empty") << QByteArray("") << 0.0 << false;
+    QTest::newRow("space-only") << QByteArray(" ") << 0.0 << false;
+    QTest::newRow("spaces-only") << QByteArray("  ") << 0.0 << false;
 
     QTest::newRow("decimal") << QByteArray("1.2345") << 1.2345 << true;
     QTest::newRow("exponent lowercase") << QByteArray("1.2345e+01") << 12.345 << true;

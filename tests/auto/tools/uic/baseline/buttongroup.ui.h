@@ -57,16 +57,16 @@ public:
         gridLayout->setObjectName("gridLayout");
         easingCurvePicker = new QListWidget(Form);
         easingCurvePicker->setObjectName("easingCurvePicker");
-        QSizePolicy sizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Preferred);
         sizePolicy.setHorizontalStretch(0);
         sizePolicy.setVerticalStretch(0);
         sizePolicy.setHeightForWidth(easingCurvePicker->sizePolicy().hasHeightForWidth());
         easingCurvePicker->setSizePolicy(sizePolicy);
         easingCurvePicker->setMaximumSize(QSize(16777215, 120));
-        easingCurvePicker->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        easingCurvePicker->setMovement(QListView::Static);
+        easingCurvePicker->setVerticalScrollBarPolicy(Qt::ScrollBarPolicy::ScrollBarAlwaysOff);
+        easingCurvePicker->setMovement(QListView::Movement::Static);
         easingCurvePicker->setProperty("isWrapping", QVariant(false));
-        easingCurvePicker->setViewMode(QListView::IconMode);
+        easingCurvePicker->setViewMode(QListView::ViewMode::IconMode);
         easingCurvePicker->setSelectionRectVisible(false);
 
         gridLayout->addWidget(easingCurvePicker, 0, 0, 1, 2);
@@ -84,7 +84,7 @@ public:
         buttonGroup->addButton(lineRadio);
         lineRadio->setObjectName("lineRadio");
         lineRadio->setMaximumSize(QSize(16777215, 40));
-        lineRadio->setLayoutDirection(Qt::LeftToRight);
+        lineRadio->setLayoutDirection(Qt::LayoutDirection::LeftToRight);
         lineRadio->setChecked(true);
 
         gridLayout_2->addWidget(lineRadio, 0, 0, 1, 1);
@@ -101,29 +101,29 @@ public:
 
         groupBox = new QGroupBox(Form);
         groupBox->setObjectName("groupBox");
-        QSizePolicy sizePolicy1(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Fixed, QSizePolicy::Policy::Preferred);
         sizePolicy1.setHorizontalStretch(0);
         sizePolicy1.setVerticalStretch(0);
         sizePolicy1.setHeightForWidth(groupBox->sizePolicy().hasHeightForWidth());
         groupBox->setSizePolicy(sizePolicy1);
         formLayout = new QFormLayout(groupBox);
         formLayout->setObjectName("formLayout");
-        formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+        formLayout->setFieldGrowthPolicy(QFormLayout::FieldGrowthPolicy::AllNonFixedFieldsGrow);
         label = new QLabel(groupBox);
         label->setObjectName("label");
-        QSizePolicy sizePolicy2(QSizePolicy::Preferred, QSizePolicy::Preferred);
+        QSizePolicy sizePolicy2(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Preferred);
         sizePolicy2.setHorizontalStretch(0);
         sizePolicy2.setVerticalStretch(0);
         sizePolicy2.setHeightForWidth(label->sizePolicy().hasHeightForWidth());
         label->setSizePolicy(sizePolicy2);
         label->setMinimumSize(QSize(0, 30));
 
-        formLayout->setWidget(0, QFormLayout::LabelRole, label);
+        formLayout->setWidget(0, QFormLayout::ItemRole::LabelRole, label);
 
         periodSpinBox = new QDoubleSpinBox(groupBox);
         periodSpinBox->setObjectName("periodSpinBox");
         periodSpinBox->setEnabled(false);
-        QSizePolicy sizePolicy3(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        QSizePolicy sizePolicy3(QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Fixed);
         sizePolicy3.setHorizontalStretch(0);
         sizePolicy3.setVerticalStretch(0);
         sizePolicy3.setHeightForWidth(periodSpinBox->sizePolicy().hasHeightForWidth());
@@ -133,7 +133,7 @@ public:
         periodSpinBox->setSingleStep(0.100000000000000);
         periodSpinBox->setValue(-1.000000000000000);
 
-        formLayout->setWidget(0, QFormLayout::FieldRole, periodSpinBox);
+        formLayout->setWidget(0, QFormLayout::ItemRole::FieldRole, periodSpinBox);
 
         amplitudeSpinBox = new QDoubleSpinBox(groupBox);
         amplitudeSpinBox->setObjectName("amplitudeSpinBox");
@@ -143,13 +143,13 @@ public:
         amplitudeSpinBox->setSingleStep(0.100000000000000);
         amplitudeSpinBox->setValue(-1.000000000000000);
 
-        formLayout->setWidget(2, QFormLayout::FieldRole, amplitudeSpinBox);
+        formLayout->setWidget(2, QFormLayout::ItemRole::FieldRole, amplitudeSpinBox);
 
         label_3 = new QLabel(groupBox);
         label_3->setObjectName("label_3");
         label_3->setMinimumSize(QSize(0, 30));
 
-        formLayout->setWidget(4, QFormLayout::LabelRole, label_3);
+        formLayout->setWidget(4, QFormLayout::ItemRole::LabelRole, label_3);
 
         overshootSpinBox = new QDoubleSpinBox(groupBox);
         overshootSpinBox->setObjectName("overshootSpinBox");
@@ -159,18 +159,18 @@ public:
         overshootSpinBox->setSingleStep(0.100000000000000);
         overshootSpinBox->setValue(-1.000000000000000);
 
-        formLayout->setWidget(4, QFormLayout::FieldRole, overshootSpinBox);
+        formLayout->setWidget(4, QFormLayout::ItemRole::FieldRole, overshootSpinBox);
 
         label_2 = new QLabel(groupBox);
         label_2->setObjectName("label_2");
         label_2->setMinimumSize(QSize(0, 30));
 
-        formLayout->setWidget(2, QFormLayout::LabelRole, label_2);
+        formLayout->setWidget(2, QFormLayout::ItemRole::LabelRole, label_2);
 
 
         verticalLayout->addWidget(groupBox);
 
-        verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        verticalSpacer = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         verticalLayout->addItem(verticalSpacer);
 
@@ -179,7 +179,7 @@ public:
 
         graphicsView = new QGraphicsView(Form);
         graphicsView->setObjectName("graphicsView");
-        QSizePolicy sizePolicy4(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        QSizePolicy sizePolicy4(QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Expanding);
         sizePolicy4.setHorizontalStretch(0);
         sizePolicy4.setVerticalStretch(0);
         sizePolicy4.setHeightForWidth(graphicsView->sizePolicy().hasHeightForWidth());

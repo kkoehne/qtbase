@@ -1,5 +1,5 @@
 # Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 qt_add_plugin(pnp_extrafilters
     CLASS_NAME ExtraFiltersPlugin
@@ -7,7 +7,7 @@ qt_add_plugin(pnp_extrafilters
 )
 
 set_target_properties(pnp_extrafilters PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/app"
+    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/plugins"
 )
 
 target_include_directories(pnp_extrafilters PRIVATE

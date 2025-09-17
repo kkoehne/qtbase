@@ -9,6 +9,10 @@
 #include <QtGui/qcolorspace.h>
 #include <QtGui/qguiapplication.h>
 
+#ifndef QT_NO_OPENGL
+#include <QtGui/private/qopenglcontext_p.h>
+#endif
+
 #ifdef major
 #undef major
 #endif
@@ -34,6 +38,7 @@ public:
         , swapBehavior(QSurfaceFormat::DefaultSwapBehavior)
         , numSamples(-1)
         , renderableType(QSurfaceFormat::DefaultRenderableType)
+        , colorComponentType(QSurfaceFormat::FixedColorComponentType)
         , profile(QSurfaceFormat::NoProfile)
         , major(2)
         , minor(0)
@@ -53,6 +58,7 @@ public:
           swapBehavior(other->swapBehavior),
           numSamples(other->numSamples),
           renderableType(other->renderableType),
+          colorComponentType(other->colorComponentType),
           profile(other->profile),
           major(other->major),
           minor(other->minor),
@@ -72,6 +78,7 @@ public:
     QSurfaceFormat::SwapBehavior swapBehavior;
     int numSamples;
     QSurfaceFormat::RenderableType renderableType;
+    QSurfaceFormat::ColorComponentType colorComponentType;
     QSurfaceFormat::OpenGLContextProfile profile;
     int major;
     int minor;
@@ -179,6 +186,7 @@ public:
 
 /*!
     \enum QSurfaceFormat::ColorSpace
+    \deprecated [6.0] Use setColorSpace(QColorSpace) instead
 
     This enum is used to specify the preferred color space, controlling if the
     window's associated default framebuffer is able to do updates and blending
@@ -192,6 +200,20 @@ public:
     framebuffer. Note that some platforms may return windows with a sRGB-capable
     default framebuffer even when not requested explicitly.
  */
+
+/*!
+    \enum QSurfaceFormat::ColorComponentType
+    \since 6.11
+
+    This enum is used to specify the data type used for the surface buffer.
+
+    \value FixedColorComponentType Color components are stored as fixed point
+           fractional values.
+    \value FloatColorComponentType Color components are stored as floating point
+           values.
+
+    \sa colorComponentType(), redBufferSize(), greenBufferSize(), blueBufferSize()
+*/
 
 /*!
     Constructs a default initialized QSurfaceFormat.
@@ -535,6 +557,40 @@ void QSurfaceFormat::setAlphaBufferSize(int size)
 }
 
 /*!
+    Sets the color component \a type.
+
+    The default is FixedColorComponentType. To request a floating-point color
+    buffer, set FloatColorComponentType. The red, green, and blue buffer sizes
+    should then be set either to \c 16 or \c 32, to specify either half
+    (16-bit) floating point components or 32-bit. The most commonly supported
+    and used choice is the former (16-bit), for example when high dynamic range
+    rendering is desired.
+
+    \since 6.11
+
+    \sa colorComponentType()
+*/
+void QSurfaceFormat::setColorComponentType(ColorComponentType type)
+{
+    if (d->colorComponentType != type) {
+        detach();
+        d->colorComponentType = type;
+    }
+}
+
+/*!
+    \return the color component type.
+
+    \since 6.11
+
+    \sa setColorComponentType()
+*/
+QSurfaceFormat::ColorComponentType QSurfaceFormat::colorComponentType() const
+{
+    return d->colorComponentType;
+}
+
+/*!
     Sets the desired renderable \a type.
 
     Chooses between desktop OpenGL, OpenGL ES, and OpenVG.
@@ -625,13 +681,13 @@ int QSurfaceFormat::minorVersion() const
 }
 
 /*!
-    Returns a QPair<int, int> representing the OpenGL version.
+    Returns a std::pair<int, int> representing the OpenGL version.
 
-    Useful for version checks, for example format.version() >= qMakePair(3, 2)
+    Useful for version checks, for example format.version() >= std::pair(3, 2)
 */
-QPair<int, int> QSurfaceFormat::version() const
+std::pair<int, int> QSurfaceFormat::version() const
 {
-    return qMakePair(d->major, d->minor);
+    return std::pair(d->major, d->minor);
 }
 
 /*!
@@ -765,15 +821,9 @@ Q_GLOBAL_STATIC(QSurfaceFormat, qt_default_surface_format)
     question's own setFormat() function. However, it is often more convenient to
     set the format for all windows once at the start of the application. It also
     guarantees proper behavior in cases where shared contexts are required,
-    because settings the format via this function guarantees that all contexts
+    because setting the format via this function guarantees that all contexts
     and surfaces, even the ones created internally by Qt, will use the same
     format.
-
-    \note When setting Qt::AA_ShareOpenGLContexts, it is strongly recommended to
-    place the call to this function before the construction of the
-    QGuiApplication or QApplication. Otherwise \a format will not be applied to
-    the global share context and therefore issues may arise with context sharing
-    afterwards.
 
     \since 5.4
     \sa defaultFormat()
@@ -782,7 +832,7 @@ void QSurfaceFormat::setDefaultFormat(const QSurfaceFormat &format)
 {
 #ifndef QT_NO_OPENGL
     if (qApp) {
-        QOpenGLContext *globalContext = QOpenGLContext::globalShareContext();
+        QOpenGLContext *globalContext = qt_gl_global_share_context();
         if (globalContext && globalContext->isValid()) {
             qWarning("Warning: Setting a new default format with a different version or profile "
                      "after the global shared context is created may cause issues with context "

@@ -1,6 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author David Faure <david.faure@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include <qplatformdefs.h> // always first
 
@@ -10,9 +11,9 @@
 #include "qmimeprovider_p.h"
 #include "qmimetype_p.h"
 
+#include <private/qduplicatetracker_p.h>
 #include <private/qfilesystementry_p.h>
 
-#include <QtCore/QMap>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QStandardPaths>
@@ -71,7 +72,11 @@ bool QMimeDatabasePrivate::shouldCheck()
 
 static QStringList locateMimeDirectories()
 {
-    return QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("mime"), QStandardPaths::LocateDirectory);
+    QStringList dirs =
+            QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("mime"),
+                                      QStandardPaths::LocateDirectory);
+    dirs.append(u":/qt-project.org/qmime"_s);
+    return dirs;
 }
 
 #if defined(Q_OS_UNIX) && !defined(Q_OS_INTEGRITY)
@@ -390,9 +395,9 @@ QMimeType QMimeDatabasePrivate::mimeTypeForFileNameAndData(const QString &fileNa
             if (candidateByData.isValid() && magicAccuracy > 0) {
                 const QString sniffedMime = candidateByData.name();
                 // If the sniffedMime matches a highest-weight glob match, use it
-                if (candidatesByName.m_matchingMimeTypes.contains(sniffedMime)) {
+                if (candidatesByName.m_matchingMimeTypes.contains(sniffedMime))
                     return candidateByData;
-                }
+
                 for (const QString &m : std::as_const(candidatesByName.m_allMatchingMimeTypes)) {
                     if (inherits(m, sniffedMime)) {
                         // We have magic + pattern pointing to this, so it's a pretty good match
@@ -503,6 +508,7 @@ QList<QMimeType> QMimeDatabasePrivate::allMimeTypes()
 bool QMimeDatabasePrivate::inherits(const QString &mime, const QString &parent)
 {
     const QString resolvedParent = resolveAlias(parent);
+    QDuplicateTracker<QString> seen;
     std::stack<QString, QStringList> toCheck;
     toCheck.push(mime);
     while (!toCheck.empty()) {
@@ -511,8 +517,11 @@ bool QMimeDatabasePrivate::inherits(const QString &mime, const QString &parent)
         const QString mimeName = toCheck.top();
         toCheck.pop();
         const auto parentList = parents(mimeName);
-        for (const QString &par : parentList)
-            toCheck.push(resolveAlias(par));
+        for (const QString &par : parentList) {
+            const QString resolvedPar = resolveAlias(par);
+            if (!seen.hasSeen(resolvedPar))
+                toCheck.push(resolvedPar);
+        }
     }
     return false;
 }
@@ -554,7 +563,7 @@ bool QMimeDatabasePrivate::inherits(const QString &mime, const QString &parent)
 
     \snippet code/src_corelib_mimetype_qmimedatabase.cpp 0
 
-    \sa QMimeType, {MIME Type Browser Example}
+    \sa QMimeType, {MIME Type Browser}
  */
 
 /*!

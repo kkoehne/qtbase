@@ -4,6 +4,9 @@
 #include "language.h"
 
 #include <QtCore/qtextstream.h>
+#include <QtCore/QList>
+
+#include <algorithm>
 
 namespace language {
 
@@ -83,19 +86,19 @@ QTextStream &operator<<(QTextStream &str, const closeQtConfig &c)
 struct EnumLookup
 {
     int value;
-    const char *valueString;
+    QLatin1StringView valueString;
 };
 
 template <int N>
-const char *lookupEnum(const EnumLookup(&array)[N], int value, int defaultIndex = 0)
+QLatin1StringView lookupEnum(const EnumLookup(&array)[N], int value, int defaultIndex = 0)
 {
     for (int i = 0; i < N; ++i) {
         if (value == array[i].value)
             return array[i].valueString;
     }
-    const char *defaultValue = array[defaultIndex].valueString;
+    auto defaultValue = array[defaultIndex].valueString;
     qWarning("uic: Warning: Invalid enumeration value %d, defaulting to %s",
-             value, defaultValue);
+             value, defaultValue.data());
     return defaultValue;
 }
 
@@ -106,74 +109,74 @@ QString fixClassName(QString className)
     return className;
 }
 
-const char *toolbarArea(int v)
+QLatin1StringView toolbarArea(int v)
 {
     static const EnumLookup toolBarAreas[] =
     {
-        {0,   "NoToolBarArea"},
-        {0x1, "LeftToolBarArea"},
-        {0x2, "RightToolBarArea"},
-        {0x4, "TopToolBarArea"},
-        {0x8, "BottomToolBarArea"},
-        {0xf, "AllToolBarAreas"}
+        {0,   "NoToolBarArea"_L1},
+        {0x1, "LeftToolBarArea"_L1},
+        {0x2, "RightToolBarArea"_L1},
+        {0x4, "TopToolBarArea"_L1},
+        {0x8, "BottomToolBarArea"_L1},
+        {0xf, "AllToolBarAreas"_L1}
     };
     return lookupEnum(toolBarAreas, v);
 }
 
-const char *sizePolicy(int v)
+QLatin1StringView sizePolicy(int v)
 {
     static const EnumLookup sizePolicies[] =
     {
-        {0,   "Fixed"},
-        {0x1, "Minimum"},
-        {0x4, "Maximum"},
-        {0x5, "Preferred"},
-        {0x3, "MinimumExpanding"},
-        {0x7, "Expanding"},
-        {0xD, "Ignored"}
+        {0,   "Fixed"_L1},
+        {0x1, "Minimum"_L1},
+        {0x4, "Maximum"_L1},
+        {0x5, "Preferred"_L1},
+        {0x3, "MinimumExpanding"_L1},
+        {0x7, "Expanding"_L1},
+        {0xD, "Ignored"_L1}
     };
     return lookupEnum(sizePolicies, v, 3);
 }
 
-const char *dockWidgetArea(int v)
+QLatin1StringView dockWidgetArea(int v)
 {
     static const EnumLookup dockWidgetAreas[] =
     {
-        {0,   "NoDockWidgetArea"},
-        {0x1, "LeftDockWidgetArea"},
-        {0x2, "RightDockWidgetArea"},
-        {0x4, "TopDockWidgetArea"},
-        {0x8, "BottomDockWidgetArea"},
-        {0xf, "AllDockWidgetAreas"}
+        {0,   "NoDockWidgetArea"_L1},
+        {0x1, "LeftDockWidgetArea"_L1},
+        {0x2, "RightDockWidgetArea"_L1},
+        {0x4, "TopDockWidgetArea"_L1},
+        {0x8, "BottomDockWidgetArea"_L1},
+        {0xf, "AllDockWidgetAreas"_L1}
     };
     return lookupEnum(dockWidgetAreas, v);
 }
 
-const char *paletteColorRole(int v)
+QLatin1StringView paletteColorRole(int v)
 {
     static const EnumLookup colorRoles[] =
     {
-        {0, "WindowText"},
-        {1, "Button"},
-        {2, "Light"},
-        {3, "Midlight"},
-        {4, "Dark"},
-        {5, "Mid"},
-        {6, "Text"},
-        {7, "BrightText"},
-        {8, "ButtonText"},
-        {9, "Base"},
-        {10, "Window"},
-        {11, "Shadow"},
-        {12, "Highlight"},
-        {13, "HighlightedText"},
-        {14, "Link"},
-        {15, "LinkVisited"},
-        {16, "AlternateBase"},
-        {17, "NoRole"},
-        {18, "ToolTipBase"},
-        {19, "ToolTipText"},
-        {20, "PlaceholderText"},
+        {0, "WindowText"_L1},
+        {1, "Button"_L1},
+        {2, "Light"_L1},
+        {3, "Midlight"_L1},
+        {4, "Dark"_L1},
+        {5, "Mid"_L1},
+        {6, "Text"_L1},
+        {7, "BrightText"_L1},
+        {8, "ButtonText"_L1},
+        {9, "Base"_L1},
+        {10, "Window"_L1},
+        {11, "Shadow"_L1},
+        {12, "Highlight"_L1},
+        {13, "HighlightedText"_L1},
+        {14, "Link"_L1},
+        {15, "LinkVisited"_L1},
+        {16, "AlternateBase"_L1},
+        {17, "NoRole"_L1},
+        {18, "ToolTipBase"_L1},
+        {19, "ToolTipText"_L1},
+        {20, "PlaceholderText"_L1},
     };
     return lookupEnum(colorRoles, v);
 }
@@ -181,7 +184,7 @@ const char *paletteColorRole(int v)
 // Helpers for formatting a character sequences
 
 // Format a special character like '\x0a'
-static int formatEscapedNumber(QTextStream &str, ushort value, int base, int width,
+static int formatEscapedNumber(QTextStream &str, uint value, int base, int width,
                                char prefix = 0)
 {
     int length = 1 + width;
@@ -235,24 +238,23 @@ static int formatSpecialCharacter(QTextStream &str, ushort value)
 
 enum : int { maxSegmentSize = 1024 };
 
-template <Encoding e>
-struct FormattingTraits
-{
-};
 
-template <>
-struct FormattingTraits<Encoding::Utf8>
+static uint characterCode(char c)
 {
-    static ushort code(char c) { return uchar(c); }
-};
+    return uchar(c);
+}
 
-template <>
-struct FormattingTraits<Encoding::Unicode>
+static uint characterCode(QChar c)
 {
-    static ushort code(QChar c) { return c.unicode(); }
-};
+    return c.unicode();
+}
 
-template <Encoding e, class Iterator>
+static uint characterCode(uint c)
+{
+    return c;
+}
+
+template <class Iterator>
 static void formatStringSequence(QTextStream &str, Iterator it, Iterator end,
                                  const QString &indent,
                                  int escapeIntegerBase, int escapeWidth,
@@ -261,13 +263,13 @@ static void formatStringSequence(QTextStream &str, Iterator it, Iterator end,
     str << '"';
     int length = 0;
     while (it != end) {
-        const auto code = FormattingTraits<e>::code(*it);
+        const auto code = characterCode(*it);
         if (code >= 0x80) {
             length += formatEscapedNumber(str, code, escapeIntegerBase, escapeWidth, escapePrefix);
         } else if (const int l = formatSpecialCharacter(str, code)) {
             length += l;
         } else if (code != '\r') {
-            str << *it;
+            str << char(code);
             ++length;
         }
         ++it;
@@ -279,6 +281,11 @@ static void formatStringSequence(QTextStream &str, Iterator it, Iterator end,
     str << '"';
 }
 
+static bool isSurrogate(QChar c)
+{
+    return c.isSurrogate();
+}
+
 void _formatString(QTextStream &str, const QString &value, const QString &indent,
                    bool qString)
 {
@@ -288,17 +295,20 @@ void _formatString(QTextStream &str, const QString &value, const QString &indent
         if (qString && _language == Language::Cpp)
             str << "QString::fromUtf8(";
         const QByteArray utf8 = value.toUtf8();
-        formatStringSequence<Encoding::Utf8>(str, utf8.cbegin(), utf8.cend(), indent,
-                                             8, 3);
+        formatStringSequence(str, utf8.cbegin(), utf8.cend(), indent, 8, 3);
         if (qString && _language == Language::Cpp)
             str << ')';
     }
         break;
     // Special characters as 4 digit hex Unicode points (u8"\u00dcmlaut")
     case Encoding::Unicode:
-        str << 'u'; // Python Unicode literal (would be UTF-16 in C++)
-        formatStringSequence<Encoding::Unicode>(str, value.cbegin(), value.cend(), indent,
-                                                16, 4, 'u');
+        str << 'u'; // Python Unicode literal
+        if (std::any_of(value.cbegin(), value.cend(), isSurrogate)) {
+            const auto ucs4 = value.toUcs4();
+            formatStringSequence(str, ucs4.cbegin(), ucs4.cend(), indent, 16, 8, 'U');
+        } else {
+            formatStringSequence(str, value.cbegin(), value.cend(), indent, 16, 4, 'u');
+        }
         break;
     }
 }
@@ -370,17 +380,40 @@ void _formatStackVariable(QTextStream &str, const char *className, QStringView v
     }
 }
 
-enum OverloadUse {
-    UseOverload,
-    UseOverloadWhenNoArguments, // Use overload only when the argument list is empty,
-                                // in this case there is no chance of connecting
-                                // mismatching T against const T &
-    DontUseOverload
+enum class OverloadUse {
+    Always,
+    WhenAmbiguousOrEmpty, // Use overload if
+                          // - signal/slot is ambiguous
+                          // - argument list is empty (chance of connecting mismatching T against const T &)
+    Never,
 };
 
 // Format a member function for a signal slot connection
-static void formatMemberFnPtr(QTextStream &str, const SignalSlot &s,
-                              OverloadUse useQOverload = DontUseOverload)
+static bool isConstRef(const QStringView &arg)
+{
+    return arg.startsWith(u'Q') && arg != "QPoint"_L1 && arg != "QSize"_L1;
+}
+
+static QString formatOverload(const QStringView &parameters)
+{
+    QString result = "qOverload<"_L1;
+    const auto args = QStringView{parameters}.split(u',');
+    for (qsizetype i = 0, size = args.size(); i < size; ++i) {
+        const auto &arg = args.at(i);
+        if (i > 0)
+            result += u',';
+        const bool constRef = isConstRef(arg);
+        if (constRef)
+            result += "const "_L1;
+        result += arg;
+        if (constRef)
+            result += u'&';
+    }
+    result += u'>';
+    return result;
+}
+
+static void formatMemberFnPtr(QTextStream &str, const SignalSlot &s, OverloadUse useQOverload)
 {
     const qsizetype parenPos = s.signature.indexOf(u'(');
     Q_ASSERT(parenPos >= 0);
@@ -388,11 +421,24 @@ static void formatMemberFnPtr(QTextStream &str, const SignalSlot &s,
 
     const auto parameters = QStringView{s.signature}.mid(parenPos + 1,
                                                s.signature.size() - parenPos - 2);
-    const bool withOverload = useQOverload == UseOverload ||
-            (useQOverload == UseOverloadWhenNoArguments && parameters.isEmpty());
+
+    const bool isAmbiguous = s.options.testFlag(SignalSlotOption::Ambiguous);
+    bool withOverload = false; // just to silence the compiler
+
+    switch (useQOverload) {
+    case OverloadUse::Always:
+        withOverload = true;
+        break;
+    case OverloadUse::Never:
+        withOverload = false;
+        break;
+    case OverloadUse::WhenAmbiguousOrEmpty:
+        withOverload = parameters.empty() || isAmbiguous;
+        break;
+    }
 
     if (withOverload)
-        str << "qOverload<" << parameters << ">(";
+        str << formatOverload(parameters) << '(';
 
     str << '&' << s.className << "::" << functionName;
 
@@ -405,9 +451,9 @@ static void formatMemberFnPtrConnection(QTextStream &str,
                                         const SignalSlot &receiver)
 {
     str << "QObject::connect(" << sender.name << ", ";
-    formatMemberFnPtr(str, sender);
+    formatMemberFnPtr(str, sender, OverloadUse::Never);
     str << ", " << receiver.name << ", ";
-    formatMemberFnPtr(str, receiver, UseOverloadWhenNoArguments);
+    formatMemberFnPtr(str, receiver, OverloadUse::WhenAmbiguousOrEmpty);
     str << ')';
 }
 

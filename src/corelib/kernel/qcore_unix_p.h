@@ -18,8 +18,8 @@
 
 #include "qplatformdefs.h"
 #include <QtCore/private/qglobal_p.h>
-#include "qatomic.h"
 #include "qbytearray.h"
+#include "qdeadlinetimer.h"
 
 #ifndef Q_OS_UNIX
 # error "qcore_unix_p.h included on a non-Unix system"
@@ -56,7 +56,7 @@
 
 struct sockaddr;
 
-#define EINTR_LOOP(var, cmd)                    \
+#define QT_EINTR_LOOP(var, cmd)                 \
     do {                                        \
         var = cmd;                              \
     } while (var == -1 && errno == EINTR)
@@ -64,6 +64,44 @@ struct sockaddr;
 QT_BEGIN_NAMESPACE
 
 Q_DECLARE_TYPEINFO(pollfd, Q_PRIMITIVE_TYPE);
+
+static inline constexpr clockid_t SteadyClockClockId =
+#if !defined(CLOCK_MONOTONIC)
+        // we don't know how to set the monotonic clock
+        CLOCK_REALTIME
+#elif defined(_LIBCPP_VERSION) && defined(_LIBCPP_HAS_NO_MONOTONIC_CLOCK)
+        // libc++ falling back to system_clock
+        CLOCK_REALTIME
+#elif defined(__GLIBCXX__) && !defined(_GLIBCXX_USE_CLOCK_MONOTONIC)
+        // libstdc++ falling back to system_clock
+        CLOCK_REALTIME
+#elif defined(_LIBCPP_VERSION) && defined(Q_OS_DARWIN)
+        // on Apple systems, libc++ uses CLOCK_MONOTONIC_RAW since LLVM 11
+        // https://github.com/llvm/llvm-project/blob/llvmorg-11.0.0/libcxx/src/chrono.cpp#L117-L129
+        CLOCK_MONOTONIC_RAW
+#elif defined(__GLIBCXX__) || defined(_LIBCPP_VERSION)
+        // both libstdc++ and libc++ otherwise use CLOCK_MONOTONIC
+        CLOCK_MONOTONIC
+#else
+#  warning "Unknown C++ Standard Library implementation - code may be sub-optimal"
+        CLOCK_REALTIME
+#endif
+        ;
+
+static inline constexpr clockid_t QWaitConditionClockId =
+#if !QT_CONFIG(thread)
+        // bootstrap mode, there are no wait conditions
+        CLOCK_REALTIME
+#elif !QT_CONFIG(pthread_condattr_setclock)
+        // OSes that lack pthread_condattr_setclock() (e.g., Darwin)
+        CLOCK_REALTIME
+#elif defined(Q_OS_QNX)
+        // unknown why use of the monotonic clock causes failures
+        CLOCK_REALTIME
+#else
+        SteadyClockClockId;
+#endif
+        ;
 
 static constexpr auto OneSecAsNsecs = std::chrono::nanoseconds(std::chrono::seconds{ 1 }).count();
 
@@ -180,21 +218,19 @@ inline timespec qAbsTimespec(timespec ts)
     return normalizedTimespec(ts);
 }
 
-inline void qt_ignore_sigpipe()
+template <clockid_t ClockId = SteadyClockClockId>
+inline timespec deadlineToAbstime(QDeadlineTimer deadline)
 {
-    // Set to ignore SIGPIPE once only.
-    Q_CONSTINIT static QBasicAtomicInt atom = Q_BASIC_ATOMIC_INITIALIZER(0);
-    if (!atom.loadRelaxed()) {
-        // More than one thread could turn off SIGPIPE at the same time
-        // But that's acceptable because they all would be doing the same
-        // action
-        struct sigaction noaction;
-        memset(&noaction, 0, sizeof(noaction));
-        noaction.sa_handler = SIG_IGN;
-        ::sigaction(SIGPIPE, &noaction, nullptr);
-        atom.storeRelaxed(1);
-    }
+    using namespace std::chrono;
+    using Clock =
+        std::conditional_t<ClockId == CLOCK_REALTIME, system_clock, steady_clock>;
+    auto timePoint = deadline.deadline<Clock>();
+    if (timePoint < typename Clock::time_point{})
+        return {};
+    return durationToTimespec(timePoint.time_since_epoch());
 }
+
+Q_CORE_EXPORT void qt_ignore_sigpipe() noexcept;
 
 #if defined(Q_PROCESSOR_X86_32) && defined(__GLIBC__)
 #  if !__GLIBC_PREREQ(2, 22)
@@ -202,6 +238,16 @@ Q_CORE_EXPORT int qt_open64(const char *pathname, int flags, mode_t);
 #    undef QT_OPEN
 #    define QT_OPEN qt_open64
 #  endif
+#endif
+
+#ifdef AT_FDCWD
+static inline int qt_safe_openat(int dfd, const char *pathname, int flags, mode_t mode = 0777)
+{
+    // everyone already has O_CLOEXEC
+    int fd;
+    QT_EINTR_LOOP(fd, openat(dfd, pathname, flags | O_CLOEXEC, mode));
+    return fd;
+}
 #endif
 
 // don't call QT_OPEN or ::open
@@ -212,7 +258,7 @@ static inline int qt_safe_open(const char *pathname, int flags, mode_t mode = 07
     flags |= O_CLOEXEC;
 #endif
     int fd;
-    EINTR_LOOP(fd, QT_OPEN(pathname, flags, mode));
+    QT_EINTR_LOOP(fd, QT_OPEN(pathname, flags, mode));
 
 #ifndef O_CLOEXEC
     if (fd != -1)
@@ -224,7 +270,6 @@ static inline int qt_safe_open(const char *pathname, int flags, mode_t mode = 07
 #undef QT_OPEN
 #define QT_OPEN         qt_safe_open
 
-#ifndef Q_OS_VXWORKS // no POSIX pipes in VxWorks
 // don't call ::pipe
 // call qt_safe_pipe
 static inline int qt_safe_pipe(int pipefd[2], int flags = 0)
@@ -253,8 +298,6 @@ static inline int qt_safe_pipe(int pipefd[2], int flags = 0)
 #endif
 }
 
-#endif // Q_OS_VXWORKS
-
 // don't call dup or fcntl(F_DUPFD)
 static inline int qt_safe_dup(int oldfd, int atleast = 0, int flags = FD_CLOEXEC)
 {
@@ -282,12 +325,12 @@ static inline int qt_safe_dup2(int oldfd, int newfd, int flags = FD_CLOEXEC)
     Q_ASSERT(flags == FD_CLOEXEC || flags == 0);
 
     int ret;
-#ifdef QT_THREADSAFE_CLOEXEC
+#if QT_CONFIG(dup3)
     // use dup3
-    EINTR_LOOP(ret, ::dup3(oldfd, newfd, flags ? O_CLOEXEC : 0));
+    QT_EINTR_LOOP(ret, ::dup3(oldfd, newfd, flags ? O_CLOEXEC : 0));
     return ret;
 #else
-    EINTR_LOOP(ret, ::dup2(oldfd, newfd));
+    QT_EINTR_LOOP(ret, ::dup2(oldfd, newfd));
     if (ret == -1)
         return -1;
 
@@ -300,7 +343,7 @@ static inline int qt_safe_dup2(int oldfd, int newfd, int flags = FD_CLOEXEC)
 static inline qint64 qt_safe_read(int fd, void *data, qint64 maxlen)
 {
     qint64 ret = 0;
-    EINTR_LOOP(ret, QT_READ(fd, data, maxlen));
+    QT_EINTR_LOOP(ret, QT_READ(fd, data, maxlen));
     return ret;
 }
 #undef QT_READ
@@ -309,7 +352,7 @@ static inline qint64 qt_safe_read(int fd, void *data, qint64 maxlen)
 static inline qint64 qt_safe_write(int fd, const void *data, qint64 len)
 {
     qint64 ret = 0;
-    EINTR_LOOP(ret, QT_WRITE(fd, data, len));
+    QT_EINTR_LOOP(ret, QT_WRITE(fd, data, len));
     return ret;
 }
 #undef QT_WRITE
@@ -324,7 +367,7 @@ static inline qint64 qt_safe_write_nosignal(int fd, const void *data, qint64 len
 static inline int qt_safe_close(int fd)
 {
     int ret;
-    EINTR_LOOP(ret, QT_CLOSE(fd));
+    QT_EINTR_LOOP(ret, QT_CLOSE(fd));
     return ret;
 }
 #undef QT_CLOSE
@@ -336,28 +379,28 @@ static inline int qt_safe_execve(const char *filename, char *const argv[],
                                  char *const envp[])
 {
     int ret;
-    EINTR_LOOP(ret, ::execve(filename, argv, envp));
+    QT_EINTR_LOOP(ret, ::execve(filename, argv, envp));
     return ret;
 }
 
 static inline int qt_safe_execv(const char *path, char *const argv[])
 {
     int ret;
-    EINTR_LOOP(ret, ::execv(path, argv));
+    QT_EINTR_LOOP(ret, ::execv(path, argv));
     return ret;
 }
 
 static inline int qt_safe_execvp(const char *file, char *const argv[])
 {
     int ret;
-    EINTR_LOOP(ret, ::execvp(file, argv));
+    QT_EINTR_LOOP(ret, ::execvp(file, argv));
     return ret;
 }
 
 static inline pid_t qt_safe_waitpid(pid_t pid, int *status, int options)
 {
     int ret;
-    EINTR_LOOP(ret, ::waitpid(pid, status, options));
+    QT_EINTR_LOOP(ret, ::waitpid(pid, status, options));
     return ret;
 }
 #endif // QT_CONFIG(process)
@@ -366,8 +409,6 @@ static inline pid_t qt_safe_waitpid(pid_t pid, int *status, int options)
 #  define _POSIX_MONOTONIC_CLOCK -1
 #endif
 
-// in qelapsedtimer_mac.cpp or qtimestamp_unix.cpp
-timespec qt_gettime() noexcept;
 QByteArray qt_readlink(const char *path);
 
 /* non-static */
@@ -385,20 +426,7 @@ inline bool qt_haveLinuxProcfs()
 #endif
 }
 
-Q_CORE_EXPORT int qt_safe_poll(struct pollfd *fds, nfds_t nfds, const struct timespec *timeout_ts);
-
-static inline int qt_poll_msecs(struct pollfd *fds, nfds_t nfds, int timeout)
-{
-    timespec ts, *pts = nullptr;
-
-    if (timeout >= 0) {
-        ts.tv_sec = timeout / 1000;
-        ts.tv_nsec = (timeout % 1000) * 1000 * 1000;
-        pts = &ts;
-    }
-
-    return qt_safe_poll(fds, nfds, pts);
-}
+Q_CORE_EXPORT int qt_safe_poll(struct pollfd *fds, nfds_t nfds, QDeadlineTimer deadline);
 
 static inline struct pollfd qt_make_pollfd(int fd, short events)
 {

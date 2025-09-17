@@ -1,6 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2016 Intel Corporation.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 
 #include <QTest>
@@ -1218,7 +1218,7 @@ private:
 void tst_QLocalSocket::processConnection()
 {
 #if !QT_CONFIG(process)
-    QSKIP("No qprocess support", SkipAll);
+    QSKIP("No qprocess support");
 #else
 
 #ifdef Q_OS_WIN
@@ -1664,6 +1664,9 @@ void tst_QLocalSocket::asyncDisconnectNotify()
 void tst_QLocalSocket::verifySocketOptions_data()
 {
 #ifdef Q_OS_LINUX
+    if (::geteuid() == 0)
+        QSKIP("Running this test as root doesn't make sense");
+
     QTest::addColumn<QString>("service");
     QTest::addColumn<QLocalServer::SocketOption>("opts");
     QTest::addColumn<QFile::Permissions>("perms");
@@ -1709,7 +1712,7 @@ void tst_QLocalSocket::verifySocketOptions()
 
 void tst_QLocalSocket::verifyListenWithDescriptor()
 {
-#ifdef Q_OS_UNIX
+#if defined(Q_OS_UNIX) && !defined(Q_OS_VXWORKS)
     QFETCH(QString, path);
     QFETCH(bool, abstract);
     QFETCH(bool, bound);

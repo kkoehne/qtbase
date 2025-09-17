@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:network-protocol
 
 #include "hpacktable_p.h"
 
@@ -26,8 +27,10 @@ HeaderSize entry_size(QByteArrayView name, QByteArrayView value)
     // for counting the number of references to the name and value would have
     // 32 octets of overhead."
 
-    const unsigned sum = unsigned(name.size() + value.size());
-    if (std::numeric_limits<unsigned>::max() - 32 < sum)
+    size_t sum;
+    if (qAddOverflow(size_t(name.size()), size_t(value.size()), &sum))
+        return HeaderSize();
+    if (sum > (std::numeric_limits<unsigned>::max() - 32))
         return HeaderSize();
     return HeaderSize(true, quint32(sum + 32));
 }
@@ -203,6 +206,16 @@ quint32 FieldLookupTable::numberOfDynamicEntries() const
 quint32 FieldLookupTable::dynamicDataSize() const
 {
     return dataSize;
+}
+
+quint32 FieldLookupTable::dynamicDataCapacity() const
+{
+    return tableCapacity;
+}
+
+quint32 FieldLookupTable::maxDynamicDataCapacity() const
+{
+    return maxTableSize;
 }
 
 void FieldLookupTable::clearDynamicTable()
@@ -383,6 +396,7 @@ bool FieldLookupTable::updateDynamicTableSize(quint32 size)
 {
     if (!size) {
         clearDynamicTable();
+        tableCapacity = 0;
         return true;
     }
 
@@ -401,10 +415,10 @@ void FieldLookupTable::setMaxDynamicTableSize(quint32 size)
     // This is for an external user, for example, HTTP2 protocol
     // layer that can receive SETTINGS frame from its peer.
     // No validity checks here, up to this external user.
-    // We update max size and capacity (this can also result in
-    // items evicted or even dynamic table completely cleared).
+    // We update max size only, the capacity will be updated
+    // later through the Dynamic Table Size Update mechanism
+    // in HPack.
     maxTableSize = size;
-    updateDynamicTableSize(size);
 }
 
 // This data is from the HPACK's specs and it's quite conveniently sorted,

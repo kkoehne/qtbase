@@ -1,11 +1,12 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef QXCBWINDOW_H
-#define QXCBWINDOW_H
+#pragma once
 
 #include <qpa/qplatformwindow.h>
 #include <qpa/qplatformwindow_p.h>
+#include <QtCore/QObject>
+#include <QtCore/QPointer>
 #include <QtGui/QSurfaceFormat>
 #include <QtGui/QImage>
 
@@ -20,9 +21,10 @@ class QXcbScreen;
 class QXcbSyncWindowRequest;
 class QIcon;
 
-class Q_XCB_EXPORT QXcbWindow : public QXcbObject, public QXcbWindowEventListener, public QPlatformWindow
+class Q_XCB_EXPORT QXcbWindow : public QObject, public QXcbObject, public QXcbWindowEventListener, public QPlatformWindow
                               , public QNativeInterface::Private::QXcbWindow
 {
+    Q_OBJECT
 public:
     enum NetWmState {
         NetWmStateAbove = 0x1,
@@ -64,6 +66,7 @@ public:
     QPoint mapFromGlobal(const QPoint &pos) const override;
 
     void setWindowTitle(const QString &title) override;
+    QString windowTitle() const override;
     void setWindowIconText(const QString &title) override;
     void setWindowIcon(const QIcon &icon) override;
     void raise() override;
@@ -118,6 +121,8 @@ public:
                           Qt::KeyboardModifiers modifiers, QEvent::Type type, Qt::MouseEventSource source);
 
     void updateNetWmUserTime(xcb_timestamp_t timestamp);
+    void updateWmTransientFor();
+    void registerWmTransientForChild(QXcbWindow *);
 
     WindowTypes wmWindowTypes() const;
     void setWmWindowType(WindowTypes types, Qt::WindowFlags flags);
@@ -217,6 +222,7 @@ protected:
 
     Qt::WindowStates m_windowState = Qt::WindowNoState;
 
+    QMutex m_mappedMutex;
     bool m_mapped = false;
     bool m_transparent = false;
     bool m_deferredActivation = false;
@@ -224,6 +230,7 @@ protected:
     bool m_alertState = false;
     bool m_minimized = false;
     bool m_trayIconWindow = false;
+    bool m_ignorePressedWindowOnMouseLeave = false;
     xcb_window_t m_netWmUserTimeWindow = XCB_NONE;
 
     QSurfaceFormat m_format;
@@ -253,6 +260,8 @@ protected:
     qreal m_sizeHintsScaleFactor = 1.0;
 
     RecreationReasons m_recreationReasons = RecreationNotNeeded;
+
+    QList<QPointer<QXcbWindow>> m_wmTransientForChildren;
 };
 
 class QXcbForeignWindow : public QXcbWindow
@@ -271,5 +280,3 @@ QList<xcb_rectangle_t> qRegionToXcbRectangleList(const QRegion &region);
 QT_END_NAMESPACE
 
 Q_DECLARE_METATYPE(QXcbWindow*)
-
-#endif

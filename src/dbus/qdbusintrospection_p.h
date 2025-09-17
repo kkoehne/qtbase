@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #ifndef QDBUSINTROSPECTION_P_H
 #define QDBUSINTROSPECTION_P_H
@@ -58,13 +59,28 @@ public:
         qint64 columnNumber = 0;
     };
 
-    class DiagnosticsReporter
+    class Q_DBUS_EXPORT DiagnosticsReporter
     {
+        Q_DISABLE_COPY_MOVE(DiagnosticsReporter)
     public:
+        DiagnosticsReporter() = default;
+        virtual ~DiagnosticsReporter();
         virtual void warning(const SourceLocation &location, const char *msg, ...)
                 Q_ATTRIBUTE_FORMAT_PRINTF(3, 4) = 0;
         virtual void error(const SourceLocation &location, const char *msg, ...)
                 Q_ATTRIBUTE_FORMAT_PRINTF(3, 4) = 0;
+    };
+
+    struct Annotation
+    {
+        SourceLocation location;
+        QString name;
+        QString value;
+
+        inline bool operator==(const Annotation &other) const
+        {
+            return name == other.name && value == other.value;
+        }
     };
 
     struct Argument
@@ -114,18 +130,6 @@ public:
         inline bool operator==(const Property& other) const
         { return access == other.access && name == other.name &&
                 annotations == other.annotations && type == other.type; }
-    };
-
-    struct Annotation
-    {
-        SourceLocation location;
-        QString name;
-        QString value;
-
-        inline bool operator==(const Annotation &other) const
-        {
-            return name == other.name && value == other.value;
-        }
     };
 
     struct Interface: public QSharedData

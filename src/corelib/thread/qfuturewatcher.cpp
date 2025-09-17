@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qfuturewatcher.h"
 #include "qfuturewatcher_p.h"
@@ -552,7 +553,7 @@ QT_WARNING_POP
 }
 
 
-/*! \fn template <typename T> const T &QFutureWatcher<T>::result() const
+/*! \fn template <typename T> template<typename U = T, typename = QtPrivate::EnableForNonVoid<U>> const T &QFutureWatcher<T>::result() const
 
     Returns the first result in the future(). If the result is not immediately
     available, this function will block and wait for the result to become
@@ -561,7 +562,7 @@ QT_WARNING_POP
     \sa resultAt()
 */
 
-/*! \fn template <typename T> const T &QFutureWatcher<T>::resultAt(int index) const
+/*! \fn template <typename T> template<typename U = T, typename = QtPrivate::EnableForNonVoid<U>> const T &QFutureWatcher<T>::resultAt(int index) const
 
     Returns the result at \a index in the future(). If the result is not
     immediately available, this function will block and wait for the result to
@@ -651,7 +652,7 @@ QT_WARNING_POP
     no more running computations. After receiving this signal no more result
     ready or progress reporting signals are expected.
 
-    \sa setSuspended(), suspend(), suspended()
+    \sa setSuspended(), suspend()
 */
 
 /*! \fn template <typename T> void QFutureWatcher<T>::resumed()
@@ -662,7 +663,7 @@ QT_WARNING_POP
     \fn template <typename T> void QFutureWatcher<T>::progressRangeChanged(int minimum, int maximum)
 
     The progress range for the watched future has changed to \a minimum and
-    \a maximum
+    \a maximum.
 */
 
 /*!

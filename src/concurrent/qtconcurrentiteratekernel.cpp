@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qtconcurrentiteratekernel.h"
 
@@ -67,7 +68,7 @@ namespace QtConcurrent {
 
 */
 BlockSizeManager::BlockSizeManager(QThreadPool *pool, int iterationCount)
-    : maxBlockSize(iterationCount / (pool->maxThreadCount() * 2)),
+    : maxBlockSize(iterationCount / (std::max(pool->maxThreadCount(), 1) * 2)),
       beforeUser(0), afterUser(0),
       m_blockSize(1)
 { }

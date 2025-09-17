@@ -2,6 +2,7 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include <QtCore/qalloc.h>
 #include <QtCore/qarraydata.h>
 #include <QtCore/private/qnumeric_p.h>
 #include <QtCore/private/qtools_p.h>
@@ -101,10 +102,32 @@ qCalculateGrowingBlockSize(qsizetype elementCount, qsizetype elementSize, qsizet
     } else {
         bytes = qsizetype(morebytes);
     }
+    size_t fittedBytes = QtPrivate::expectedAllocSize(bytes, alignof(std::max_align_t));
+    if (fittedBytes != 0)
+        bytes = fittedBytes;
 
     result.elementCount = (bytes - headerSize) / elementSize;
     result.size = result.elementCount * elementSize + headerSize;
     return result;
+}
+
+using QtPrivate::AlignedQArrayData;
+
+static qsizetype calculateHeaderSize(qsizetype alignment)
+{
+    qsizetype headerSize = sizeof(AlignedQArrayData);
+    const qsizetype headerAlignment = alignof(AlignedQArrayData);
+
+    if (alignment > headerAlignment) {
+        // Allocate extra (alignment - Q_ALIGNOF(AlignedQArrayData)) padding
+        // bytes so we can properly align the data array. This assumes malloc is
+        // able to provide appropriate alignment for the header -- as it should!
+        // Effectively, we allocate one QTypedArrayData<T>::AlignmentDummy.
+        headerSize += alignment - headerAlignment;
+    }
+    Q_ASSERT(headerSize > 0);
+
+    return headerSize;
 }
 
 /*
@@ -134,71 +157,62 @@ calculateBlockSize(qsizetype capacity, qsizetype objectSize, qsizetype headerSiz
     }
 }
 
-static QArrayData *allocateData(qsizetype allocSize)
+static inline void *
+allocateHelper(QArrayData **dptr, qsizetype objectSize, qsizetype alignment, qsizetype capacity,
+               QArrayData::AllocationOption option) noexcept
 {
-    QArrayData *header = static_cast<QArrayData *>(::malloc(size_t(allocSize)));
-    if (header) {
-        header->ref_.storeRelaxed(1);
-        header->flags = {};
-        header->alloc = 0;
+    *dptr = nullptr;
+    if (capacity == 0)
+        return {};
+
+    const qsizetype headerSize = calculateHeaderSize(alignment);
+    Q_ASSERT(headerSize > 0);
+
+    auto blockSize = calculateBlockSize(capacity, objectSize, headerSize, option);
+    capacity = blockSize.elementCount;
+    qsizetype allocSize = blockSize.size;
+    if (Q_UNLIKELY(allocSize < 0))      // handle overflow. cannot allocate reliably
+        return {};
+
+    void *data = nullptr;
+    void *mem = ::malloc(size_t(allocSize));
+    if (Q_LIKELY(mem)) {
+        *dptr = new (mem) QArrayData{1, {}, capacity};
+        // find where offset should point to so that data() is aligned to alignment bytes
+        data = QTypedArrayData<void>::dataStart(*dptr, alignment);
     }
-    return header;
+
+    return data;
 }
 
-
-namespace {
-// QArrayData with strictest alignment requirements supported by malloc()
-struct alignas(std::max_align_t) AlignedQArrayData : QArrayData
-{
-};
-}
-
-
+// Generic size and alignment allocation function
 void *QArrayData::allocate(QArrayData **dptr, qsizetype objectSize, qsizetype alignment,
-        qsizetype capacity, QArrayData::AllocationOption option) noexcept
+                           qsizetype capacity, AllocationOption option) noexcept
 {
     Q_ASSERT(dptr);
     // Alignment is a power of two
     Q_ASSERT(alignment >= qsizetype(alignof(QArrayData))
             && !(alignment & (alignment - 1)));
 
-    if (capacity == 0) {
-        *dptr = nullptr;
-        return nullptr;
-    }
-
-    qsizetype headerSize = sizeof(AlignedQArrayData);
-    const qsizetype headerAlignment = alignof(AlignedQArrayData);
-
-    if (alignment > headerAlignment) {
-        // Allocate extra (alignment - Q_ALIGNOF(AlignedQArrayData)) padding
-        // bytes so we can properly align the data array. This assumes malloc is
-        // able to provide appropriate alignment for the header -- as it should!
-        headerSize += alignment - headerAlignment;
-    }
-    Q_ASSERT(headerSize > 0);
-
-    auto blockSize = calculateBlockSize(capacity, objectSize, headerSize, option);
-    capacity = blockSize.elementCount;
-    qsizetype allocSize = blockSize.size;
-    if (Q_UNLIKELY(allocSize < 0)) {  // handle overflow. cannot allocate reliably
-        *dptr = nullptr;
-        return nullptr;
-    }
-
-    QArrayData *header = allocateData(allocSize);
-    void *data = nullptr;
-    if (header) {
-        // find where offset should point to so that data() is aligned to alignment bytes
-        data = QTypedArrayData<void>::dataStart(header, alignment);
-        header->alloc = qsizetype(capacity);
-    }
-
-    *dptr = header;
-    return data;
+    return allocateHelper(dptr, objectSize, alignment, capacity, option);
 }
 
-QPair<QArrayData *, void *>
+// Fixed size and alignment allocation functions
+void *QArrayData::allocate1(QArrayData **dptr, qsizetype capacity, AllocationOption option) noexcept
+{
+    Q_ASSERT(dptr);
+
+    return allocateHelper(dptr, 1, alignof(AlignedQArrayData), capacity, option);
+}
+
+void *QArrayData::allocate2(QArrayData **dptr, qsizetype capacity, AllocationOption option) noexcept
+{
+    Q_ASSERT(dptr);
+
+    return allocateHelper(dptr, 2, alignof(AlignedQArrayData), capacity, option);
+}
+
+std::pair<QArrayData *, void *>
 QArrayData::reallocateUnaligned(QArrayData *data, void *dataPointer,
                                 qsizetype objectSize, qsizetype capacity, AllocationOption option) noexcept
 {
@@ -209,7 +223,7 @@ QArrayData::reallocateUnaligned(QArrayData *data, void *dataPointer,
     qsizetype allocSize = r.size;
     capacity = r.elementCount;
     if (Q_UNLIKELY(allocSize < 0))
-        return qMakePair<QArrayData *, void *>(nullptr, nullptr);
+        return {};
 
     const qptrdiff offset = dataPointer
             ? reinterpret_cast<char *>(dataPointer) - reinterpret_cast<char *>(data)
@@ -217,14 +231,18 @@ QArrayData::reallocateUnaligned(QArrayData *data, void *dataPointer,
     Q_ASSERT(offset > 0);
     Q_ASSERT(offset <= allocSize); // equals when all free space is at the beginning
 
-    QArrayData *header = static_cast<QArrayData *>(::realloc(data, size_t(allocSize)));
-    if (header) {
+    const bool hadData = data;
+    void *mem = ::realloc(data, size_t(allocSize));
+    QArrayData *header = static_cast<QArrayData *>(mem);
+    if (mem) {
+        if (!hadData)
+            header = new (mem) QArrayData{0, {}, {}};
         header->alloc = capacity;
         dataPointer = reinterpret_cast<char *>(header) + offset;
     } else {
         dataPointer = nullptr;
     }
-    return qMakePair(static_cast<QArrayData *>(header), dataPointer);
+    return {header, dataPointer};
 }
 
 void QArrayData::deallocate(QArrayData *data, qsizetype objectSize,
@@ -233,10 +251,18 @@ void QArrayData::deallocate(QArrayData *data, qsizetype objectSize,
     // Alignment is a power of two
     Q_ASSERT(alignment >= qsizetype(alignof(QArrayData))
             && !(alignment & (alignment - 1)));
-    Q_UNUSED(objectSize);
-    Q_UNUSED(alignment);
 
-    ::free(data);
+    const qsizetype capacity = data->alloc;
+    const qsizetype headerSize = calculateHeaderSize(alignment);
+    Q_ASSERT(headerSize > 0);
+    const auto blockSize = calculateBlockSize(capacity, objectSize,
+                                              headerSize, QArrayData::KeepSize);
+    const qsizetype allocSize = blockSize.size;
+
+    if (Q_LIKELY(allocSize > 0))
+        QtPrivate::sizedFree(data, size_t(allocSize));
+    else // something went wrong, fallback to slow free()
+        free(data);
 }
 
 QT_END_NAMESPACE

@@ -21,18 +21,17 @@ QT_BEGIN_NAMESPACE
 
 class QCoreApplication;
 
-class Q_AUTOTEST_EXPORT QDeferredDeleteEvent : public QEvent
+class QDeferredDeleteEvent : public QEvent
 {
     Q_DECL_EVENT_COMMON(QDeferredDeleteEvent)
 public:
-    explicit QDeferredDeleteEvent();
+    explicit QDeferredDeleteEvent(int loopLevel, int scopeLevel);
     int loopLevel() const { return m_loopLevel; }
     int scopeLevel() const { return m_scopeLevel; }
 
 private:
     int m_loopLevel = 0;
     int m_scopeLevel = 0;
-    friend class QCoreApplication;
 };
 
 QT_END_NAMESPACE

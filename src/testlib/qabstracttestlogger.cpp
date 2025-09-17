@@ -9,12 +9,18 @@
 #include <QtCore/qbytearray.h>
 #include <QtCore/qstring.h>
 
+#include <cstdio>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 
 #ifndef Q_OS_WIN
 #include <unistd.h>
+#endif
+
+#if defined(Q_OS_WINDOWS)
+#include <io.h>
 #endif
 
 #ifdef Q_OS_ANDROID
@@ -148,6 +154,19 @@ QAbstractTestLogger::~QAbstractTestLogger()
 }
 
 /*!
+    Returns true if the logger supports repeated test runs.
+
+    Repetition of test runs is disabled by default, and can be enabled only for
+    test loggers that support it. Even if the logger may create syntactically
+    correct test reports, log-file analyzers may assume that test names are
+    unique within one report file.
+*/
+bool QAbstractTestLogger::isRepeatSupported() const
+{
+    return false;
+}
+
+/*!
     Returns true if the \c output stream is standard output.
 */
 bool QAbstractTestLogger::isLoggingToStdout() const
@@ -175,22 +194,37 @@ void QAbstractTestLogger::filterUnprintable(char *str) const
     Convenience method to write \a msg to the output stream.
 
     The output \a msg must be a \c{'\0'}-terminated string (and not \nullptr).
-    A copy of it is passed to \l filterUnprintable() and the result written to
-    the output \c stream, which is then flushed.
+
+    If the output \c stream is TTY the message is printed as is. If not, the
+    message is filtered via filterUnprintable() first. In both cases the output
+    \c stream is flushed after printing.
 */
 void QAbstractTestLogger::outputString(const char *msg)
 {
     QTEST_ASSERT(stream);
     QTEST_ASSERT(msg);
 
-    char *filtered = new char[strlen(msg) + 1];
-    strcpy(filtered, msg);
-    filterUnprintable(filtered);
+#if defined(Q_OS_WINDOWS)
+#define isatty _isatty
+#define fileno _fileno
+#endif
 
-    ::fputs(filtered, stream);
-    ::fflush(stream);
+    if (isatty(fileno(stream))) {
+        ::fputs(msg, stream);
+        ::fflush(stream);
+    } else {
+        char *filtered = new char[strlen(msg) + 1];
+        strcpy(filtered, msg);
+        filterUnprintable(filtered);
+        ::fputs(filtered, stream);
+        ::fflush(stream);
+        delete [] filtered;
+    }
 
-    delete [] filtered;
+#if defined(Q_OS_WINDOWS)
+#undef isatty
+#undef fileno
+#endif
 }
 
 /*!
@@ -392,7 +426,7 @@ int qt_asprintf(QTestCharBuffer *str, const char *format, ...)
 
     do {
         va_start(ap, format);
-        res = qvsnprintf(str->data(), size, format, ap);
+        res = std::vsnprintf(str->data(), size, format, ap);
         va_end(ap);
         // vsnprintf() reliably '\0'-terminates
         Q_ASSERT(res < 0 || str->data()[res < size ? res : size - 1] == '\0');

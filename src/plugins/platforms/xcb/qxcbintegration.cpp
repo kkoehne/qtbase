@@ -25,7 +25,7 @@
 #include <xcb/xcb.h>
 
 #include <QtGui/private/qgenericunixfontdatabase_p.h>
-#include <QtGui/private/qgenericunixservices_p.h>
+#include <QtGui/private/qdesktopunixservices_p.h>
 
 #include <stdio.h>
 
@@ -43,7 +43,10 @@
 #endif
 
 #include <qpa/qplatforminputcontextfactory_p.h>
-#include <private/qgenericunixthemes_p.h>
+#include <private/qgenericunixtheme_p.h>
+#if QT_CONFIG(dbus)
+#include <private/qkdetheme_p.h>
+#endif
 #include <qpa/qplatforminputcontext.h>
 
 #include <QtGui/QOpenGLContext>
@@ -71,7 +74,7 @@ using namespace Qt::StringLiterals;
 // or, for older Linuxes, read out 'cmdline'.
 static bool runningUnderDebugger()
 {
-#if defined(QT_DEBUG) && defined(Q_OS_LINUX)
+#if defined(Q_OS_LINUX)
     const QString parentProc = "/proc/"_L1 + QString::number(getppid());
     const QFileInfo parentProcExe(parentProc + "/exe"_L1);
     if (parentProcExe.isSymLink())
@@ -93,10 +96,12 @@ static bool runningUnderDebugger()
 #endif
 }
 
-class QXcbUnixServices : public QGenericUnixServices
+class QXcbUnixServices : public QDesktopUnixServices, public QXcbObject
 {
 public:
     QString portalWindowIdentifier(QWindow *window) override;
+    void registerDBusMenuForWindow(QWindow *window, const QString &service, const QString &path) override;
+    void unregisterDBusMenuForWindow(QWindow *window) override;
 };
 
 
@@ -155,12 +160,10 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
         doGrabArg = false;
     }
 
-#if defined(QT_DEBUG)
     if (!noGrabArg && !doGrabArg && underDebugger) {
         qCDebug(lcQpaXcb, "Qt: gdb: -nograb added to command-line options.\n"
                 "\t Use the -dograb option to enforce grabbing.");
     }
-#endif
     m_canGrab = (!underDebugger && !noGrabArg) || (underDebugger && doGrabArg);
 
     static bool canNotGrabEnv = qEnvironmentVariableIsSet("QT_XCB_NO_GRAB_SERVER");
@@ -173,6 +176,7 @@ QXcbIntegration::QXcbIntegration(const QStringList &parameters, int &argc, char 
         m_connection = nullptr;
         return;
     }
+    m_services->setConnection(m_connection);
 
     m_fontDatabase.reset(new QGenericUnixFontDatabase());
 
@@ -204,7 +208,7 @@ QPlatformPixmap *QXcbIntegration::createPlatformPixmap(QPlatformPixmap::PixelTyp
 QPlatformWindow *QXcbIntegration::createPlatformWindow(QWindow *window) const
 {
     QXcbGlIntegration *glIntegration = nullptr;
-    const bool isTrayIconWindow = QXcbWindow::isTrayIconWindow(window);;
+    const bool isTrayIconWindow = QXcbWindow::isTrayIconWindow(window);
     if (window->type() != Qt::Desktop && !isTrayIconWindow) {
         if (window->supportsOpenGL()) {
             glIntegration = connection()->glIntegration();
@@ -222,8 +226,7 @@ QPlatformWindow *QXcbIntegration::createPlatformWindow(QWindow *window) const
         }
     }
 
-    Q_ASSERT(window->type() == Qt::Desktop || isTrayIconWindow || !window->supportsOpenGL()
-             || (!glIntegration && window->surfaceType() == QSurface::RasterGLSurface)); // for VNC
+    Q_ASSERT(window->type() == Qt::Desktop || isTrayIconWindow || !window->supportsOpenGL()); // for VNC
     QXcbWindow *xcbWindow = new QXcbWindow(window);
     xcbWindow->create();
     return xcbWindow;
@@ -314,7 +317,6 @@ bool QXcbIntegration::hasCapability(QPlatformIntegration::Capability cap) const
     case MultipleWindows:
     case ForeignWindows:
     case SyncState:
-    case RasterGLSurface:
         return true;
 
     case SwitchableWidgetComposition:
@@ -344,11 +346,12 @@ void QXcbIntegration::initialize()
     const auto defaultInputContext = "compose"_L1;
     // Perform everything that may potentially need the event dispatcher (timers, socket
     // notifiers) here instead of the constructor.
-    QString icStr = QPlatformInputContextFactory::requested();
-    if (icStr.isNull())
-        icStr = defaultInputContext;
-    m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
-    if (!m_inputContext && icStr != defaultInputContext && icStr != "none"_L1)
+    auto icStrs = QPlatformInputContextFactory::requested();
+    if (icStrs.isEmpty())
+        icStrs = { defaultInputContext };
+    m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
+    if (!m_inputContext && !icStrs.contains(defaultInputContext)
+        && icStrs != QStringList{"none"_L1})
         m_inputContext.reset(QPlatformInputContextFactory::create(defaultInputContext));
 
     connection()->keyboard()->initialize();
@@ -429,14 +432,9 @@ QPlatformServices *QXcbIntegration::services() const
     return m_services.data();
 }
 
-Qt::KeyboardModifiers QXcbIntegration::queryKeyboardModifiers() const
+QPlatformKeyMapper *QXcbIntegration::keyMapper() const
 {
-    return m_connection->queryKeyboardModifiers();
-}
-
-QList<int> QXcbIntegration::possibleKeys(const QKeyEvent *e) const
-{
-    return m_connection->keyboard()->possibleKeys(e);
+    return m_connection->keyboard();
 }
 
 QStringList QXcbIntegration::themeNames() const
@@ -532,7 +530,7 @@ QByteArray QXcbIntegration::wmClass() const
         if (m_instanceName)
             name = QString::fromLocal8Bit(m_instanceName);
         if (name.isEmpty() && qEnvironmentVariableIsSet(resourceNameVar))
-            name = QString::fromLocal8Bit(qgetenv(resourceNameVar));
+            name = qEnvironmentVariable(resourceNameVar);
         if (name.isEmpty())
             name = argv0BaseName();
 
@@ -596,13 +594,39 @@ QPlatformVulkanInstance *QXcbIntegration::createPlatformVulkanInstance(QVulkanIn
 
 void QXcbIntegration::setApplicationBadge(qint64 number)
 {
-    auto unixServices = dynamic_cast<QGenericUnixServices *>(services());
+    auto unixServices = dynamic_cast<QDesktopUnixServices *>(services());
     unixServices->setApplicationBadge(number);
 }
 
 QString QXcbUnixServices::portalWindowIdentifier(QWindow *window)
 {
     return "x11:"_L1 + QString::number(window->winId(), 16);
+}
+
+void QXcbUnixServices::registerDBusMenuForWindow(QWindow *window, const QString &service, const QString &path)
+{
+    const QByteArray serviceValue = service.toLatin1();
+    const QByteArray pathValue = path.toLatin1();
+
+    xcb_change_property(xcb_connection(),
+                        XCB_PROP_MODE_REPLACE, window->winId(),
+                        atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_SERVICE_NAME),
+                        XCB_ATOM_STRING, 8,
+                        serviceValue.length(),
+                        serviceValue.constData());
+
+    xcb_change_property(xcb_connection(),
+                        XCB_PROP_MODE_REPLACE, window->winId(),
+                        atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_OBJECT_PATH),
+                        XCB_ATOM_STRING, 8,
+                        pathValue.length(),
+                        pathValue.constData());
+}
+
+void QXcbUnixServices::unregisterDBusMenuForWindow(QWindow *window)
+{
+    xcb_delete_property(xcb_connection(), window->winId(), atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_SERVICE_NAME));
+    xcb_delete_property(xcb_connection(), window->winId(), atom(QXcbAtom::Atom_KDE_NET_WM_APPMENU_OBJECT_PATH));
 }
 
 QT_END_NAMESPACE

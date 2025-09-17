@@ -1,15 +1,21 @@
-// Copyright (C) 2019 The Qt Company Ltd.
+// Copyright (C) 2025 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:critical reason:data-parser
 
 #include "qstdweb_p.h"
+#include "qwasmsuspendresumecontrol_p.h"
+#include "qwasmglobal_p.h"
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qmimedata.h>
 
-#include <emscripten/bind.h>
 #include <emscripten/emscripten.h>
+#include <emscripten/bind.h>
+#include <emscripten/val.h>
 #include <emscripten/html5.h>
+#include <emscripten/threading.h>
+
 #include <cstdint>
 #include <iostream>
 
@@ -18,6 +24,7 @@
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::Literals::StringLiterals;
+using emscripten::val;
 
 namespace qstdweb {
 
@@ -32,7 +39,7 @@ static void usePotentialyUnusedSymbols()
     // called at runtime.
     volatile bool doIt = false;
     if (doIt)
-        emscripten_set_wheel_callback("", 0, 0, NULL);
+        emscripten_set_wheel_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 0, NULL);
 }
 
 Q_CONSTRUCTOR_FUNCTION(usePotentialyUnusedSymbols)
@@ -85,288 +92,11 @@ private:
     File file;
 };
 
-enum class CallbackType {
-        Then,
-        Catch,
-        Finally,
-};
-
-void validateCallbacks(const PromiseCallbacks& callbacks) {
-    Q_ASSERT(!!callbacks.catchFunc || !!callbacks.finallyFunc || !!callbacks.thenFunc);
-}
-
-using ThunkId = int;
-
-#define THUNK_NAME(type, i) callbackThunk##type##i
-
-// A resource pool for exported promise thunk functions. ThunkPool::poolSize sets of
-// 3 promise thunks (then, catch, finally) are exported and can be used by promises
-// in C++. To allocate a thunk, call allocateThunk. When a thunk is ready for use,
-// a callback with allocation RAII object ThunkAllocation will be returned. Deleting
-// the object frees the thunk and automatically makes any pending allocateThunk call
-// run its callback with a free thunk slot.
-class ThunkPool {
-public:
-    static constexpr size_t poolSize = 4;
-
-    // An allocation for a thunk function set. Following the RAII pattern, destruction of
-    // this objects frees a corresponding thunk pool entry.
-    // To actually make the thunks react to a js promise's callbacks, call bindToPromise.
-    class ThunkAllocation {
-    public:
-        ThunkAllocation(int thunkId, ThunkPool* pool) : m_thunkId(thunkId), m_pool(pool) {}
-        ~ThunkAllocation() {
-            m_pool->free(m_thunkId);
-        }
-
-        // The id of the underlaying thunk set
-        int id() const { return m_thunkId; }
-
-        // Binds the corresponding thunk set to the js promise 'target'.
-        void bindToPromise(emscripten::val target, const PromiseCallbacks& callbacks) {
-            using namespace emscripten;
-
-            if (Q_LIKELY(callbacks.thenFunc)) {
-                target = target.call<val>(
-                    "then",
-                    emscripten::val::module_property(thunkName(CallbackType::Then, id()).data()));
-            }
-            if (callbacks.catchFunc) {
-                target = target.call<val>(
-                    "catch",
-                    emscripten::val::module_property(thunkName(CallbackType::Catch, id()).data()));
-            }
-            if (callbacks.finallyFunc) {
-                target = target.call<val>(
-                    "finally",
-                    emscripten::val::module_property(thunkName(CallbackType::Finally, id()).data()));
-            }
-        }
-
-    private:
-        int m_thunkId;
-        ThunkPool* m_pool;
-    };
-
-    ThunkPool() {
-        std::iota(m_free.begin(), m_free.end(), 0);
-    }
-
-    void setThunkCallback(std::function<void(int, CallbackType, emscripten::val)> callback) {
-        m_callback = std::move(callback);
-    }
-
-    void allocateThunk(std::function<void(std::unique_ptr<ThunkAllocation>)> onAllocated) {
-        if (m_free.empty()) {
-            m_pendingAllocations.push_back(std::move(onAllocated));
-            return;
-        }
-
-        const int thunkId = m_free.back();
-        m_free.pop_back();
-        onAllocated(std::make_unique<ThunkAllocation>(thunkId, this));
-    }
-
-    static QByteArray thunkName(CallbackType type, size_t i) {
-        return QStringLiteral("promiseCallback%1%2").arg([type]() -> QString {
-            switch (type) {
-                case CallbackType::Then:
-                    return QStringLiteral("Then");
-                case CallbackType::Catch:
-                    return QStringLiteral("Catch");
-                case CallbackType::Finally:
-                    return QStringLiteral("Finally");
-            }
-        }()).arg(i).toLatin1();
-    }
-
-    static ThunkPool* get();
-
-#define THUNK(i) \
-    static void THUNK_NAME(Then, i)(emscripten::val result) \
-    { \
-        get()->onThunkCalled(i, CallbackType::Then, std::move(result)); \
-    } \
-    static void THUNK_NAME(Catch, i)(emscripten::val result) \
-    { \
-        get()->onThunkCalled(i, CallbackType::Catch, std::move(result)); \
-    } \
-    static void THUNK_NAME(Finally, i)() \
-    { \
-        get()->onThunkCalled(i, CallbackType::Finally, emscripten::val::undefined()); \
-    }
-
-    THUNK(0);
-    THUNK(1);
-    THUNK(2);
-    THUNK(3);
-
-#undef THUNK
-
-private:
-    void onThunkCalled(int index, CallbackType type, emscripten::val result) {
-        m_callback(index, type, std::move(result));
-    }
-
-    void free(int thunkId) {
-        if (m_pendingAllocations.empty()) {
-            // Return the thunk to the free pool
-            m_free.push_back(thunkId);
-            return;
-        }
-
-        // Take the next enqueued allocation and reuse the thunk
-        auto allocation = m_pendingAllocations.back();
-        m_pendingAllocations.pop_back();
-        allocation(std::make_unique<ThunkAllocation>(thunkId, this));
-    }
-
-    std::function<void(int, CallbackType, emscripten::val)> m_callback;
-
-    std::vector<int> m_free = std::vector<int>(poolSize);
-    std::vector<std::function<void(std::unique_ptr<ThunkAllocation>)>> m_pendingAllocations;
-};
-
-Q_GLOBAL_STATIC(ThunkPool, g_thunkPool)
-
-ThunkPool* ThunkPool::get()
-{
-    return g_thunkPool;
-}
-
-#define CALLBACK_BINDING(i) \
-    emscripten::function(ThunkPool::thunkName(CallbackType::Then, i).data(), \
-                         &ThunkPool::THUNK_NAME(Then, i)); \
-    emscripten::function(ThunkPool::thunkName(CallbackType::Catch, i).data(), \
-                         &ThunkPool::THUNK_NAME(Catch, i)); \
-    emscripten::function(ThunkPool::thunkName(CallbackType::Finally, i).data(), \
-                         &ThunkPool::THUNK_NAME(Finally, i));
-
-EMSCRIPTEN_BINDINGS(qtThunkPool) {
-    CALLBACK_BINDING(0)
-    CALLBACK_BINDING(1)
-    CALLBACK_BINDING(2)
-    CALLBACK_BINDING(3)
-}
-
-#undef CALLBACK_BINDING
-#undef THUNK_NAME
-
-class WebPromiseManager
-{
-public:
-    WebPromiseManager();
-    ~WebPromiseManager();
-
-    WebPromiseManager(const WebPromiseManager& other) = delete;
-    WebPromiseManager(WebPromiseManager&& other) = delete;
-    WebPromiseManager& operator=(const WebPromiseManager& other) = delete;
-    WebPromiseManager& operator=(WebPromiseManager&& other) = delete;
-
-    void adoptPromise(emscripten::val target, PromiseCallbacks callbacks);
-
-    static WebPromiseManager* get();
-
-private:
-    struct RegistryEntry {
-        PromiseCallbacks callbacks;
-        std::unique_ptr<ThunkPool::ThunkAllocation> allocation;
-    };
-
-    static std::optional<CallbackType> parseCallbackType(emscripten::val callbackType);
-
-    void subscribeToJsPromiseCallbacks(int i, const PromiseCallbacks& callbacks, emscripten::val jsContextfulPromise);
-    void promiseThunkCallback(int i, CallbackType type, emscripten::val result);
-
-    void registerPromise(std::unique_ptr<ThunkPool::ThunkAllocation> allocation, PromiseCallbacks promise);
-    void unregisterPromise(ThunkId context);
-
-    std::array<RegistryEntry, ThunkPool::poolSize> m_promiseRegistry;
-};
-
-Q_GLOBAL_STATIC(WebPromiseManager, webPromiseManager)
-
-WebPromiseManager::WebPromiseManager()
-{
-    ThunkPool::get()->setThunkCallback(std::bind(
-        &WebPromiseManager::promiseThunkCallback, this,
-        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-}
-
-std::optional<CallbackType>
-WebPromiseManager::parseCallbackType(emscripten::val callbackType)
-{
-    if (!callbackType.isString())
-        return std::nullopt;
-
-    const std::string data = callbackType.as<std::string>();
-    if (data == "then")
-        return CallbackType::Then;
-    if (data == "catch")
-        return CallbackType::Catch;
-    if (data == "finally")
-        return CallbackType::Finally;
-    return std::nullopt;
-}
-
-WebPromiseManager::~WebPromiseManager() = default;
-
-WebPromiseManager *WebPromiseManager::get()
-{
-    return webPromiseManager();
-}
-
-void WebPromiseManager::promiseThunkCallback(int context, CallbackType type, emscripten::val result)
-{
-    auto* promiseState = &m_promiseRegistry[context];
-
-    auto* callbacks = &promiseState->callbacks;
-    bool expectingOtherCallbacks;
-    switch (type) {
-        case CallbackType::Then:
-            callbacks->thenFunc(result);
-            // At this point, if there is no finally function, we are sure that the Catch callback won't be issued.
-            expectingOtherCallbacks = !!callbacks->finallyFunc;
-            break;
-        case CallbackType::Catch:
-            callbacks->catchFunc(result);
-            expectingOtherCallbacks = !!callbacks->finallyFunc;
-            break;
-        case CallbackType::Finally:
-            callbacks->finallyFunc();
-            expectingOtherCallbacks = false;
-            break;
-    }
-
-    if (!expectingOtherCallbacks)
-        unregisterPromise(context);
-}
-
-void WebPromiseManager::registerPromise(
-    std::unique_ptr<ThunkPool::ThunkAllocation> allocation,
-    PromiseCallbacks callbacks)
-{
-    const ThunkId id = allocation->id();
-    m_promiseRegistry[id] =
-        RegistryEntry {std::move(callbacks), std::move(allocation)};
-}
-
-void WebPromiseManager::unregisterPromise(ThunkId context)
-{
-    m_promiseRegistry[context] = {};
-}
-
-void WebPromiseManager::adoptPromise(emscripten::val target, PromiseCallbacks callbacks) {
-    ThunkPool::get()->allocateThunk([=](std::unique_ptr<ThunkPool::ThunkAllocation> allocation) {
-        allocation->bindToPromise(std::move(target), callbacks);
-        registerPromise(std::move(allocation), std::move(callbacks));
-    });
-}
 #if defined(QT_STATIC)
 
 EM_JS(bool, jsHaveAsyncify, (), { return typeof Asyncify !== "undefined"; });
 EM_JS(bool, jsHaveJspi, (),
-      { return typeof Asyncify !== "undefined" && !!Asyncify.makeAsyncFunction && !!WebAssembly.Function; });
+      { return typeof Asyncify !== "undefined" && !!Asyncify.makeAsyncFunction && (!!WebAssembly.Function || !!WebAssembly.Suspending); });
 
 #else
 
@@ -374,112 +104,6 @@ bool jsHaveAsyncify() { return false; }
 bool jsHaveJspi() { return false; }
 
 #endif
-
-struct DataTransferReader
-{
-public:
-    using DoneCallback = std::function<void(std::unique_ptr<QMimeData>)>;
-
-    static std::shared_ptr<CancellationFlag> read(emscripten::val webDataTransfer,
-                                                  std::function<QVariant(QByteArray)> imageReader,
-                                                  DoneCallback onCompleted)
-    {
-        auto cancellationFlag = std::make_shared<CancellationFlag>();
-        (new DataTransferReader(std::move(onCompleted), std::move(imageReader), cancellationFlag))
-                ->read(webDataTransfer);
-        return cancellationFlag;
-    }
-
-    ~DataTransferReader() = default;
-
-private:
-    DataTransferReader(DoneCallback onCompleted, std::function<QVariant(QByteArray)> imageReader,
-                       std::shared_ptr<CancellationFlag> cancellationFlag)
-        : mimeData(std::make_unique<QMimeData>()),
-          imageReader(std::move(imageReader)),
-          onCompleted(std::move(onCompleted)),
-          cancellationFlag(cancellationFlag)
-    {
-    }
-
-    void read(emscripten::val webDataTransfer)
-    {
-        enum class ItemKind {
-            File,
-            String,
-        };
-
-        const auto items = webDataTransfer["items"];
-        for (int i = 0; i < items["length"].as<int>(); ++i) {
-            const auto item = items[i];
-            const auto itemKind =
-                    item["kind"].as<std::string>() == "string" ? ItemKind::String : ItemKind::File;
-            const auto itemMimeType = QString::fromStdString(item["type"].as<std::string>());
-
-            switch (itemKind) {
-            case ItemKind::File: {
-                ++fileCount;
-
-                qstdweb::File file(item.call<emscripten::val>("getAsFile"));
-
-                QByteArray fileContent(file.size(), Qt::Uninitialized);
-                file.stream(fileContent.data(), [this, itemMimeType, fileContent]() {
-                    if (!fileContent.isEmpty()) {
-                        if (itemMimeType.startsWith("image/"_L1)) {
-                            mimeData->setImageData(imageReader(fileContent));
-                        } else {
-                            mimeData->setData(itemMimeType, fileContent.data());
-                        }
-                    }
-                    ++doneCount;
-                    onFileRead();
-                });
-                break;
-            }
-            case ItemKind::String:
-                if (itemMimeType.contains("STRING"_L1, Qt::CaseSensitive)
-                    || itemMimeType.contains("TEXT"_L1, Qt::CaseSensitive)) {
-                    break;
-                }
-                QString a;
-                const QString data = QString::fromEcmaString(webDataTransfer.call<emscripten::val>(
-                        "getData", emscripten::val(itemMimeType.toStdString())));
-
-                if (!data.isEmpty()) {
-                    if (itemMimeType == "text/html"_L1)
-                        mimeData->setHtml(data);
-                    else if (itemMimeType.isEmpty() || itemMimeType == "text/plain"_L1)
-                        mimeData->setText(data); // the type can be empty
-                    else
-                        mimeData->setData(itemMimeType, data.toLocal8Bit());
-                }
-                break;
-            }
-        }
-
-        onFileRead();
-    }
-
-    void onFileRead()
-    {
-        Q_ASSERT(doneCount <= fileCount);
-        if (doneCount < fileCount)
-            return;
-
-        std::unique_ptr<DataTransferReader> deleteThisLater(this);
-        if (!cancellationFlag.expired())
-            onCompleted(std::move(mimeData));
-    }
-
-    int fileCount = 0;
-    int doneCount = 0;
-    std::unique_ptr<QMimeData> mimeData;
-    std::function<QVariant(QByteArray)> imageReader;
-    DoneCallback onCompleted;
-
-    std::weak_ptr<CancellationFlag> cancellationFlag;
-};
-
 } // namespace
 
 ArrayBuffer::ArrayBuffer(uint32_t size)
@@ -501,6 +125,11 @@ uint32_t ArrayBuffer::byteLength() const
     return m_arrayBuffer["byteLength"].as<uint32_t>();
 }
 
+ArrayBuffer ArrayBuffer::slice(uint32_t begin, uint32_t end) const
+{
+    return ArrayBuffer(m_arrayBuffer.call<emscripten::val>("slice", begin, end));
+}
+
 emscripten::val ArrayBuffer::val() const
 {
     return m_arrayBuffer;
@@ -510,6 +139,13 @@ Blob::Blob(const emscripten::val &blob)
     :m_blob(blob)
 {
 
+}
+
+Blob Blob::fromArrayBuffer(const ArrayBuffer &arrayBuffer)
+{
+    auto array = emscripten::val::array();
+    array.call<void>("push", arrayBuffer.val());
+    return Blob(emscripten::val::global("Blob").new_(array));
 }
 
 uint32_t Blob::size() const
@@ -534,6 +170,25 @@ Blob Blob::copyFrom(const char *buffer, uint32_t size)
     return copyFrom(buffer, size, "application/octet-stream");
 }
 
+Blob Blob::slice(uint32_t begin, uint32_t end) const
+{
+    return Blob(m_blob.call<emscripten::val>("slice", begin, end));
+}
+
+ArrayBuffer Blob::arrayBuffer_sync() const
+{
+    QEventLoop loop;
+    emscripten::val buffer;
+    qstdweb::Promise::make(m_blob, QStringLiteral("arrayBuffer"), {
+        .thenFunc = [&loop, &buffer](emscripten::val arrayBuffer) {
+            buffer = arrayBuffer;
+            loop.quit();
+        }
+    });
+    loop.exec();
+    return ArrayBuffer(buffer);
+}
+
 emscripten::val Blob::val() const
 {
     return m_blob;
@@ -544,6 +199,17 @@ File::File(const emscripten::val &file)
 {
 
 }
+
+File::~File() = default;
+
+File::File(const File &other) = default;
+
+File::File(File &&other) = default;
+
+File &File::operator=(const File &other) = default;
+
+File &File::operator=(File &&other) = default;
+
 
 Blob File::slice(uint64_t begin, uint64_t end) const
 {
@@ -589,6 +255,22 @@ emscripten::val File::val() const
 {
     return m_file;
 }
+
+FileUrlRegistration::FileUrlRegistration(File file)
+{
+    m_path = QString::fromStdString(emscripten::val::global("window")["URL"].call<std::string>(
+        "createObjectURL", file.file()));
+}
+
+FileUrlRegistration::~FileUrlRegistration()
+{
+    emscripten::val::global("window")["URL"].call<void>("revokeObjectURL",
+                                                        emscripten::val(m_path.toStdString()));
+}
+
+FileUrlRegistration::FileUrlRegistration(FileUrlRegistration &&other) = default;
+
+FileUrlRegistration &FileUrlRegistration::operator=(FileUrlRegistration &&other) = default;
 
 FileList::FileList(const emscripten::val &fileList)
     :m_fileList(fileList)
@@ -649,11 +331,6 @@ emscripten::val FileReader::val() const
     return m_fileReader;
 }
 
-Uint8Array Uint8Array::heap()
-{
-    return Uint8Array(heap_());
-}
-
 // Constructs a Uint8Array which references the given emscripten::val, which must contain a JS Unit8Array
 Uint8Array::Uint8Array(const emscripten::val &uint8Array)
 : m_uint8Array(uint8Array)
@@ -677,7 +354,7 @@ Uint8Array::Uint8Array(const ArrayBuffer &buffer, uint32_t offset, uint32_t leng
 
 // Constructs a Uint8Array which references an area on the heap.
 Uint8Array::Uint8Array(const char *buffer, uint32_t size)
-:m_uint8Array(Uint8Array::constructor_().new_(Uint8Array::heap().buffer().m_arrayBuffer, uintptr_t(buffer), size))
+:m_uint8Array(emscripten::typed_memory_view(size, buffer))
 {
 
 }
@@ -702,6 +379,13 @@ uint32_t Uint8Array::length() const
 void Uint8Array::set(const Uint8Array &source)
 {
     m_uint8Array.call<void>("set", source.m_uint8Array); // copies source content
+}
+
+Uint8Array Uint8Array::subarray(uint32_t begin, uint32_t end)
+{
+    // Note: using uint64_t here errors with "Cannot convert a BigInt value to a number"
+    // (see JS BigInt and Number types). Use uint32_t for now.
+    return Uint8Array(m_uint8Array.call<emscripten::val>("subarray", begin, end));
 }
 
 // Copies the Uint8Array content to a destination on the heap
@@ -747,130 +431,201 @@ emscripten::val Uint8Array::val() const
     return m_uint8Array;
 }
 
-emscripten::val Uint8Array::heap_()
-{
-    return emscripten::val::module_property("HEAPU8");
-}
-
 emscripten::val Uint8Array::constructor_()
 {
     return emscripten::val::global("Uint8Array");
 }
 
-// Registers a callback function for a named event on the given element. The event
-// name must be the name as returned by the Event.type property: e.g. "load", "error".
-EventCallback::~EventCallback()
+EventCallback::EventCallback(emscripten::val element, const std::string &name,
+                             const std::function<void(emscripten::val)> &fn)
+  :QWasmEventHandler(element, name, fn)
 {
-    // Clean up if this instance's callback is still installed on the element
-    if (m_element[contextPropertyName(m_eventName).c_str()].as<intptr_t>() == intptr_t(this)) {
-        m_element.set(contextPropertyName(m_eventName).c_str(), emscripten::val::undefined());
-        m_element.set((std::string("on") + m_eventName).c_str(), emscripten::val::undefined());
-    }
+
 }
 
-EventCallback::EventCallback(emscripten::val element, const std::string &name, const std::function<void(emscripten::val)> &fn)
-    :m_element(element)
-    ,m_eventName(name)
-    ,m_fn(fn)
+void Promise::adoptPromise(emscripten::val promise, PromiseCallbacks callbacks)
 {
-    Q_ASSERT_X(m_element[contextPropertyName(m_eventName)].isUndefined(), Q_FUNC_INFO,
-               "Only one event callback of type currently supported with EventCallback");
-    m_element.set(contextPropertyName(m_eventName).c_str(), emscripten::val(intptr_t(this)));
-    m_element.set((std::string("on") + m_eventName).c_str(), emscripten::val::module_property("qtStdWebEventCallbackActivate"));
+    Q_ASSERT_X(!!callbacks.catchFunc || !!callbacks.finallyFunc || !!callbacks.thenFunc,
+        "Promise::adoptPromise", "must provide at least one callback function");
+
+    QWasmSuspendResumeControl *suspendResume = QWasmSuspendResumeControl::get();
+    Q_ASSERT(suspendResume);
+
+    // Registers a possibly-empty callback with suspendresumecontrol. Returns
+    // the the handler index if there was a valid callback, or nullopt.
+    auto registerCallback = [suspendResume](std::function<void(emscripten::val)> cb) -> std::optional<uint32_t>{
+        if (!cb)
+            return std::nullopt;
+        return std::optional<uint32_t>{suspendResume->registerEventHandler(std::move(cb))};
+    };
+
+    // Register callbacks with suspendresumecontrol, so that it can
+    // resume the wasm instance when the promise resolves. The finally
+    // callback is sepecial, since we remove the event handlers there
+    // as cleanup, including the event handler for the cleanup function
+    // itself.
+    std::optional<uint32_t> thenIndex = registerCallback(std::move(callbacks.thenFunc));
+    std::optional<uint32_t> catchIndex = registerCallback(std::move(callbacks.catchFunc));
+    std::shared_ptr<uint32_t> finallyIndex = std::make_shared<uint32_t>();;
+    auto finallyFunc = callbacks.finallyFunc;
+
+    // 'Finally' callback which performs clean-up and calls the user-provided finally.
+    auto finally = [suspendResume, thenIndex, catchIndex, finallyIndex, finallyFunc](emscripten::val){
+
+        // Clean up event handlers
+        if (thenIndex)
+            suspendResume->removeEventHandler(*thenIndex);
+        if (catchIndex)
+            suspendResume->removeEventHandler(*catchIndex);
+        suspendResume->removeEventHandler(*finallyIndex);
+
+        // Call user finally
+        if (finallyFunc)
+            finallyFunc();
+    };
+
+    *finallyIndex = suspendResume->registerEventHandler(std::move(finally));
+
+    // Set handlers on the promise
+    if (thenIndex)
+        promise =
+                promise.call<emscripten::val>("then", suspendResume->jsEventHandlerAt(*thenIndex));
+
+    if (catchIndex)
+        promise = promise.call<emscripten::val>("catch",
+                                                suspendResume->jsEventHandlerAt(*catchIndex));
+
+    promise = promise.call<emscripten::val>("finally",
+                                            suspendResume->jsEventHandlerAt(*finallyIndex));
 }
 
-void EventCallback::activate(emscripten::val event)
+void Promise::all(std::vector<emscripten::val> promises, PromiseCallbacks callbacks)
 {
-    emscripten::val target = event["currentTarget"];
-    std::string eventName = event["type"].as<std::string>();
-    emscripten::val property = target[contextPropertyName(eventName)];
-    // This might happen when the event bubbles
-    if (property.isUndefined())
-        return;
-    EventCallback *that = reinterpret_cast<EventCallback *>(property.as<intptr_t>());
-    that->m_fn(event);
+    auto arr = emscripten::val::array(promises);
+    auto all = val::global("Promise").call<emscripten::val>("all", arr);
+    return adoptPromise(all, callbacks);
 }
 
-std::string EventCallback::contextPropertyName(const std::string &eventName)
-{
-    return std::string("data-qtEventCallbackContext") + eventName;
-}
-
-EMSCRIPTEN_BINDINGS(qtStdwebCalback) {
-    emscripten::function("qtStdWebEventCallbackActivate", &EventCallback::activate);
-}
-
-namespace Promise {
-    void adoptPromise(emscripten::val promiseObject, PromiseCallbacks callbacks) {
-        validateCallbacks(callbacks);
-
-        WebPromiseManager::get()->adoptPromise(
-            std::move(promiseObject), std::move(callbacks));
-    }
-
-    void all(std::vector<emscripten::val> promises, PromiseCallbacks callbacks) {
-        struct State {
-            std::map<int, emscripten::val> results;
-            int remainingThenCallbacks;
-            int remainingFinallyCallbacks;
-        };
-
-        validateCallbacks(callbacks);
-
-        auto state = std::make_shared<State>();
-        state->remainingThenCallbacks = state->remainingFinallyCallbacks = promises.size();
-
-        for (size_t i = 0; i < promises.size(); ++i) {
-            PromiseCallbacks individualPromiseCallback;
-            if (callbacks.thenFunc) {
-                individualPromiseCallback.thenFunc = [i, state, callbacks](emscripten::val partialResult) mutable {
-                    state->results.emplace(i, std::move(partialResult));
-                    if (!--(state->remainingThenCallbacks)) {
-                        std::vector<emscripten::val> transformed;
-                        for (auto& data : state->results) {
-                            transformed.push_back(std::move(data.second));
-                        }
-                        callbacks.thenFunc(emscripten::val::array(std::move(transformed)));
-                    }
-                };
-            }
-            if (callbacks.catchFunc) {
-                individualPromiseCallback.catchFunc = [state, callbacks](emscripten::val error) mutable {
-                    callbacks.catchFunc(error);
-                };
-            }
-            individualPromiseCallback.finallyFunc = [state, callbacks]() mutable {
-                if (!--(state->remainingFinallyCallbacks)) {
-                    if (callbacks.finallyFunc)
-                        callbacks.finallyFunc();
-                    // Explicitly reset here for verbosity, this would have been done automatically with the
-                    // destruction of the adopted promise in WebPromiseManager.
-                    state.reset();
-                }
-            };
-
-            adoptPromise(std::move(promises.at(i)), std::move(individualPromiseCallback));
-        }
-    }
-}
-
-bool haveAsyncify()
-{
-    static bool HaveAsyncify = jsHaveAsyncify();
-    return HaveAsyncify;
-}
-
+//  Asyncify and thread blocking: Normally, it's not possible to block the main
+//  thread, except if asyncify is enabled. Secondary threads can always block.
+//
+//  haveAsyncify(): returns true if the main thread can block on QEventLoop::exec(),
+//      if either asyncify 1 or 2 (JSPI) is available.
+//
+//  haveJspi(): returns true if asyncify 2 (JSPI) is available.
+//
+//  canBlockCallingThread(): returns true if the calling thread can block on
+//      QEventLoop::exec(), using either asyncify or as a seconarday thread.
 bool haveJspi()
 {
     static bool HaveJspi = jsHaveJspi();
     return HaveJspi;
 }
 
-std::shared_ptr<CancellationFlag>
-readDataTransfer(emscripten::val webDataTransfer, std::function<QVariant(QByteArray)> imageReader,
-                 std::function<void(std::unique_ptr<QMimeData>)> onDone)
+bool haveAsyncify()
 {
-    return DataTransferReader::read(webDataTransfer, std::move(imageReader), std::move(onDone));
+    static bool HaveAsyncify = jsHaveAsyncify() || haveJspi();
+    return HaveAsyncify;
+}
+
+bool canBlockCallingThread()
+{
+    return haveAsyncify() || !emscripten_is_main_runtime_thread();
+}
+
+BlobIODevice::BlobIODevice(Blob blob)
+    : m_blob(blob)
+{
+
+}
+
+bool BlobIODevice::open(QIODevice::OpenMode mode)
+{
+    if (mode.testFlag(QIODevice::WriteOnly))
+        return false;
+    return QIODevice::open(mode);
+}
+
+bool BlobIODevice::isSequential() const
+{
+    return false;
+}
+
+qint64 BlobIODevice::size() const
+{
+    return m_blob.size();
+}
+
+bool BlobIODevice::seek(qint64 pos)
+{
+    if (pos >= size())
+        return false;
+    return QIODevice::seek(pos);
+}
+
+qint64 BlobIODevice::readData(char *data, qint64 maxSize)
+{
+    uint64_t begin = QIODevice::pos();
+    uint64_t end = std::min<uint64_t>(begin + maxSize, size());
+    uint64_t size = end - begin;
+    if (size > 0) {
+        qstdweb::ArrayBuffer buffer = m_blob.slice(begin, end).arrayBuffer_sync();
+        qstdweb::Uint8Array(buffer).copyTo(data);
+    }
+    return size;
+}
+
+qint64 BlobIODevice::writeData(const char *, qint64)
+{
+    Q_UNREACHABLE();
+}
+
+Uint8ArrayIODevice::Uint8ArrayIODevice(Uint8Array array)
+    : m_array(array)
+{
+
+}
+
+bool Uint8ArrayIODevice::open(QIODevice::OpenMode mode)
+{
+    return QIODevice::open(mode);
+}
+
+bool Uint8ArrayIODevice::isSequential() const
+{
+    return false;
+}
+
+qint64 Uint8ArrayIODevice::size() const
+{
+    return m_array.length();
+}
+
+bool Uint8ArrayIODevice::seek(qint64 pos)
+{
+    if (pos >= size())
+        return false;
+    return QIODevice::seek(pos);
+}
+
+qint64 Uint8ArrayIODevice::readData(char *data, qint64 maxSize)
+{
+    uint64_t begin = QIODevice::pos();
+    uint64_t end = std::min<uint64_t>(begin + maxSize, size());
+    uint64_t size = end - begin;
+    if (size > 0)
+        m_array.subarray(begin, end).copyTo(data);
+    return size;
+}
+
+qint64 Uint8ArrayIODevice::writeData(const char *data, qint64 maxSize)
+{
+    uint64_t begin = QIODevice::pos();
+    uint64_t end = std::min<uint64_t>(begin + maxSize, size());
+    uint64_t size = end - begin;
+    if (size > 0)
+        m_array.subarray(begin, end).set(Uint8Array(data, size));
+    return size;
 }
 
 } // namespace qstdweb

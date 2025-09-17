@@ -1,14 +1,14 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef QXCBCLIPBOARD_H
-#define QXCBCLIPBOARD_H
+#pragma once
 
 #include <qpa/qplatformclipboard.h>
 #include <qxcbobject.h>
 #include <xcb/xcb.h>
 #include <xcb/xfixes.h>
 
+#include <QtCore/qbasictimer.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qmap.h>
 
@@ -42,7 +42,7 @@ private:
     xcb_atom_t m_target;
     uint8_t m_format;
     uint m_offset = 0;
-    int m_abortTimerId = 0;
+    QBasicTimer m_abortTimer;
 };
 
 class QXcbClipboard : public QXcbObject, public QPlatformClipboard
@@ -67,13 +67,13 @@ public:
     void handleXFixesSelectionRequest(xcb_xfixes_selection_notify_event_t *event);
 
     bool clipboardReadProperty(xcb_window_t win, xcb_atom_t property, bool deleteProperty, QByteArray *buffer, int *size, xcb_atom_t *type, int *format);
-    QByteArray clipboardReadIncrementalProperty(xcb_window_t win, xcb_atom_t property, int nbytes, bool nullterm);
+    std::optional<QByteArray> clipboardReadIncrementalProperty(xcb_window_t win, xcb_atom_t property, int nbytes, bool nullterm);
 
-    QByteArray getDataInFormat(xcb_atom_t modeAtom, xcb_atom_t fmtatom);
+    std::optional<QByteArray> getDataInFormat(xcb_atom_t modeAtom, xcb_atom_t fmtatom);
 
     bool handlePropertyNotify(const xcb_generic_event_t *event);
 
-    QByteArray getSelection(xcb_atom_t selection, xcb_atom_t target, xcb_atom_t property, xcb_timestamp_t t = 0);
+    std::optional<QByteArray> getSelection(xcb_atom_t selection, xcb_atom_t target, xcb_atom_t property, xcb_timestamp_t t = 0);
 
     int increment() const { return m_maxPropertyRequestDataBytes; }
     int clipboardTimeout() const { return clipboard_timeout; }
@@ -109,5 +109,3 @@ private:
 #endif // QT_NO_CLIPBOARD
 
 QT_END_NAMESPACE
-
-#endif // QXCBCLIPBOARD_H

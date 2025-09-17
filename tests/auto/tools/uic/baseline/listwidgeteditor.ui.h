@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -58,7 +58,7 @@ public:
     {
         if (qdesigner_internal__ListWidgetEditor->objectName().isEmpty())
             qdesigner_internal__ListWidgetEditor->setObjectName("qdesigner_internal__ListWidgetEditor");
-        qdesigner_internal__ListWidgetEditor->resize(223, 245);
+        qdesigner_internal__ListWidgetEditor->resize(232, 245);
         vboxLayout = new QVBoxLayout(qdesigner_internal__ListWidgetEditor);
 #ifndef Q_OS_MAC
         vboxLayout->setSpacing(6);
@@ -88,7 +88,7 @@ public:
 
         horizontalLayout_2->addWidget(deleteItemButton);
 
-        spacerItem = new QSpacerItem(16, 10, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(16, 10, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout_2->addItem(spacerItem);
 
@@ -117,7 +117,7 @@ public:
 
         horizontalLayout->addWidget(itemIconSelector);
 
-        horizontalSpacer = new QSpacerItem(108, 21, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        horizontalSpacer = new QSpacerItem(108, 21, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         horizontalLayout->addItem(horizontalSpacer);
 
@@ -129,8 +129,8 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__ListWidgetEditor);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         vboxLayout->addWidget(buttonBox);
 

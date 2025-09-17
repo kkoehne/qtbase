@@ -1,7 +1,7 @@
 /*
 
 * Copyright (C) 2016 The Qt Company Ltd.
-* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+* SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 */
 
@@ -98,17 +98,17 @@ public:
         hboxLayout->setObjectName("hboxLayout");
         newButton = new QToolButton(groupBox);
         newButton->setObjectName("newButton");
-        newButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        newButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
 
         hboxLayout->addWidget(newButton);
 
         deleteButton = new QToolButton(groupBox);
         deleteButton->setObjectName("deleteButton");
-        deleteButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        deleteButton->setToolButtonStyle(Qt::ToolButtonStyle::ToolButtonTextBesideIcon);
 
         hboxLayout->addWidget(deleteButton);
 
-        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Expanding, QSizePolicy::Minimum);
+        spacerItem = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
         hboxLayout->addItem(spacerItem);
 
@@ -143,7 +143,7 @@ public:
 #endif
         vboxLayout2->setContentsMargins(0, 0, 0, 0);
         vboxLayout2->setObjectName("vboxLayout2");
-        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem1 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout2->addItem(spacerItem1);
 
@@ -157,7 +157,7 @@ public:
 
         vboxLayout2->addWidget(downButton);
 
-        spacerItem2 = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
+        spacerItem2 = new QSpacerItem(20, 40, QSizePolicy::Policy::Minimum, QSizePolicy::Policy::Expanding);
 
         vboxLayout2->addItem(spacerItem2);
 
@@ -174,8 +174,8 @@ public:
 
         buttonBox = new QDialogButtonBox(qdesigner_internal__Dialog);
         buttonBox->setObjectName("buttonBox");
-        buttonBox->setOrientation(Qt::Horizontal);
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok);
+        buttonBox->setOrientation(Qt::Orientation::Horizontal);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         vboxLayout->addWidget(buttonBox);
 

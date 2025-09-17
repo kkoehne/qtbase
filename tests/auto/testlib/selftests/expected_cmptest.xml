@@ -81,6 +81,49 @@
     <Incident type="pass" file="" line="0" />
     <Duration msecs="0"/>
   </TestFunction>
+  <TestFunction name="compare_stringLiterals">
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs): "abc"
+   Expected (u""): ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs): "abc"
+   Baseline (u""): ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs)    : "abc"
+   Expected (u"abcd"): abcd]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs)    : "abc"
+   Baseline (u"abcd"): abcd]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs): "abc"
+   Expected ("") : ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs): "abc"
+   Baseline ("") : ]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared values are not the same
+   Actual   (lhs)   : "abc"
+   Expected ("abcd"): abcd]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[The computed value is expected to be equal to the baseline, but is not
+   Computed (lhs)   : "abc"
+   Baseline ("abcd"): abcd]]></Description>
+    </Incident>
+    <Duration msecs="0"/>
+  </TestFunction>
   <TestFunction name="compare_tostring">
     <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
       <DataTag><![CDATA[int, string]]></DataTag>
@@ -131,6 +174,16 @@
     <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
       <Description><![CDATA[Compared QObject pointers are not the same
    Actual   (&object1): QObject/"object1"
+   Expected (&object2): QObject/"object2"]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared QObject pointers are not the same
+   Actual   (&object1): QObject/"object1"
+   Expected (nullptr) : "nullptr"]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <Description><![CDATA[Compared QObject pointers are not the same
+   Actual   (nullptr) : "nullptr"
    Expected (&object2): QObject/"object2"]]></Description>
     </Incident>
     <Duration msecs="0"/>
@@ -225,14 +278,6 @@
       <Description><![CDATA[Compared lists differ at index 2.
    Actual   (actual): 4
    Expected (ARG({1, 2, 3})): 3]]></Description>
-    </Incident>
-    <Duration msecs="0"/>
-  </TestFunction>
-  <TestFunction name="compareQListDouble">
-    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
-      <Description><![CDATA[Compared lists differ at index 0.
-   Actual   (double1): 1.5
-   Expected (double2): 1]]></Description>
     </Incident>
     <Duration msecs="0"/>
   </TestFunction>
@@ -383,6 +428,24 @@
     </Incident>
     <Duration msecs="0"/>
   </TestFunction>
+  <TestFunction name="compareQPalettes">
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <DataTag><![CDATA[all roles are different]]></DataTag>
+      <Description><![CDATA[Compared values are not the same
+   Actual   (actualPalette)  : QPalette(resolve=0x7fffffffffffffff,"WindowText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Button:[Active:#ff000001,Disabled:#ff000001,Inactive:#ff000001],Light:[Active:#ff000002,Disabled:#ff000002,Inactive:#ff000002],Midlight:[Active:#ff000003,Disabled:#ff000003,Inactive:#ff000003],Dark:[Active:#ff000004,Disabled:#ff000004,Inactive:#ff000004],Mid:[Active:#ff000005,Disabled:#ff000005,Inactive:#ff000005],Text:[Active:#ff000006,Disabled:#ff000006,Inactive:#ff000006],BrightText:[Active:#ff000007,Disabled:#ff000007,Inactive:#ff000007],ButtonText:[Active:#ff000008,Disabled:#ff000008,Inactive:#ff000008],Base:[Active:#ff000009,Disabled:#ff000009,Inactive:#ff000009],Window:[Active:#ff00000a,Disabled:#ff00000a,Inactive:#ff00000a],Shadow:[Active:#ff00000b,Disabled:#ff00000b,Inactive:#ff00000b],Highlight:[Active:#ff00000c,Disabled:#ff00000c,Inactive:#ff00000c],HighlightedText:[Active:#ff00000d,Disabled:#ff00000d,Inactive:#ff00000d],Link:[Active:#ff00000e,Disabled:#ff00000e,Inactive:#ff00000e],LinkVisited:[Active:#ff00000f,Disabled:#ff00000f,Inactive:#ff00000f],AlternateBase:[Active:#ff000010,Disabled:#ff000010,Inactive:#ff000010],ToolTipBase:[Active:#ff000012,Disabled:#ff000012,Inactive:#ff000012],ToolTipText:[Active:#ff000013,Disabled:#ff000013,Inactive:#ff000013],PlaceholderText:[Active:#ff000014,Disabled:#ff000014,Inactive:#ff000014],Accent:[Active:#ff000015,Disabled:#ff000015,Inactive:#ff000015]")
+   Expected (expectedPalette): QPalette(resolve=0x7fffffffffffffff,"WindowText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Button:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Light:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Midlight:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Dark:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Mid:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Text:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],BrightText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],ButtonText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Base:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Window:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Shadow:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Highlight:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],HighlightedText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Link:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],LinkVisited:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],AlternateBase:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],ToolTipBase:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],ToolTipText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],PlaceholderText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Accent:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000]")]]></Description>
+    </Incident>
+    <Incident type="fail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <DataTag><![CDATA[one role is different]]></DataTag>
+      <Description><![CDATA[Compared values are not the same
+   Actual   (actualPalette)  : QPalette(resolve=0x7fffffffffffffff,"WindowText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Button:[Active:#ff000001,Disabled:#ff000001,Inactive:#ff000001],Light:[Active:#ff000002,Disabled:#ff000002,Inactive:#ff000002],Midlight:[Active:#ff000003,Disabled:#ff000003,Inactive:#ff000003],Dark:[Active:#ff000004,Disabled:#ff000004,Inactive:#ff000004],Mid:[Active:#ff000005,Disabled:#ff000005,Inactive:#ff000005],Text:[Active:#ff000006,Disabled:#ff000006,Inactive:#ff000006],BrightText:[Active:#ff000007,Disabled:#ff000007,Inactive:#ff000007],ButtonText:[Active:#ff000008,Disabled:#ff000008,Inactive:#ff000008],Base:[Active:#ff000009,Disabled:#ff000009,Inactive:#ff000009],Window:[Active:#ff00000a,Disabled:#ff00000a,Inactive:#ff00000a],Shadow:[Active:#ff00000b,Disabled:#ff00000b,Inactive:#ff00000b],Highlight:[Active:#ff00000c,Disabled:#ff00000c,Inactive:#ff00000c],HighlightedText:[Active:#ff00000d,Disabled:#ff00000d,Inactive:#ff00000d],Link:[Active:#ff00000e,Disabled:#ff00000e,Inactive:#ff00000e],LinkVisited:[Active:#ff00000f,Disabled:#ff00000f,Inactive:#ff00000f],AlternateBase:[Active:#ff000010,Disabled:#ff000010,Inactive:#ff000010],ToolTipBase:[Active:#ff000012,Disabled:#ff000012,Inactive:#ff000012],ToolTipText:[Active:#ff000013,Disabled:#ff000013,Inactive:#ff000013],PlaceholderText:[Active:#ff000014,Disabled:#ff000014,Inactive:#ff000014],Accent:[Active:#ff000015,Disabled:#ff000015,Inactive:#ff000015]")
+   Expected (expectedPalette): QPalette(resolve=0x7fffffffffffffff,"WindowText:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000],Button:[Active:#ff000001,Disabled:#ff000001,Inactive:#ff000001],Light:[Active:#ff000002,Disabled:#ff000002,Inactive:#ff000002],Midlight:[Active:#ff000003,Disabled:#ff000003,Inactive:#ff000003],Dark:[Active:#ff000004,Disabled:#ff000004,Inactive:#ff000004],Mid:[Active:#ff000005,Disabled:#ff000005,Inactive:#ff000005],Text:[Active:#ff000006,Disabled:#ff000006,Inactive:#ff000006],BrightText:[Active:#ff000007,Disabled:#ff000007,Inactive:#ff000007],ButtonText:[Active:#ff000008,Disabled:#ff000008,Inactive:#ff000008],Base:[Active:#ff000009,Disabled:#ff000009,Inactive:#ff000009],Window:[Active:#ff00000a,Disabled:#ff00000a,Inactive:#ff00000a],Shadow:[Active:#ff00000b,Disabled:#ff00000b,Inactive:#ff00000b],Highlight:[Active:#ff00000c,Disabled:#ff00000c,Inactive:#ff00000c],HighlightedText:[Active:#ff00000d,Disabled:#ff00000d,Inactive:#ff00000d],Link:[Active:#ff00000e,Disabled:#ff00000e,Inactive:#ff00000e],LinkVisited:[Active:#ff00000f,Disabled:#ff00000f,Inactive:#ff00000f],AlternateBase:[Active:#ff000010,Disabled:#ff000010,Inactive:#ff000010],ToolTipBase:[Active:#ff000012,Disabled:#ff000012,Inactive:#ff000012],ToolTipText:[Active:#ff000013,Disabled:#ff000013,Inactive:#ff000013],PlaceholderText:[Active:#ff000014,Disabled:#ff000014,Inactive:#ff000014],Accent:[Active:#ff000000,Disabled:#ff000000,Inactive:#ff000000]")]]></Description>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[all roles are the same]]></DataTag>
+    </Incident>
+    <Duration msecs="0"/>
+  </TestFunction>
   <TestFunction name="tryCompare">
   <Message type="qinfo" file="" line="0">
     <Description><![CDATA[Should now time out and fail]]></Description>
@@ -423,6 +486,32 @@
   </TestFunction>
   <TestFunction name="verifyExplicitOperatorBool">
     <Incident type="pass" file="" line="0" />
+    <Duration msecs="0"/>
+  </TestFunction>
+  <TestFunction name="defaultTryVerifyTimeout">
+    <Incident type="xfail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+      <Description><![CDATA[The timeout (std::chrono::milliseconds) is deliberately too short]]></Description>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[ample-time]]></DataTag>
+    </Incident>
+    <Duration msecs="0"/>
+  </TestFunction>
+  <TestFunction name="defaultTryCompareTimeout">
+    <Incident type="xfail" file="qtbase/tests/auto/testlib/selftests/cmptest/tst_cmptest.cpp" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+      <Description><![CDATA[The timeout (std::chrono::milliseconds) is deliberately too short]]></Description>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[times-out]]></DataTag>
+    </Incident>
+    <Incident type="pass" file="" line="0">
+      <DataTag><![CDATA[ample-time]]></DataTag>
+    </Incident>
     <Duration msecs="0"/>
   </TestFunction>
   <TestFunction name="cleanupTestCase">

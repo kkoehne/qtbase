@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include <qplatformdefs.h>
 
@@ -165,7 +166,7 @@ void QKqueueFileSystemWatcherEngine::readFromKqueue()
         int r;
         struct kevent kev;
         struct timespec ts = { 0, 0 }; // 0 ts, because we want to poll
-        EINTR_LOOP(r, kevent(kqfd, 0, 0, &kev, 1, &ts));
+        QT_EINTR_LOOP(r, kevent(kqfd, 0, 0, &kev, 1, &ts));
         if (r < 0) {
             perror("QKqueueFileSystemWatcherEngine: error during kevent wait");
             return;

@@ -1,5 +1,10 @@
-# Copyright (C) 2022 The Qt Company Ltd.
+# Copyright (C) 2024 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_manual_qpermissions LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
 
 qt_internal_add_test(tst_manual_qpermissions
     SOURCES
@@ -56,6 +61,6 @@ elseif(APPLE)
 
     if(NOT CMAKE_GENERATOR STREQUAL "Xcode")
         add_custom_command(TARGET tst_qpermissions_app_with_usage_descriptions
-            POST_BUILD COMMAND codesign -s - tst_qpermissions_app_with_usage_descriptions.app)
+            POST_BUILD COMMAND codesign -f -s - tst_qpermissions_app_with_usage_descriptions.app)
     endif()
 endif()

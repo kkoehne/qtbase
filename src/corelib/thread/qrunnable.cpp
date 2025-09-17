@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
 
 #include "qrunnable.h"
 
@@ -101,17 +102,17 @@ void QRunnable::QGenericRunnable::run()
 */
 
 /*!
-    \fn template<typename Callable, if_callable<Callable>> QRunnable *QRunnable::create(Callable &&callableToRun);
+    \fn template<typename Callable, QRunnable::if_callable<Callable>> QRunnable *QRunnable::create(Callable &&callableToRun);
     \since 5.15
 
     Creates a QRunnable that calls \a callableToRun in run().
 
     Auto-deletion is enabled by default.
 
-    \note This function participates in overload resolution only if \c Callable
-    is a function or function object which can be called with zero arguments.
-
     \note In Qt versions prior to 6.6, this method took copyable functions only.
+
+    \constraints \c Callable
+    is a function or function object which can be called with zero arguments.
 
     \sa run(), autoDelete()
 */
